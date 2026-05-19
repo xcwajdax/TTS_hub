@@ -1,0 +1,25 @@
+---
+description: Owijaj końcowe podsumowanie PL markerami <!-- tts-summary --> dla integracji z TTS Hub
+alwaysApply: false
+---
+
+# Podsumowanie dla TTS Hub
+
+Gdy projekt korzysta z integracji **Cursor ↔ TTS Hub**, na samym końcu odpowiedzi (po całej merytoryce, listach, kodzie itd.) umieszczaj **krótkie podsumowanie po polsku** opakowane markerami:
+
+```
+<!-- tts-summary -->
+Tu krótkie, naturalne podsumowanie po polsku.
+Maksymalnie 10 zdań, bez bloków kodu i bez list punktowanych.
+<!-- /tts-summary -->
+```
+
+Zasady:
+
+- **Język:** polski, drugą osobą („zrobiłem", „możesz teraz…").
+- **Długość:** do 10 zdań; jeśli temat jest banalny — wystarczy 1–2 zdania.
+- **Brak kodu i list** wewnątrz markerów (hook to czyta na głos, a syntezator źle czyta składnię).
+- **Bez powtarzania całej odpowiedzi** — tylko najważniejsze ustalenia, ostrzeżenia i następny krok.
+- Jeśli reguła `response-closing-pl.mdc` też jest aktywna — naturalne zakończenie po polsku może być **tym samym tekstem** owiniętym w markery.
+
+Hook PowerShell w TTS Hub (`cursor-tts.ps1`) preferuje zawartość pomiędzy markerami; bez nich bierze ostatni akapit i przycina do `cursor_integration.max_sentences` zdań.

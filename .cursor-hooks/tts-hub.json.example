@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "autoplay": true,
+  "max_sentences": 10,
+  "model": "gemini-2.5-flash-preview-tts",
+  "voice": "Kore",
+  "style": "Powiedz spokojnie po polsku:",
+  "use_summary_markers": true,
+  "dnd_until_ts": null,
+  "last_install_ts": null
+}

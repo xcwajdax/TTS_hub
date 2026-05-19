@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #0f1115;
+  color: #e6e8ee;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0f1115; }
+::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4150; }
+
+textarea:focus, input:focus, select:focus { outline: none; }
+
+.btn {
+  @apply px-3 py-1.5 rounded-md bg-panel2 border border-border text-sm hover:bg-border transition-colors;
+}
+.btn-primary {
+  @apply px-4 py-2 rounded-md text-sm font-medium text-white;
+  background: linear-gradient(135deg, #7c5cff 0%, #22d3ee 100%);
+}
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.field {
+  @apply bg-panel2 border border-border rounded-md px-2 py-1.5 text-sm w-full;
+}
+
+.tag {
+  @apply text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-panel2 border border-border text-muted;
+}
+
+/* Ikony VIBELIFE (default, fill #1a1a1a) na ciemnym tle */
+.vl-icon {
+  filter: brightness(0) invert(0.88);
+}
+
+.history-action-btn {
+  @apply inline-flex items-center justify-center p-1 rounded bg-transparent text-muted;
+  @apply hover:bg-panel2/70 hover:text-[#e6e8ee] transition-colors;
+  @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent;
+}
+.history-action-btn--danger {
+  @apply hover:!bg-red-950/35 hover:!text-red-300/90;
+}
+.history-action-group {
+  @apply inline-flex items-stretch rounded border border-border/40 overflow-hidden bg-panel/30;
+}
+.history-action-group > .history-action-btn {
+  @apply rounded-none;
+}
+.history-action-group > .history-action-btn + .history-action-btn,
+.history-action-group > .history-action-btn + .history-format-picker {
+  @apply border-l border-border/40;
+}
+.history-format-picker {
+  @apply relative inline-flex items-center justify-center w-6 h-6 shrink-0;
+}
+.history-format-picker select {
+  @apply absolute inset-0 w-full h-full opacity-0 cursor-pointer;
+}
+
+.history-item--current {
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.45), 0 0 18px rgba(124, 92, 255, 0.2);
+}
+.history-item--playing {
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.65), 0 0 22px rgba(34, 211, 238, 0.28);
+}
+.history-item-now-playing {
+  @apply absolute top-1.5 left-1.5 z-30 text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded;
+  @apply bg-cyan-500/20 text-cyan-300 border border-cyan-400/40;
+  animation: history-pulse 1.4s ease-in-out infinite;
+}
+@keyframes history-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+.history-item-body {
+  @apply relative min-h-[4.75rem];
+}
+.history-item-body--active > .history-item-body__content {
+  @apply opacity-40 pointer-events-none select-none transition-opacity duration-200;
+}
+.history-item-body--playing > .history-item-body__content {
+  @apply opacity-30;
+}
+
+.history-play-overlay {
+  @apply absolute inset-0 z-20 overflow-hidden rounded-[inherit];
+}
+.history-play-overlay__canvas {
+  @apply absolute inset-0 w-full h-full pointer-events-none;
+}
+.history-play-overlay__dim {
+  @apply absolute inset-0 bg-black/25 pointer-events-none;
+}
+.history-item-body--playing .history-play-overlay__dim {
+  @apply bg-black/15;
+}
+.history-play-overlay__zones {
+  @apply absolute inset-0 flex pointer-events-auto;
+}
+.history-play-overlay__zone {
+  @apply flex items-center justify-center h-full border-0 p-0 bg-transparent transition-colors duration-150;
+}
+.history-play-overlay__zone--play {
+  flex: 3 1 0;
+}
+.history-play-overlay__zone--reload {
+  flex: 1 1 0;
+}
+.history-play-overlay__zone-icon {
+  @apply opacity-0 scale-90 transition-all duration-150 pointer-events-none;
+}
+.history-play-overlay__zones--hover .history-play-overlay__zone-icon {
+  @apply opacity-100 scale-100;
+}
+.history-play-overlay__zones--hover .history-play-overlay__zone--play {
+  @apply bg-black/45;
+}
+.history-play-overlay__zones--hover .history-play-overlay__zone--reload {
+  @apply bg-black/55 border-l border-white/10;
+}

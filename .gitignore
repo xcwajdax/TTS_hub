@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vscode
+.idea
+src-tauri/target
+src-tauri/gen
+studios.env
+.env
