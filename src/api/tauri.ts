@@ -6,15 +6,40 @@ import type {
   CursorIntegrationStatus,
   CursorInstallReport,
 } from "../appSettings";
-import type { AudioFormat, GenerateRequest, Generation, HistoryScope } from "../types";
+import type { AudioFormat, GenerateRequest, Generation, HistoryScope, JobScope } from "../types";
 import type { TtsModelInfo } from "../ttsModels";
 
+/** Enqueue a generation. Returns the persisted row with status='queued'. */
 export async function generate(req: GenerateRequest): Promise<Generation> {
   return invoke<Generation>("generate", { req });
 }
 
 export async function listHistory(scope: HistoryScope): Promise<Generation[]> {
   return invoke<Generation[]>("list_history", { scope });
+}
+
+export async function listJobs(scope: JobScope): Promise<Generation[]> {
+  return invoke<Generation[]>("list_jobs", { scope });
+}
+
+export async function cancelJob(id: string): Promise<void> {
+  return invoke("cancel_job", { id });
+}
+
+export async function resumeJob(id: string): Promise<Generation> {
+  return invoke<Generation>("resume_job", { id });
+}
+
+export async function discardJob(id: string): Promise<void> {
+  return invoke("discard_job", { id });
+}
+
+export async function resumeAllInterrupted(): Promise<Generation[]> {
+  return invoke<Generation[]>("resume_all_interrupted");
+}
+
+export async function discardAllInterrupted(): Promise<number> {
+  return invoke<number>("discard_all_interrupted");
 }
 
 export async function archiveGeneration(id: string, format: AudioFormat): Promise<Generation> {

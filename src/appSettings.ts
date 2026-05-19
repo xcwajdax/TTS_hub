@@ -42,7 +42,12 @@ export interface AppSettings {
   api_profiles: ApiProfile[];
   active_api_id: string | null;
   cursor_integration: CursorIntegration;
+  max_concurrent_jobs: number;
 }
+
+export const MIN_CONCURRENT_JOBS = 1;
+export const MAX_CONCURRENT_JOBS = 8;
+export const DEFAULT_MAX_CONCURRENT_JOBS = 3;
 
 export interface CursorIntegrationStatus {
   api_ok: boolean;

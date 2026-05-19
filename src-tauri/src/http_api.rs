@@ -13,7 +13,7 @@ use tauri::AppHandle;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::audio::AudioFormat;
-use crate::commands::{do_archive, do_generate, GenerateReq};
+use crate::commands::{do_archive, enqueue_request, GenerateReq};
 use crate::cursor_integration;
 use crate::db::Generation;
 use crate::google::VOICES;
@@ -41,6 +41,19 @@ struct VoiceSamplesQuery {
     model: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct GenerateQuery {
+    /// If true, block until the job reaches a terminal status and return the
+    /// finalized Generation row (preserves the pre-queue request/response contract).
+    #[serde(default)]
+    wait: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct JobsQuery {
+    scope: Option<String>,
+}
+
 pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
@@ -54,6 +67,10 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         .route("/history/:id/archive", post(archive))
         .route("/history/:id", delete(delete_one))
         .route("/audio/:id", get(audio))
+        .route("/jobs", get(jobs_list))
+        .route("/jobs/:id", get(job_get).delete(job_discard))
+        .route("/jobs/:id/cancel", post(job_cancel))
+        .route("/jobs/:id/resume", post(job_resume))
         .route("/cursor/config", get(cursor_config))
         .route("/integration/status", get(integration_status))
         .with_state(state)
@@ -109,15 +126,135 @@ async fn voice_sample_audio(
 
 async fn generate(
     State(state): State<AppArc>,
-    Extension(app): Extension<AppHandle>,
+    Extension(_app): Extension<AppHandle>,
+    Query(q): Query<GenerateQuery>,
     Json(mut req): Json<GenerateReq>,
 ) -> Response {
     if req.source.is_none() {
         req.source = Some("http".to_string());
     }
-    match do_generate(state, req, Some(app)).await {
-        Ok(g) => Json(g).into_response(),
-        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    let queue = match state.job_queue() {
+        Some(q) => q,
+        None => return json_err(StatusCode::SERVICE_UNAVAILABLE, "job queue not ready"),
+    };
+    // Subscribe BEFORE enqueueing so we don't miss the terminal update.
+    let mut rx = queue.subscribe();
+    let queued = match enqueue_request(&state, req) {
+        Ok(g) => g,
+        Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+
+    if !q.wait {
+        return Json(queued).into_response();
+    }
+
+    let job_id = queued.id.clone();
+    loop {
+        match rx.recv().await {
+            Ok(evt) if evt.job_id == job_id => {
+                match evt.status.as_str() {
+                    "done" => {
+                        return match state.db.get(&job_id) {
+                            Ok(Some(g)) => Json(g).into_response(),
+                            Ok(None) => json_err(StatusCode::INTERNAL_SERVER_ERROR, "row missing"),
+                            Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+                        };
+                    }
+                    "failed" | "cancelled" => {
+                        let msg = evt.error.unwrap_or_else(|| evt.status.clone());
+                        return json_err(StatusCode::INTERNAL_SERVER_ERROR, msg);
+                    }
+                    _ => continue,
+                }
+            }
+            Ok(_) => continue,
+            Err(e) => {
+                return json_err(StatusCode::INTERNAL_SERVER_ERROR, format!("event loss: {e}"));
+            }
+        }
+    }
+}
+
+async fn jobs_list(
+    State(state): State<AppArc>,
+    Query(q): Query<JobsQuery>,
+) -> Response {
+    let scope = q.scope.unwrap_or_else(|| "active".to_string());
+    let statuses: &[&str] = match scope.as_str() {
+        "active" => &["queued", "running"],
+        "interrupted" => &["interrupted"],
+        "failed" => &["failed"],
+        "all" => &["queued", "running", "interrupted", "failed", "cancelled"],
+        _ => return json_err(StatusCode::BAD_REQUEST, "scope must be active|interrupted|failed|all"),
+    };
+    match state.db.list_by_statuses(statuses) {
+        Ok(list) => Json::<Vec<Generation>>(list).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+async fn job_get(State(state): State<AppArc>, Path(id): Path<String>) -> Response {
+    match state.db.get(&id) {
+        Ok(Some(g)) => Json(g).into_response(),
+        Ok(None) => json_err(StatusCode::NOT_FOUND, "not found"),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+async fn job_cancel(State(state): State<AppArc>, Path(id): Path<String>) -> Response {
+    let row = match state.db.get(&id) {
+        Ok(Some(g)) => g,
+        Ok(None) => return json_err(StatusCode::NOT_FOUND, "not found"),
+        Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    if matches!(row.status.as_str(), "queued" | "running") {
+        if let Some(q) = state.job_queue() {
+            q.request_cancel(&id);
+        }
+        if row.status == "queued" {
+            let _ = state.db.update_status(&id, "cancelled", None);
+        }
+    }
+    Json(serde_json::json!({ "ok": true })).into_response()
+}
+
+async fn job_resume(State(state): State<AppArc>, Path(id): Path<String>) -> Response {
+    let row = match state.db.get(&id) {
+        Ok(Some(g)) => g,
+        Ok(None) => return json_err(StatusCode::NOT_FOUND, "not found"),
+        Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    if row.request_json.is_none() {
+        return json_err(StatusCode::BAD_REQUEST, "missing original request payload");
+    }
+    if !matches!(row.status.as_str(), "interrupted" | "failed" | "cancelled") {
+        return json_err(StatusCode::BAD_REQUEST, "can only resume interrupted/failed/cancelled jobs");
+    }
+    let queue = match state.job_queue() {
+        Some(q) => q,
+        None => return json_err(StatusCode::SERVICE_UNAVAILABLE, "job queue not ready"),
+    };
+    if let Err(e) = state.db.mark_queued(&id) {
+        return json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    }
+    if let Err(e) = queue.enqueue(id.clone()) {
+        return json_err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"));
+    }
+    match state.db.get(&id) {
+        Ok(Some(g)) => Json(g).into_response(),
+        _ => Json(serde_json::json!({ "ok": true, "id": id })).into_response(),
+    }
+}
+
+async fn job_discard(State(state): State<AppArc>, Path(id): Path<String>) -> Response {
+    if let Ok(Some(g)) = state.db.get(&id) {
+        if !g.file_path.is_empty() && g.status != "done" {
+            let _ = std::fs::remove_file(&g.file_path);
+        }
+    }
+    match state.db.delete(&id) {
+        Ok(()) => Json(serde_json::json!({ "discarded": id })).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
 }
 

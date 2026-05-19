@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Generation, GenerationSource } from "../types";
 import HistoryItem from "./HistoryItem";
 import CursorFeed from "./CursorFeed";
+import ActiveJobsPanel from "./ActiveJobsPanel";
 import { openArchiveFolder, pickArchiveFolderSettings } from "../api/tauri";
 
 type TabScope = "session" | "archive" | "cursor";
@@ -9,6 +10,7 @@ type TabScope = "session" | "archive" | "cursor";
 interface Props {
   session: Generation[];
   archive: Generation[];
+  interrupted: Generation[];
   currentId: string | null;
   onPlay: (g: Generation) => void;
   onChanged: () => void;
@@ -24,7 +26,7 @@ const SOURCE_FILTERS: { id: SourceFilter; label: string }[] = [
   { id: "http", label: "HTTP" },
 ];
 
-export default function HistorySidebar({ session, archive, currentId, onPlay, onChanged, onError }: Props) {
+export default function HistorySidebar({ session, archive, interrupted, currentId, onPlay, onChanged, onError }: Props) {
   const [scope, setScope] = useState<TabScope>("session");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
 
@@ -45,6 +47,7 @@ export default function HistorySidebar({ session, archive, currentId, onPlay, on
 
   return (
     <div className="flex flex-col h-full min-w-0 overflow-hidden bg-panel">
+      <ActiveJobsPanel interrupted={interrupted} onChanged={onChanged} onError={onError} />
       <div className="flex border-b border-border">
         <button
           className={`flex-1 py-2.5 text-sm ${scope === "session" ? "bg-panel2 text-white border-b-2 border-accent" : "text-muted hover:text-white"}`}

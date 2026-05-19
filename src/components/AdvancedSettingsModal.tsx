@@ -14,7 +14,13 @@ import type {
   CursorIntegration,
   SaveMode,
 } from "../appSettings";
-import { defaultCursorIntegration, newApiProfile } from "../appSettings";
+import {
+  DEFAULT_MAX_CONCURRENT_JOBS,
+  MAX_CONCURRENT_JOBS,
+  MIN_CONCURRENT_JOBS,
+  defaultCursorIntegration,
+  newApiProfile,
+} from "../appSettings";
 import { loadHistoryClickToPlay, saveHistoryClickToPlay } from "../lib/historyPlaybackPrefs";
 import type { AudioFormat } from "../types";
 import CursorIntegrationPanel from "./CursorIntegrationPanel";
@@ -80,6 +86,7 @@ export default function AdvancedSettingsModal({ open, onClose, onSaved, onError 
         api_profiles: draft.api_profiles,
         active_api_id: draft.active_api_id,
         cursor_integration: draft.cursor_integration,
+        max_concurrent_jobs: draft.max_concurrent_jobs ?? DEFAULT_MAX_CONCURRENT_JOBS,
       };
       const view = await setAppSettings(payload);
       saveHistoryClickToPlay(draft.history_click_to_play);
@@ -207,6 +214,33 @@ export default function AdvancedSettingsModal({ open, onClose, onSaved, onError 
             </label>
             <p className="text-[11px] text-muted">
               Dotyczy obszaru karty poza przyciskami i polami tekstowymi (tytuł, [więcej], zapis, usuń).
+            </p>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h3 className="text-xs uppercase tracking-wide text-muted">Kolejka generacji</h3>
+            <label className="flex flex-col gap-1 text-xs text-muted max-w-xs">
+              Maksymalna liczba równoległych generacji
+              <input
+                type="number"
+                min={MIN_CONCURRENT_JOBS}
+                max={MAX_CONCURRENT_JOBS}
+                step={1}
+                className="field"
+                value={draft.max_concurrent_jobs ?? DEFAULT_MAX_CONCURRENT_JOBS}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  if (Number.isFinite(n)) {
+                    update(
+                      "max_concurrent_jobs",
+                      Math.max(MIN_CONCURRENT_JOBS, Math.min(MAX_CONCURRENT_JOBS, n)),
+                    );
+                  }
+                }}
+              />
+            </label>
+            <p className="text-[11px] text-muted">
+              Ile zadań TTS może działać jednocześnie. Pozostałe czekają w kolejce. Większa wartość = szybsze rozkolejkowanie, ale ryzyko trafienia na limity Google.
             </p>
           </section>
 

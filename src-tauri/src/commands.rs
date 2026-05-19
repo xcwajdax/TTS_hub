@@ -1,16 +1,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::app_settings::{AppSettings, CursorIntegration, SaveMode};
+use crate::app_settings::{AppSettings, CursorIntegration};
 use crate::cursor_integration::{self, InstallReport, IntegrationStatus, UninstallReport};
-use crate::audio::{convert_audio_file, write_audio, AudioFormat};
-use crate::db::Generation;
-use crate::google::{SpeakerConfig, TtsModelInfo, TtsRequest, VOICES};
+use crate::audio::{convert_audio_file, AudioFormat};
+use crate::db::{Generation, STATUS_CANCELLED, STATUS_DONE, STATUS_INTERRUPTED, STATUS_QUEUED};
+use crate::google::{SpeakerConfig, TtsModelInfo, VOICES};
 use crate::paths::AppPaths;
 use crate::state::AppState;
 use crate::voice_samples::{self, VoiceSampleInfo};
@@ -46,7 +45,7 @@ pub fn derive_title(text: &str) -> String {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateReq {
     pub text: String,
     pub model: String,
@@ -64,75 +63,15 @@ pub struct GenerateReq {
     pub summary_text: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct PhaseEvent {
-    pub phase: &'static str,
-    pub elapsed_ms: u128,
-}
-
-fn emit_phase(app: Option<&AppHandle>, started: Instant, phase: &'static str) {
-    if let Some(handle) = app {
-        let _ = handle.emit(
-            "generation:phase",
-            PhaseEvent {
-                phase,
-                elapsed_ms: started.elapsed().as_millis(),
-            },
-        );
-    }
-}
-
-#[tauri::command]
-pub async fn generate(
-    req: GenerateReq,
-    state: State<'_, AppArc>,
-    app: AppHandle,
-) -> Result<Generation, String> {
-    let state = state.inner().clone();
-    crate::commands::do_generate(state, req, Some(app)).await
-}
-
-pub async fn do_generate(
-    state: AppArc,
-    req: GenerateReq,
-    app: Option<AppHandle>,
-) -> Result<Generation, String> {
-    let started = Instant::now();
-    let app_ref = app.as_ref();
-    emit_phase(app_ref, started, "preparing");
-
+/// Persist a queued row + push to the worker pool. Returns the queued Generation row.
+/// Used by both the Tauri command and the HTTP /generate endpoint.
+pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, String> {
     if req.text.trim().is_empty() {
         return Err("text is empty".into());
     }
-    let fmt = AudioFormat::from_str(&req.format).ok_or_else(|| "unknown format".to_string())?;
-
-    let synth_text = req
-        .summary_text
-        .as_ref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(String::from)
-        .unwrap_or_else(|| req.text.clone());
-
-    let tts_req = TtsRequest {
-        model: req.model.clone(),
-        text: synth_text,
-        voice: req.voice.clone(),
-        style: req.style.clone(),
-        multi_speaker: req.multi_speaker.clone(),
-    };
-
-    emit_phase(app_ref, started, "requesting");
-    let tts_result = state.tts.synthesize(&tts_req).await.map_err(err)?;
-    emit_phase(app_ref, started, "decoding");
+    AudioFormat::from_str(&req.format).ok_or_else(|| "unknown format".to_string())?;
 
     let id = uuid::Uuid::new_v4().to_string();
-    let stem = format!("{}", id);
-    emit_phase(app_ref, started, "writing");
-    let paths = read_paths(&state)?;
-    let written = write_audio(&tts_result, &paths.temp, &stem, fmt).map_err(err)?;
-    drop(paths);
-
     let now_ms = chrono::Utc::now().timestamp_millis();
     let title_src = req.summary_text.as_deref().unwrap_or(&req.text);
     let title = derive_title(title_src);
@@ -142,48 +81,46 @@ pub async fn do_generate(
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "manual".to_string());
+    let request_json = serde_json::to_string(&req).map_err(err)?;
+
     let gen = Generation {
         id: id.clone(),
         created_at: now_ms,
-        text: req.text,
+        text: req.text.clone(),
         title: Some(title),
-        model: req.model,
-        voice: req.voice,
-        style: req.style,
+        model: req.model.clone(),
+        voice: req.voice.clone(),
+        style: req.style.clone(),
         format: req.format.to_lowercase(),
-        duration_ms: Some(written.duration_ms as i64),
-        file_path: written.path.to_string_lossy().to_string(),
+        duration_ms: None,
+        file_path: String::new(),
         is_archived: false,
         session_id: state.session_id.clone(),
         source,
-        conversation_id: req.conversation_id,
-        summary_text: req.summary_text,
+        conversation_id: req.conversation_id.clone(),
+        summary_text: req.summary_text.clone(),
+        status: STATUS_QUEUED.to_string(),
+        error: None,
+        attempts: 0,
+        updated_at: now_ms,
+        request_json: Some(request_json),
     };
     state.db.insert(&gen).map_err(err)?;
-    emit_phase(app_ref, started, "done");
 
-    let auto_archive = {
-        let settings = state.settings.read().map_err(err)?;
-        settings.save_mode == SaveMode::Auto
-    };
+    let queue = state
+        .job_queue()
+        .ok_or_else(|| "job queue not initialized".to_string())?;
+    queue.enqueue(id.clone()).map_err(err)?;
+    Ok(gen)
+}
 
-    let final_gen = if auto_archive {
-        let archive_fmt = {
-            let settings = state.settings.read().map_err(err)?;
-            AudioFormat::from_str(&settings.save_format).unwrap_or(AudioFormat::Wav)
-        };
-        do_archive(&state, &id, archive_fmt)?
-    } else {
-        gen
-    };
-
-    if req.autoplay {
-        if let Some(handle) = app_ref {
-            let _ = handle.emit("generation:ready", &final_gen);
-        }
-    }
-
-    Ok(final_gen)
+#[tauri::command]
+pub async fn generate(
+    req: GenerateReq,
+    state: State<'_, AppArc>,
+) -> Result<Generation, String> {
+    let state = state.inner().clone();
+    enqueue_request(&state, req)
 }
 
 #[tauri::command]
@@ -193,6 +130,119 @@ pub fn list_history(scope: String, state: State<'_, AppArc>) -> Result<Vec<Gener
         "archive" => state.db.list_archive().map_err(err),
         _ => Err("invalid scope".into()),
     }
+}
+
+/// scope: "active" (queued+running) | "interrupted" | "failed" | "all".
+#[tauri::command]
+pub fn list_jobs(scope: String, state: State<'_, AppArc>) -> Result<Vec<Generation>, String> {
+    let statuses: &[&str] = match scope.as_str() {
+        "active" => &["queued", "running"],
+        "interrupted" => &["interrupted"],
+        "failed" => &["failed"],
+        "all" => &[
+            "queued",
+            "running",
+            "interrupted",
+            "failed",
+            "cancelled",
+        ],
+        _ => return Err("invalid scope".into()),
+    };
+    state.db.list_by_statuses(statuses).map_err(err)
+}
+
+#[tauri::command]
+pub fn cancel_job(id: String, state: State<'_, AppArc>) -> Result<(), String> {
+    let row = state
+        .db
+        .get(&id)
+        .map_err(err)?
+        .ok_or_else(|| "not found".to_string())?;
+    match row.status.as_str() {
+        "queued" => {
+            // Worker will pick it up and immediately mark cancelled.
+            if let Some(q) = state.job_queue() {
+                q.request_cancel(&id);
+            }
+            state.db.update_status(&id, STATUS_CANCELLED, None).map_err(err)?;
+            Ok(())
+        }
+        "running" => {
+            if let Some(q) = state.job_queue() {
+                q.request_cancel(&id);
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+#[tauri::command]
+pub fn resume_job(id: String, state: State<'_, AppArc>) -> Result<Generation, String> {
+    let row = state
+        .db
+        .get(&id)
+        .map_err(err)?
+        .ok_or_else(|| "not found".to_string())?;
+    if row.request_json.is_none() {
+        return Err("cannot resume: missing original request".into());
+    }
+    if !matches!(row.status.as_str(), "interrupted" | "failed" | "cancelled") {
+        return Err(format!("cannot resume from status '{}'", row.status));
+    }
+    state.db.mark_queued(&id).map_err(err)?;
+    let queue = state
+        .job_queue()
+        .ok_or_else(|| "job queue not initialized".to_string())?;
+    queue.enqueue(id.clone()).map_err(err)?;
+    state
+        .db
+        .get(&id)
+        .map_err(err)?
+        .ok_or_else(|| "not found".into())
+}
+
+#[tauri::command]
+pub fn discard_job(id: String, state: State<'_, AppArc>) -> Result<(), String> {
+    if let Some(g) = state.db.get(&id).map_err(err)? {
+        if !g.file_path.is_empty() && g.status != STATUS_DONE {
+            let _ = std::fs::remove_file(&g.file_path);
+        }
+    }
+    state.db.delete(&id).map_err(err)
+}
+
+#[tauri::command]
+pub fn resume_all_interrupted(state: State<'_, AppArc>) -> Result<Vec<Generation>, String> {
+    let rows = state.db.list_by_statuses(&[STATUS_INTERRUPTED]).map_err(err)?;
+    let queue = state
+        .job_queue()
+        .ok_or_else(|| "job queue not initialized".to_string())?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        if row.request_json.is_none() {
+            continue;
+        }
+        state.db.mark_queued(&row.id).map_err(err)?;
+        queue.enqueue(row.id.clone()).map_err(err)?;
+        if let Ok(Some(g)) = state.db.get(&row.id) {
+            out.push(g);
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn discard_all_interrupted(state: State<'_, AppArc>) -> Result<usize, String> {
+    let rows = state.db.list_by_statuses(&[STATUS_INTERRUPTED]).map_err(err)?;
+    let n = rows.len();
+    for row in rows {
+        if !row.file_path.is_empty() {
+            let _ = std::fs::remove_file(&row.file_path);
+        }
+        let _ = state.db.delete(&row.id);
+    }
+    Ok(n)
 }
 
 #[tauri::command]

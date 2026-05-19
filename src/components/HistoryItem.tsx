@@ -13,6 +13,7 @@ import {
 } from "../lib/historyPlaybackPrefs";
 import Icon from "./Icon";
 import HistoryItemPlayOverlay from "./HistoryItemPlayOverlay";
+import HistoryTextPreview from "./HistoryTextPreview";
 import SaveSplitButton from "./SaveSplitButton";
 
 interface Props {
@@ -29,16 +30,20 @@ const INTERACTIVE_SELECTOR =
   "button, input, select, textarea, a, .history-action-group, .history-format-picker, .history-play-overlay, [role='button'], [role='menuitem'], [contenteditable='true']";
 
 export default function HistoryItem({ gen, isCurrent, onPlay, onChanged, onError }: Props) {
-  const { playing, level, togglePlay, restart } = usePlayback();
+  const { playing, togglePlay, restart } = usePlayback();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [clickToPlay, setClickToPlay] = useState(loadHistoryClickToPlay);
+  const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const relative = useRelativeTime(gen.created_at);
 
   const isPlaying = isCurrent && playing;
-  const showPlayOverlay = isCurrent && clickToPlay;
+  const showPlayingBadge = isPlaying && !hovered;
+  const showEngagedUi = isCurrent && hovered && clickToPlay;
+  const showPlayOverlay = showEngagedUi;
+  const scrollPreview = isPlaying && hovered;
 
   useEffect(() => {
     const sync = () => setClickToPlay(loadHistoryClickToPlay());
@@ -130,13 +135,18 @@ export default function HistoryItem({ gen, isCurrent, onPlay, onChanged, onError
     <div
       className={[
         "relative min-w-0 overflow-hidden p-2.5 pb-8 border rounded-md text-xs flex flex-col gap-1.5 transition-shadow duration-200",
-        isCurrent ? "history-item--current border-accent bg-panel2" : "border-border bg-panel/60",
-        isPlaying ? "history-item--playing" : "",
+        showEngagedUi
+          ? isPlaying
+            ? "history-item--playing border-accent bg-panel2"
+            : "history-item--current border-accent bg-panel2"
+          : "border-border bg-panel/60",
         clickToPlay && !saving && !isCurrent ? "cursor-pointer" : "",
       ].join(" ")}
       onClick={handleCardClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      {isPlaying && (
+      {showPlayingBadge && (
         <span className="history-item-now-playing" aria-live="polite">
           Odtwarzanie
         </span>
@@ -160,7 +170,7 @@ export default function HistoryItem({ gen, isCurrent, onPlay, onChanged, onError
         className={[
           "history-item-body",
           showPlayOverlay ? "history-item-body--active" : "",
-          isPlaying ? "history-item-body--playing" : "",
+          showPlayOverlay && isPlaying ? "history-item-body--playing" : "",
         ].join(" ")}
       >
         <div className="history-item-body__content flex flex-col gap-1.5">
@@ -204,7 +214,7 @@ export default function HistoryItem({ gen, isCurrent, onPlay, onChanged, onError
             )}
           </div>
 
-          <p className="text-[12px] leading-snug text-muted line-clamp-2">{gen.text}</p>
+          <HistoryTextPreview text={gen.text} scroll={scrollPreview} />
 
           <div className="flex flex-wrap gap-1">
             <span className="tag" title={gen.model}>
@@ -226,12 +236,7 @@ export default function HistoryItem({ gen, isCurrent, onPlay, onChanged, onError
         </div>
 
         {showPlayOverlay && (
-          <HistoryItemPlayOverlay
-            playing={playing}
-            level={level}
-            onTogglePlay={togglePlay}
-            onRestart={restart}
-          />
+          <HistoryItemPlayOverlay playing={playing} onTogglePlay={togglePlay} onRestart={restart} />
         )}
       </div>
 

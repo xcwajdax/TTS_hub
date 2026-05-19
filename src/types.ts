@@ -23,6 +23,14 @@ export interface GenerateRequest {
 
 export type GenerationSource = "manual" | "http" | "cursor";
 
+export type JobStatus =
+  | "queued"
+  | "running"
+  | "done"
+  | "failed"
+  | "interrupted"
+  | "cancelled";
+
 export interface Generation {
   id: string;
   created_at: number;
@@ -39,6 +47,12 @@ export interface Generation {
   source: GenerationSource;
   conversation_id: string | null;
   summary_text: string | null;
+  status: JobStatus;
+  error: string | null;
+  attempts: number;
+  updated_at: number;
 }
 
 export type HistoryScope = "session" | "archive";
+
+export type JobScope = "active" | "interrupted" | "failed" | "all";

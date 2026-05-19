@@ -2,16 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import MainPanel from "./components/MainPanel";
 import PlaybackBar from "./components/PlaybackBar";
 import HistorySidebar from "./components/HistorySidebar";
+import RecoveryModal from "./components/RecoveryModal";
 import { PlaybackProvider, usePlayback } from "./context/PlaybackContext";
+import { JobsProvider, useJobs } from "./context/JobsContext";
 import type { Generation } from "./types";
-import { listHistory } from "./api/tauri";
+import { listHistory, listJobs } from "./api/tauri";
 import { syncSaveFormatFromSettings } from "./audioFormats";
 import { useCursorIntegration } from "./hooks/useCursorIntegration";
 
 function AppInner() {
   const { current, playing, playNonce, select, audioRef } = usePlayback();
+  const { onDone } = useJobs();
   const [session, setSession] = useState<Generation[]>([]);
   const [archive, setArchive] = useState<Generation[]>([]);
+  const [interrupted, setInterrupted] = useState<Generation[]>([]);
+  const [showRecovery, setShowRecovery] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const { cfg, lastCursor } = useCursorIntegration();
@@ -28,10 +33,33 @@ function AppInner() {
     }
   }, []);
 
+  const refreshInterrupted = useCallback(async () => {
+    try {
+      const list = await listJobs("interrupted");
+      setInterrupted(list);
+      return list;
+    } catch (e) {
+      setError(String(e));
+      return [];
+    }
+  }, []);
+
   useEffect(() => {
     refresh();
     void syncSaveFormatFromSettings();
-  }, [refresh]);
+    void refreshInterrupted().then((list) => {
+      if (list.length > 0) setShowRecovery(true);
+    });
+  }, [refresh, refreshInterrupted]);
+
+  // When any job finishes, refresh history and auto-select the new row
+  // (preserves the previous synchronous UX: "generate then immediately play").
+  useEffect(() => {
+    return onDone((g) => {
+      void refresh();
+      select(g);
+    });
+  }, [onDone, refresh, select]);
 
   useEffect(() => {
     if (!lastCursor) return;
@@ -89,6 +117,11 @@ function AppInner() {
     refresh();
   };
 
+  const handleRecoveryClose = useCallback(() => {
+    setShowRecovery(false);
+    void refreshInterrupted();
+  }, [refreshInterrupted]);
+
   return (
     <div className="h-full w-full grid" style={{ gridTemplateColumns: "3fr 1fr" }}>
       <div className="grid border-r border-border" style={{ gridTemplateRows: "9fr 1fr" }}>
@@ -104,12 +137,25 @@ function AppInner() {
         <HistorySidebar
           session={session}
           archive={archive}
+          interrupted={interrupted}
           currentId={current?.id ?? null}
           onPlay={select}
-          onChanged={refresh}
+          onChanged={() => {
+            void refresh();
+            void refreshInterrupted();
+          }}
           onError={setError}
         />
       </div>
+      <RecoveryModal
+        open={showRecovery}
+        items={interrupted}
+        onClose={handleRecoveryClose}
+        onChanged={() => {
+          void refreshInterrupted();
+        }}
+        onError={setError}
+      />
       {error && (
         <div
           className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
@@ -135,7 +181,9 @@ function AppInner() {
 export default function App() {
   return (
     <PlaybackProvider>
-      <AppInner />
+      <JobsProvider>
+        <AppInner />
+      </JobsProvider>
     </PlaybackProvider>
   );
 }

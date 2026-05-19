@@ -79,10 +79,19 @@ pub struct AppSettings {
     pub active_api_id: Option<String>,
     #[serde(default)]
     pub cursor_integration: CursorIntegration,
+    #[serde(default = "default_max_concurrent_jobs")]
+    pub max_concurrent_jobs: u32,
 }
 
 fn default_save_format() -> String {
     "wav".to_string()
+}
+
+pub const MIN_CONCURRENT_JOBS: u32 = 1;
+pub const MAX_CONCURRENT_JOBS_CAP: u32 = 8;
+
+fn default_max_concurrent_jobs() -> u32 {
+    3
 }
 
 impl Default for AppSettings {
@@ -95,6 +104,7 @@ impl Default for AppSettings {
             api_profiles: Vec::new(),
             active_api_id: None,
             cursor_integration: CursorIntegration::default(),
+            max_concurrent_jobs: default_max_concurrent_jobs(),
         }
     }
 }
@@ -153,6 +163,11 @@ impl AppSettings {
             if !self.api_profiles.iter().any(|p| p.id == *id) {
                 self.active_api_id = None;
             }
+        }
+        if self.max_concurrent_jobs < MIN_CONCURRENT_JOBS {
+            self.max_concurrent_jobs = MIN_CONCURRENT_JOBS;
+        } else if self.max_concurrent_jobs > MAX_CONCURRENT_JOBS_CAP {
+            self.max_concurrent_jobs = MAX_CONCURRENT_JOBS_CAP;
         }
     }
 }
