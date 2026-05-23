@@ -27,7 +27,6 @@
 
 <p align="center">
   <img src="docs/screenshots/main-generating.png" alt="TTS Hub — generacja w toku i aktywne zadania" width="450" />
-  &nbsp;
   <img src="docs/screenshots/settings-cursor.png" alt="TTS Hub — integracja Cursor z głosem sklonowanym" width="450" />
 </p>
 
