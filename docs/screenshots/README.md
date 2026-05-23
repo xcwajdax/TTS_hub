@@ -1,35 +1,27 @@
 # Zrzuty ekranu
 
-| Plik | Skórka | Opis |
-|------|--------|------|
-| `skin-vibelife.png` | **VIBELIFE** (domyślna) | Ciemny motyw fioletowo-cyan |
-| `skin-matrix.png` | **Matrix** | Zielony terminal |
-| `skin-light-zen.png` | **Light / Zen** | Jasny, spokojny |
-| `main-window.png` | — | Kopia `skin-vibelife` (kompatybilność wsteczna linków) |
+Zrzuty z **okna Tauri** (`npm run tauri dev`), ~1400×900.
 
-## Regeneracja (podgląd Vite)
+| Plik | Opis |
+|------|------|
+| `main-window.png` | Główny widok — Light / Zen, Minimax, historia, waveform |
+| `main-generating.png` | Generacja w toku + aktywne zadania |
+| `settings-general.png` | Ustawienia zaawansowane → Ogólne (ścieżki, profile API) |
+| `settings-usage.png` | Ustawienia → Zużycie (tokeny, koszty) |
+| `settings-cursor.png` | Ustawienia → Cursor (skill, hooki, głos klon) |
+| `quick-hotkey-demo.gif` | Szybki skrót z Notatnika (demo) |
 
-```powershell
-# Terminal 1
-npm run dev
+## Starsze / pomocnicze
 
-# Terminal 2 (Playwright — 1400×900, bez banera podglądu)
-npm install --no-save playwright
-npx playwright install chromium
-node docs/screenshots/capture-skins.mjs
-```
+| Plik | Opis |
+|------|------|
+| `skin-vibelife.png`, `skin-matrix.png`, `skin-light-zen.png` | Podgląd Vite (wąski viewport) — do zastąpienia zrzutami Tauri per skórka |
+| [capture-skins.mjs](capture-skins.mjs) | Regeneracja podglądu przeglądarki (Playwright) |
 
-Skrypt: [capture-skins.mjs](capture-skins.mjs) — ustawia `localStorage` (`tts-hub-active-skin`) i robi PNG.
+## Jak zaktualizować (zalecane)
 
-## Zrzuty z okna Tauri (zalecane do README)
+1. `npm run tauri dev` — pełne okno, pasek skórek.
+2. Win+Shift+S — zapisz jako pliki powyżej w tym folderze.
+3. Dla trzech skórek: ten sam układ, przełącz **VIBELIFE** / **Matrix** / **Light** w pasku tytułu.
 
-1. `npm run tauri dev` — okno **1400×900**, pasek tytułu ze **skórkami** (VIBELIFE / Matrix / Light).
-2. Win+Shift+S lub Snipping Tool — trzy zrzuty, zapisz jako pliki powyżej.
-
-W podglądzie przeglądarki (`localhost:1420`) **nie ma** paska skórek (tylko w Tauri); skórę można wymusić przez `localStorage` + odświeżenie, jak w skrypcie.
-
-**Sugerowane dodatkowe zrzuty (ręcznie):**
-
-- Modal „Ustawienia zaawansowane”
-- Archiwum z kilkoma wpisami + waveform
-- Integracja Cursor / szybkie skróty
+Źródła robocze mogą leżeć w `GITHUBSCREENS/` (lokalnie, opcjonalnie niecommitowane).

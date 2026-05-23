@@ -20,16 +20,16 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/skin-vibelife.png" alt="TTS Hub — skórka VIBELIFE" width="920" />
+  <img src="docs/screenshots/main-window.png" alt="TTS Hub — główny widok: edytor, historia, waveform (skórka Light / Zen)" width="920" />
 </p>
+
+<p align="center"><em>Okno desktopowe (Tauri): providery, edytor blokowy, historia sesji i odtwarzacz z waveformem. Skórki: <strong>VIBELIFE</strong>, <strong>Matrix</strong>, <strong>Light / Zen</strong> — przełącznik w pasku tytułu.</em></p>
 
 <p align="center">
-  <img src="docs/screenshots/skin-matrix.png" alt="TTS Hub — skórka Matrix" width="450" />
+  <img src="docs/screenshots/main-generating.png" alt="TTS Hub — generacja w toku i aktywne zadania" width="450" />
   &nbsp;
-  <img src="docs/screenshots/skin-light-zen.png" alt="TTS Hub — skórka Light / Zen" width="450" />
+  <img src="docs/screenshots/settings-cursor.png" alt="TTS Hub — integracja Cursor z głosem sklonowanym" width="450" />
 </p>
-
-<p align="center"><em>Trzy wbudowane skórki: <strong>VIBELIFE</strong> (domyślna), <strong>Matrix</strong>, <strong>Light / Zen</strong> — przełącznik w pasku tytułu okna desktopowego.</em></p>
 
 ---
 
@@ -116,6 +116,12 @@ Otwiera okno aplikacji i startuje API na **`http://127.0.0.1:8765`**.
 Przy pierwszym uruchomieniu pojawi się baner **Szybka konfiguracja** (providery + testy API). Szczegóły: [docs/QUICK_SETUP.md](docs/QUICK_SETUP.md).
 
 ### Szybkie skróty TTS (Windows)
+
+<p align="center">
+  <img src="docs/screenshots/quick-hotkey-demo.gif" alt="Szybki skrót: zaznaczony tekst w Notatniku → TTS w TTS Hub" width="720" />
+</p>
+
+<p align="center"><em>Zaznaczony tekst w dowolnym oknie (np. Notatnik) → globalny skrót → generacja w tle.</em></p>
 
 1. **Edycja → Szybkie skróty…** (lub zakładka **Skróty** w ustawieniach ⚙).
 2. Włącz master switch i skonfiguruj presety — **nagraj skrót** (np. `F9` lub `Ctrl+Alt+1`), provider, głos, styl, filtr.

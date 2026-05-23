@@ -10,3 +10,5 @@ studios.env
 .env
 .cursor/skills/tts-hub-speak/config.json
 *.mp4
+GITHUBSCREENS/
+scripts/dev/*.lnk
