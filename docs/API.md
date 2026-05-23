@@ -17,9 +17,19 @@ Serwer startuje automatycznie z aplikacją desktopową.
 | `GET` | `/voice-samples?model={id}` | Status próbek głosów dla modelu. |
 | `GET` | `/voice-samples/{model}/{voice}` | Pobranie pliku WAV próbki (jeśli wygenerowana w aplikacji). |
 | `POST` | `/generate` | Generacja mowy (JSON). |
-| `GET` | `/history?scope=session\|archive` | Lista generacji. |
+| `POST` | `/text/filter` | Podgląd filtrów tekstu (preset + tekst wejściowy). |
+| `GET` | `/cursor/config` | Konfiguracja integracji Cursor (w tym `text_filters`). |
+| `GET` | `/history?scope=session\|archive&folder_id=…` | Lista generacji. `folder_id`: `__none__` (bez folderu), `__all__` lub ID folderu (tylko archiwum). |
 | `POST` | `/history/{id}/archive` | Przeniesienie do archiwum (opcjonalny format w body). |
+| `POST` | `/history/{id}/folder` | Przeniesienie do folderu (`{ "folder_id": "…" \| null }`). |
 | `DELETE` | `/history/{id}` | Usunięcie generacji (plik + wpis w SQLite). |
+| `GET` | `/folders` | Lista folderów archiwum. |
+| `POST` | `/folders` | Utworzenie folderu (`{ "name", "color"? }`). |
+| `PATCH` | `/folders/{id}` | Zmiana nazwy folderu. |
+| `DELETE` | `/folders/{id}` | Usunięcie folderu (`{ "mode": "unassign" \| "delete_items" }`). |
+| `GET` | `/folder-rules` | Lista reguł auto-segregacji (źródło → folder). |
+| `POST` | `/folder-rules` | Dodanie/aktualizacja reguły. |
+| `DELETE` | `/folder-rules/{id}` | Usunięcie reguły. |
 | `GET` | `/audio/{id}` | Strumień audio (WAV/MP3/OGG wg zapisu). |
 
 ## `GET /health`
@@ -53,6 +63,18 @@ Serwer startuje automatycznie z aplikacją desktopową.
 | `style` | string \| null | nie | Prompt sterujący stylem wypowiedzi. |
 | `format` | `"wav"` \| `"mp3"` \| `"ogg"` | tak | MP3/OGG wymagają `ffmpeg` w PATH. |
 | `multi_speaker` | array \| null | nie | Dialog wielogłosowy (patrz niżej). |
+| `filtered_text` | string \| null | nie | Tekst po filtrach — używany do syntezy zamiast `text`, gdy ustawiony. |
+| `filter_config` | object \| null | nie | Snapshot presetu filtrów (do wznowienia joba / ponownego zastosowania). |
+| `summary_text` | string \| null | nie | Skrót (np. z hooka Cursor); ma pierwszeństwo nad `filtered_text`. |
+| `source` | string \| null | nie | Źródło: `manual`, `http`, `cursor`, `cursor-skill`, `quick_hotkey`. |
+| `autoplay` | bool | nie | Po zakończeniu joba emituje zdarzenie `generation:ready` w aplikacji (domyślnie false w API). |
+| `provider` | string \| null | nie | `google` (domyślnie), `voicebox`, `minimax`. |
+| `profile_id` | string \| null | nie | Voice Box — id profilu (alternatywa: `voice`). |
+| `language` | string \| null | nie | Voice Box — np. `pl`. Minimax — kod hub (`pl`, `en`) mapowany na API `language_boost` (`Polish`, `English`). Domyślnie `pl`. |
+| `engine` | string \| null | nie | Voice Box — silnik z prefiksu modelu. |
+| `minimax_speed` | number \| null | nie | MiniMax — 0.5–2.0 (domyślnie 1.0). |
+| `minimax_vol` | number \| null | nie | MiniMax — 0–10 (domyślnie 1.0). |
+| `minimax_pitch` | number \| null | nie | MiniMax — -12–12 (domyślnie 0). |
 
 ### Multi-speaker
 
@@ -96,6 +118,55 @@ curl "http://127.0.0.1:8765/history?scope=archive"
 
 curl http://127.0.0.1:8765/audio/<id> --output speech.wav
 ```
+
+### MiniMax (skill / Cursor)
+
+```powershell
+curl -X POST http://127.0.0.1:8765/generate `
+  -H "Content-Type: application/json" `
+  -d '{"provider":"minimax","text":"Test.","summary_text":"Test.","model":"speech-2.8-hd","voice":"Polish_female_1_sample1","language":"pl","format":"mp3","autoplay":true,"source":"cursor-skill"}'
+```
+
+### Voice Box
+
+```powershell
+curl http://127.0.0.1:8765/voicebox/profiles
+curl -X POST http://127.0.0.1:8765/generate `
+  -H "Content-Type: application/json" `
+  -d '{"provider":"voicebox","text":"Test.","model":"voicebox:chatterbox","voice":"<profile-id>","language":"pl","format":"wav","source":"cursor-skill"}'
+```
+
+### `GET /cursor/config`
+
+Zwraca ustawienia integracji Cursor (pola spłaszczone) oraz `text_filters`. Używane przez hook i skill `tts-hub-speak` (`prefer_app_config`). Pola m.in.: `enabled`, `provider`, `model`, `voice`, `format`, `minimax_speed`, `dnd_until_ts`.
+
+## `POST /text/filter`
+
+Podgląd wyniku filtrów bez kolejkowania generacji.
+
+**Body:**
+
+```json
+{
+  "text": "Tekst z ```kodem```",
+  "preset": {
+    "id": "...",
+    "name": "Domyślny",
+    "builtins": {
+      "strip_fenced_code": true,
+      "strip_inline_code": true,
+      "strip_blockquotes": false
+    },
+    "custom": []
+  }
+}
+```
+
+**Odpowiedź 200:** `{ "output": "...", "removed_chars": 12, "warnings": [] }`
+
+## `GET /cursor/config`
+
+Zwraca pola integracji Cursor (`enabled`, `model`, `voice`, …) oraz `text_filters` (presety filtrów tekstu).
 
 ## Integracje
 

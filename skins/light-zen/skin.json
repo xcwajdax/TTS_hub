@@ -1,0 +1,23 @@
+{
+  "id": "light-zen",
+  "name": "Light / Zen (custom)",
+  "version": "1.0.0",
+  "author": "TTS Hub",
+  "extends": "vibelife",
+  "tokens": {
+    "color-bg": "251 249 246",
+    "color-panel": "255 255 255",
+    "color-panel2": "245 243 240",
+    "color-border": "230 225 218",
+    "color-accent": "124 108 220",
+    "color-accent2": "167 139 250",
+    "color-muted": "120 113 108",
+    "color-text": "41 37 36",
+    "color-text-heading": "28 25 23",
+    "color-text-muted": "87 83 78"
+  },
+  "css": "skin.css",
+  "registry": {
+    "homepage": "https://github.com/"
+  }
+}

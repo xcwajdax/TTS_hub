@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::app_settings::AppSettings;
+use crate::db::Folder;
 
 pub struct AppPaths {
     pub root: PathBuf,
@@ -9,6 +10,9 @@ pub struct AppPaths {
     pub temp: PathBuf,
     pub archive: PathBuf,
     pub voice_samples: PathBuf,
+    pub avatars: PathBuf,
+    pub skins: PathBuf,
+    pub skin_registry_cache: PathBuf,
     pub db: PathBuf,
 }
 
@@ -20,12 +24,18 @@ impl AppPaths {
         let temp = root.join("temp");
         let archive = root.join("archive");
         let voice_samples = root.join("voice_samples");
+        let avatars = root.join("avatars");
+        let skins = root.join("skins");
+        let skin_registry_cache = root.join("skin_registry_cache");
         let db = root.join("history.db");
 
         std::fs::create_dir_all(&root)?;
         std::fs::create_dir_all(&temp)?;
         std::fs::create_dir_all(&archive)?;
         std::fs::create_dir_all(&voice_samples)?;
+        std::fs::create_dir_all(&avatars)?;
+        std::fs::create_dir_all(&skins)?;
+        std::fs::create_dir_all(&skin_registry_cache)?;
 
         Ok(Self {
             root,
@@ -33,6 +43,9 @@ impl AppPaths {
             temp,
             archive,
             voice_samples,
+            avatars,
+            skins,
+            skin_registry_cache,
             db,
         })
     }
@@ -51,6 +64,67 @@ impl AppPaths {
         let _ = std::fs::create_dir_all(&self.temp);
         let _ = std::fs::create_dir_all(&self.archive);
     }
+
+    /// Physical directory for an archive folder (`archive_path/<slug>/`).
+    pub fn folder_dir(&self, folder: &Folder) -> PathBuf {
+        self.archive.join(&folder.slug)
+    }
+}
+
+/// Sanitize a display name into a filesystem-safe slug (lowercase ASCII, dashes).
+pub fn slugify_name(name: &str) -> String {
+    let mut slug = String::new();
+    let mut prev_dash = true;
+    for c in name.trim().to_lowercase().chars() {
+        let ch = if c.is_ascii_alphanumeric() {
+            c
+        } else if c == ' ' || c == '-' || c == '_' {
+            '-'
+        } else {
+            continue;
+        };
+        if ch == '-' {
+            if !prev_dash {
+                slug.push('-');
+                prev_dash = true;
+            }
+        } else {
+            slug.push(ch);
+            prev_dash = false;
+        }
+    }
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        "folder".to_string()
+    } else {
+        slug
+    }
+}
+
+/// Ensure `slug` is unique among existing slugs by appending `-2`, `-3`, …
+pub fn unique_slug(base: &str, existing: &[String]) -> String {
+    if !existing.iter().any(|s| s == base) {
+        return base.to_string();
+    }
+    for n in 2..=9999 {
+        let candidate = format!("{base}-{n}");
+        if !existing.iter().any(|s| s == &candidate) {
+            return candidate;
+        }
+    }
+    format!("{base}-{}", &uuid::Uuid::new_v4().to_string()[..8])
+}
+
+/// Rename a directory on disk; returns error if target exists.
+pub fn rename_dir(from: &Path, to: &Path) -> Result<()> {
+    if to.exists() {
+        anyhow::bail!("target directory already exists");
+    }
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(from, to).context("rename folder directory")?;
+    Ok(())
 }
 
 fn dirs_app_data() -> Option<PathBuf> {

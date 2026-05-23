@@ -78,13 +78,19 @@ pub async fn generate_sample(state: &AppState, model: &str, voice: &str) -> Resu
         multi_speaker: None,
     };
 
-    let result = state.tts.synthesize(&tts_req).await.map_err(|e| e.to_string())?;
+    let result = state
+        .tts
+        .synthesize(&tts_req)
+        .await
+        .map_err(|e| e.to_string())?;
     let paths = state.paths.read().map_err(|e| e.to_string())?;
     let path = sample_path(&paths, model, voice);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let dir = path.parent().ok_or_else(|| "invalid sample path".to_string())?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| "invalid sample path".to_string())?;
     write_audio(&result, dir, voice, AudioFormat::Wav).map_err(|e| e.to_string())?;
     Ok(())
 }

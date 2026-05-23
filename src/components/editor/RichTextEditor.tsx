@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import type { ReactNode } from "react";
 import { EditorContent, useEditor, Extension } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
@@ -69,6 +70,7 @@ export interface RichTextEditorProps {
   placeholder?: string;
   focusBlockId?: string | null;
   onBlockFocused?: () => void;
+  floatingAction?: ReactNode;
 }
 
 export default function RichTextEditor({
@@ -81,6 +83,7 @@ export default function RichTextEditor({
   placeholder,
   focusBlockId,
   onBlockFocused,
+  floatingAction,
 }: RichTextEditorProps) {
   const prevBlocksRef = useRef<Block[]>(value.blocks);
   prevBlocksRef.current = value.blocks;
@@ -103,7 +106,7 @@ export default function RichTextEditor({
     editorProps: {
       attributes: {
         class:
-          "tiptap-editor prose prose-invert prose-sm max-w-none focus:outline-none min-h-[200px] p-3",
+          "tiptap-editor prose prose-invert prose-sm max-w-none focus:outline-none min-h-0 p-3",
       },
       handleKeyDown(_view, event) {
         if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -172,13 +175,14 @@ export default function RichTextEditor({
   }, [editor, focusBlockId, onBlockFocused]);
 
   return (
-    <div className="flex-1 w-full min-h-[200px] bg-panel2 border border-border rounded-lg overflow-auto relative">
+    <div className="flex-1 w-full min-h-0 min-w-0 bg-panel2 border border-border rounded-lg overflow-auto relative">
       {editor && editor.isEmpty && placeholder && (
         <div className="pointer-events-none absolute top-3 left-3 text-sm text-muted whitespace-pre-line">
           {placeholder}
         </div>
       )}
       <EditorContent editor={editor} className="h-full" />
+      {floatingAction && <div className="absolute right-3 bottom-3 z-10">{floatingAction}</div>}
     </div>
   );
 }

@@ -1,0 +1,23 @@
+/* Matrix skin — subtle glow, no rain/scanlines */
+
+html[data-skin="matrix"] .btn-primary {
+  text-shadow: 0 0 8px rgb(0 255 65 / 0.35);
+}
+
+html[data-skin="matrix"] .history-item--current,
+html[data-skin="matrix"] .history-item--playing {
+  text-shadow: 0 0 6px rgb(0 255 65 / 0.2);
+}
+
+html[data-skin="matrix"] .field:focus,
+html[data-skin="matrix"] textarea:focus {
+  box-shadow: var(--glow-accent);
+}
+
+html[data-skin="matrix"] .tts-playback-viz {
+  background-color: rgb(var(--color-panel));
+  border-color: rgb(var(--color-border));
+  --color-accent: 0 255 65;
+  --color-accent2: 0 204 51;
+  --color-muted: 61 107 61;
+}

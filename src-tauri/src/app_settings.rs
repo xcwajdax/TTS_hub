@@ -3,6 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use uuid::Uuid;
 
+use crate::minimax::{
+    self, MinimaxClonedVoice, MinimaxPresetVoice, DEFAULT_MINIMAX_LANGUAGE, DEFAULT_MINIMAX_VOICE_ID,
+};
+use crate::editor_quick_gen::EditorQuickGenSettings;
+use crate::quick_hotkeys::QuickHotkeysSettings;
+use crate::text_filters::TextFiltersSettings;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SaveMode {
@@ -31,12 +38,28 @@ pub struct CursorIntegration {
     pub autoplay: bool,
     #[serde(default = "default_max_sentences")]
     pub max_sentences: u32,
+    #[serde(default = "default_cursor_provider")]
+    pub provider: String,
     #[serde(default = "default_cursor_model")]
     pub model: String,
     #[serde(default = "default_cursor_voice")]
     pub voice: String,
     #[serde(default)]
     pub style: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub engine: Option<String>,
+    #[serde(default)]
+    pub minimax_speed: Option<f32>,
+    #[serde(default)]
+    pub minimax_vol: Option<f32>,
+    #[serde(default)]
+    pub minimax_pitch: Option<i32>,
     #[serde(default = "default_true")]
     pub use_summary_markers: bool,
     #[serde(default)]
@@ -45,10 +68,103 @@ pub struct CursorIntegration {
     pub last_install_ts: Option<i64>,
 }
 
-fn default_true() -> bool { true }
-fn default_max_sentences() -> u32 { 10 }
-fn default_cursor_model() -> String { "gemini-2.5-flash-preview-tts".to_string() }
-fn default_cursor_voice() -> String { "Kore".to_string() }
+fn default_true() -> bool {
+    true
+}
+fn default_max_sentences() -> u32 {
+    10
+}
+fn default_cursor_provider() -> String {
+    PROVIDER_MINIMAX.to_string()
+}
+fn default_cursor_model() -> String {
+    "speech-2.8-hd".to_string()
+}
+fn default_cursor_voice() -> String {
+    DEFAULT_MINIMAX_VOICE_ID.to_string()
+}
+
+impl CursorIntegration {
+    pub fn normalize(&mut self) {
+        self.provider = self.provider.trim().to_lowercase();
+        if !ALL_PROVIDERS.contains(&self.provider.as_str()) {
+            self.provider = default_cursor_provider();
+        }
+        self.model = self.model.trim().to_string();
+        self.voice = self.voice.trim().to_string();
+        if self.model.is_empty() {
+            self.model = match self.provider.as_str() {
+                PROVIDER_MINIMAX => "speech-2.8-hd".to_string(),
+                PROVIDER_VOICEBOX => "voicebox:chatterbox".to_string(),
+                _ => "gemini-2.5-flash-preview-tts".to_string(),
+            };
+        }
+        if self.voice.is_empty() {
+            self.voice = match self.provider.as_str() {
+                PROVIDER_MINIMAX => minimax::MinimaxClient::default_voice_for_language(
+                    self.language
+                        .as_deref()
+                        .unwrap_or(DEFAULT_MINIMAX_LANGUAGE),
+                )
+                .to_string(),
+                PROVIDER_VOICEBOX => String::new(),
+                _ => "Kore".to_string(),
+            };
+        }
+        if let Some(fmt) = self.format.as_mut() {
+            *fmt = fmt.trim().to_lowercase();
+            if !matches!(fmt.as_str(), "wav" | "mp3" | "ogg") {
+                *fmt = String::new();
+            }
+            if fmt.is_empty() {
+                self.format = None;
+            }
+        }
+        if self.format.is_none() {
+            self.format = Some(match self.provider.as_str() {
+                PROVIDER_MINIMAX => "mp3".to_string(),
+                _ => "wav".to_string(),
+            });
+        }
+        if let Some(speed) = self.minimax_speed {
+            self.minimax_speed = Some(speed.clamp(0.5, 2.0));
+        }
+        if let Some(vol) = self.minimax_vol {
+            self.minimax_vol = Some(vol.clamp(0.0, 10.0));
+        }
+        if let Some(pitch) = self.minimax_pitch {
+            self.minimax_pitch = Some(pitch.clamp(-12, 12));
+        }
+        if self.provider != PROVIDER_MINIMAX {
+            self.minimax_speed = None;
+            self.minimax_vol = None;
+            self.minimax_pitch = None;
+        } else if self.minimax_speed.is_none() {
+            self.minimax_speed = Some(1.0);
+            self.minimax_vol = Some(1.0);
+            self.minimax_pitch = Some(0);
+        }
+        if self.provider == PROVIDER_VOICEBOX {
+            if self.language.is_none() {
+                self.language = Some(DEFAULT_MINIMAX_LANGUAGE.to_string());
+            }
+            self.engine = self.engine.take().filter(|e| !e.trim().is_empty());
+        } else if self.provider == PROVIDER_MINIMAX {
+            self.profile_id = None;
+            self.engine = None;
+            let lang = self
+                .language
+                .take()
+                .map(|l| l.trim().to_ascii_lowercase())
+                .filter(|l| minimax::is_known_language_code(l));
+            self.language = Some(lang.unwrap_or_else(|| DEFAULT_MINIMAX_LANGUAGE.to_string()));
+        } else {
+            self.profile_id = None;
+            self.language = None;
+            self.engine = None;
+        }
+    }
+}
 
 impl Default for CursorIntegration {
     fn default() -> Self {
@@ -56,9 +172,17 @@ impl Default for CursorIntegration {
             enabled: false,
             autoplay: true,
             max_sentences: 10,
+            provider: default_cursor_provider(),
             model: default_cursor_model(),
             voice: default_cursor_voice(),
-            style: Some("Powiedz spokojnie po polsku:".to_string()),
+            style: None,
+            format: Some("mp3".to_string()),
+            profile_id: None,
+            language: Some(DEFAULT_MINIMAX_LANGUAGE.to_string()),
+            engine: None,
+            minimax_speed: Some(1.0),
+            minimax_vol: Some(1.0),
+            minimax_pitch: Some(0),
             use_summary_markers: true,
             dnd_until_ts: None,
             last_install_ts: None,
@@ -81,6 +205,51 @@ pub struct AppSettings {
     pub cursor_integration: CursorIntegration,
     #[serde(default = "default_max_concurrent_jobs")]
     pub max_concurrent_jobs: u32,
+    #[serde(default = "default_active_skin_id")]
+    pub active_skin_id: String,
+    #[serde(default)]
+    pub skin_registry_urls: Vec<String>,
+    #[serde(default)]
+    pub text_filters: TextFiltersSettings,
+    #[serde(default)]
+    pub minimax_cloned_voices: Vec<MinimaxClonedVoice>,
+    /// System voices from last `get_voice` API sync; empty = built-in catalog.
+    #[serde(default)]
+    pub minimax_synced_voices: Vec<MinimaxPresetVoice>,
+    #[serde(default)]
+    pub minimax_voices_synced_at: Option<i64>,
+    #[serde(default)]
+    pub quick_hotkeys: QuickHotkeysSettings,
+    #[serde(default)]
+    pub editor_quick_gen: EditorQuickGenSettings,
+    #[serde(default)]
+    pub quick_setup_completed: bool,
+    #[serde(default)]
+    pub enabled_providers: Vec<String>,
+    #[serde(default = "default_minimax_enabled_languages")]
+    pub minimax_enabled_languages: Vec<String>,
+    pub voicebox_base_url: Option<String>,
+    pub minimax_api_key: Option<String>,
+    /// Max non-archived temp history rows from prior app sessions (current session always kept).
+    #[serde(default = "default_temp_history_max")]
+    pub temp_history_max: u32,
+    /// Main playback bar waveform: bars | bars-detailed | line
+    #[serde(default = "default_timeline_view")]
+    pub timeline_view: String,
+}
+
+fn default_minimax_enabled_languages() -> Vec<String> {
+    vec![DEFAULT_MINIMAX_LANGUAGE.to_string()]
+}
+
+pub const PROVIDER_GOOGLE: &str = "google";
+pub const PROVIDER_VOICEBOX: &str = "voicebox";
+pub const PROVIDER_MINIMAX: &str = "minimax";
+
+const ALL_PROVIDERS: &[&str] = &[PROVIDER_GOOGLE, PROVIDER_VOICEBOX, PROVIDER_MINIMAX];
+
+fn default_active_skin_id() -> String {
+    "vibelife".to_string()
 }
 
 fn default_save_format() -> String {
@@ -94,6 +263,19 @@ fn default_max_concurrent_jobs() -> u32 {
     3
 }
 
+pub const MIN_TEMP_HISTORY_MAX: u32 = 10;
+pub const MAX_TEMP_HISTORY_MAX: u32 = 500;
+
+fn default_temp_history_max() -> u32 {
+    100
+}
+
+fn default_timeline_view() -> String {
+    "bars".to_string()
+}
+
+const TIMELINE_VIEWS: &[&str] = &["bars", "bars-detailed", "line"];
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -105,6 +287,21 @@ impl Default for AppSettings {
             active_api_id: None,
             cursor_integration: CursorIntegration::default(),
             max_concurrent_jobs: default_max_concurrent_jobs(),
+            active_skin_id: default_active_skin_id(),
+            skin_registry_urls: Vec::new(),
+            text_filters: TextFiltersSettings::default(),
+            minimax_cloned_voices: Vec::new(),
+            minimax_synced_voices: Vec::new(),
+            minimax_voices_synced_at: None,
+            quick_hotkeys: QuickHotkeysSettings::default(),
+            editor_quick_gen: EditorQuickGenSettings::default(),
+            quick_setup_completed: false,
+            enabled_providers: Vec::new(),
+            minimax_enabled_languages: default_minimax_enabled_languages(),
+            voicebox_base_url: None,
+            minimax_api_key: None,
+            temp_history_max: default_temp_history_max(),
+            timeline_view: default_timeline_view(),
         }
     }
 }
@@ -114,7 +311,8 @@ impl AppSettings {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let raw = std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+        let raw =
+            std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
         let mut settings: Self = serde_json::from_str(&raw).context("parse settings.json")?;
         settings.normalize();
         Ok(settings)
@@ -143,6 +341,38 @@ impl AppSettings {
         env_key.to_string()
     }
 
+    pub fn effective_voicebox_url(&self, env_url: &str) -> String {
+        self.voicebox_base_url
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.trim_end_matches('/').to_string())
+            .unwrap_or_else(|| {
+                let e = env_url.trim();
+                if e.is_empty() {
+                    "http://127.0.0.1:17493".to_string()
+                } else {
+                    e.trim_end_matches('/').to_string()
+                }
+            })
+    }
+
+    pub fn effective_minimax_key(&self, env_key: &str) -> String {
+        self.minimax_api_key
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| env_key.trim().to_string())
+    }
+
+    pub fn is_provider_enabled(&self, id: &str) -> bool {
+        if self.enabled_providers.is_empty() {
+            return true;
+        }
+        self.enabled_providers.iter().any(|p| p == id)
+    }
+
     pub fn normalize(&mut self) {
         self.save_format = self.save_format.trim().to_lowercase();
         if !matches!(self.save_format.as_str(), "wav" | "mp3" | "ogg") {
@@ -169,6 +399,55 @@ impl AppSettings {
         } else if self.max_concurrent_jobs > MAX_CONCURRENT_JOBS_CAP {
             self.max_concurrent_jobs = MAX_CONCURRENT_JOBS_CAP;
         }
+        if self.temp_history_max < MIN_TEMP_HISTORY_MAX {
+            self.temp_history_max = MIN_TEMP_HISTORY_MAX;
+        } else if self.temp_history_max > MAX_TEMP_HISTORY_MAX {
+            self.temp_history_max = MAX_TEMP_HISTORY_MAX;
+        }
+        self.active_skin_id = self.active_skin_id.trim().to_string();
+        if self.active_skin_id.is_empty() {
+            self.active_skin_id = default_active_skin_id();
+        }
+        self.skin_registry_urls = self
+            .skin_registry_urls
+            .iter()
+            .map(|u| u.trim().to_string())
+            .filter(|u| !u.is_empty())
+            .collect();
+        self.text_filters.normalize();
+        self.cursor_integration.normalize();
+        self.quick_hotkeys.normalize();
+        self.editor_quick_gen.normalize();
+        self.voicebox_base_url = normalize_optional_path(self.voicebox_base_url.take());
+        self.minimax_api_key = self
+            .minimax_api_key
+            .take()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let mut seen = std::collections::HashSet::new();
+        self.enabled_providers = self
+            .enabled_providers
+            .iter()
+            .map(|p| p.trim().to_lowercase())
+            .filter(|p| ALL_PROVIDERS.contains(&p.as_str()))
+            .filter(|p| seen.insert(p.clone()))
+            .collect();
+        let mut lang_seen = std::collections::HashSet::new();
+        self.minimax_enabled_languages = self
+            .minimax_enabled_languages
+            .iter()
+            .map(|c| c.trim().to_ascii_lowercase())
+            .filter(|c| minimax::is_known_language_code(c))
+            .filter(|c| lang_seen.insert(c.clone()))
+            .collect();
+        self.timeline_view = self.timeline_view.trim().to_ascii_lowercase();
+        if !TIMELINE_VIEWS.contains(&self.timeline_view.as_str()) {
+            self.timeline_view = default_timeline_view();
+        }
+    }
+
+    pub fn effective_minimax_enabled_languages(&self) -> Vec<String> {
+        minimax::effective_enabled_language_codes(&self.minimax_enabled_languages)
     }
 }
 

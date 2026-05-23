@@ -1,11 +1,13 @@
 ---
-description: Owijaj końcowe podsumowanie PL markerami <!-- tts-summary --> dla integracji z TTS Hub
-alwaysApply: false
+description: TTS Hub — końcowe podsumowanie tury (<!-- tts-summary -->); zawsze aktywne w projekcie
+alwaysApply: true
 ---
 
 # Podsumowanie dla TTS Hub
 
-Gdy projekt korzysta z integracji **Cursor ↔ TTS Hub**, na samym końcu odpowiedzi (po całej merytoryce, listach, kodzie itd.) umieszczaj **krótkie podsumowanie po polsku** opakowane markerami:
+Gdy projekt korzysta z integracji **Cursor ↔ TTS Hub** (hook lub skill **`@tts-hub-speak`**), na **końcu każdej tury** asystenta (po całej merytoryce, listach, kodzie itd.) umieszczaj **jedno** krótkie podsumowanie po polsku opakowane markerami:
+
+Pośrednie bloki w trakcie jednej tury (checkpointy) — tylko po ręcznym włączeniu reguły `cursor-tts-speak-every-block.mdc`.
 
 ```
 <!-- tts-summary -->
@@ -22,4 +24,8 @@ Zasady:
 - **Bez powtarzania całej odpowiedzi** — tylko najważniejsze ustalenia, ostrzeżenia i następny krok.
 - Jeśli reguła `response-closing-pl.mdc` też jest aktywna — naturalne zakończenie po polsku może być **tym samym tekstem** owiniętym w markery.
 
-Hook PowerShell w TTS Hub (`cursor-tts.ps1`) preferuje zawartość pomiędzy markerami; bez nich bierze ostatni akapit i przycina do `cursor_integration.max_sentences` zdań.
+W tym projekcie traktuj `@tts-hub-speak` jako domyślnie aktywny przy **końcowym** podsumowaniu tury. Po każdej turze z tym blokiem uruchamiaj:
+
+`pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ".cursor/skills/tts-hub-speak/scripts/speak-summary.ps1" -SummaryText "<dokładny tekst spomiędzy markerów>"`
+
+To jest zasada projektu: nie pomijaj wywołania skryptu, chyba że w odpowiedzi nie ma bloku `<!-- tts-summary -->`.

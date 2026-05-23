@@ -1,0 +1,5 @@
+/* Opcjonalne reguły — selektory z prefiksem html[data-skin="my-skin"] */
+
+html[data-skin="my-skin"] .btn-primary {
+  /* np. dodatkowy cień */
+}

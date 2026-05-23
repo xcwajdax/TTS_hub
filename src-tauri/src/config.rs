@@ -1,8 +1,10 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::Result;
 use std::path::PathBuf;
 
 pub struct Config {
     pub google_api_key: String,
+    pub voicebox_base_url: String,
+    pub minimax_api_key: String,
 }
 
 impl Config {
@@ -15,14 +17,19 @@ impl Config {
             }
         }
 
-        let google_api_key = std::env::var("GOOGLE_API_KEY")
-            .context("GOOGLE_API_KEY missing. Put it in studios.env or .env at project root.")?;
+        let google_api_key = std::env::var("GOOGLE_API_KEY").unwrap_or_default();
 
-        if google_api_key.trim().is_empty() {
-            return Err(anyhow!("GOOGLE_API_KEY is empty"));
-        }
+        let voicebox_base_url = std::env::var("VOICEBOX_BASE_URL")
+            .or_else(|_| std::env::var("VOICEBOX_URL"))
+            .unwrap_or_else(|_| "http://127.0.0.1:17493".to_string());
 
-        Ok(Self { google_api_key })
+        let minimax_api_key = std::env::var("MINIMAX_API_KEY").unwrap_or_default();
+
+        Ok(Self {
+            google_api_key,
+            voicebox_base_url,
+            minimax_api_key,
+        })
     }
 }
 

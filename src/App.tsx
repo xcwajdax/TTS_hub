@@ -1,39 +1,98 @@
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import MainPanel from "./components/MainPanel";
 import PlaybackBar from "./components/PlaybackBar";
 import HistorySidebar from "./components/HistorySidebar";
+import SettingsSidebar from "./components/SettingsSidebar";
+import { useTtsSettings } from "./hooks/useTtsSettings";
 import RecoveryModal from "./components/RecoveryModal";
 import { PlaybackProvider, usePlayback } from "./context/PlaybackContext";
 import { JobsProvider, useJobs } from "./context/JobsContext";
 import type { Generation } from "./types";
-import { listHistory, listJobs } from "./api/tauri";
+import {
+  getAppSettings,
+  getSessionId,
+  listFolders,
+  listTags,
+  listHistory,
+  listJobs,
+  openQuickSetupWindow,
+  setAppSettings,
+} from "./api/tauri";
+import type { ArchiveFolder, ArchiveTag } from "./types";
+import QuickSetupPrompt from "./components/quickSetup/QuickSetupPrompt";
 import { syncSaveFormatFromSettings } from "./audioFormats";
+import { useAppMenu } from "./hooks/useAppMenu";
+import { useBroadcastPlaybackViz } from "./hooks/useBroadcastPlaybackViz";
 import { useCursorIntegration } from "./hooks/useCursorIntegration";
+import { usePlaybackToastRemote } from "./hooks/usePlaybackToastRemote";
+import { usePlaybackToastWindow } from "./hooks/usePlaybackToastWindow";
+import BrowserOnlyBanner from "./components/BrowserOnlyBanner";
+import TitleBar from "./components/TitleBar";
+import { isCursorPlaybackSource } from "./lib/cursorSource";
+import { isTauriApp } from "./lib/tauriEnv";
+import { usePlaybackQueue } from "./hooks/usePlaybackQueue";
+import { TimelineViewProvider } from "./context/TimelineViewContext";
+import { SkinProvider } from "./skins/SkinProvider";
 
 function AppInner() {
-  const { current, playing, playNonce, select, audioRef } = usePlayback();
+  const { current, playing, playNonce, select, audioRef, setEditorText } = usePlayback();
   const { onDone } = useJobs();
+  useBroadcastPlaybackViz();
+  usePlaybackToastWindow();
+  usePlaybackToastRemote();
   const [session, setSession] = useState<Generation[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState("");
   const [archive, setArchive] = useState<Generation[]>([]);
+  const [cursorFeed, setCursorFeed] = useState<Generation[]>([]);
+  const [folders, setFolders] = useState<ArchiveFolder[]>([]);
+  const [tags, setTags] = useState<ArchiveTag[]>([]);
   const [interrupted, setInterrupted] = useState<Generation[]>([]);
   const [showRecovery, setShowRecovery] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<
+    | "general"
+    | "usage"
+    | "cursor"
+    | "appearance"
+    | "avatars"
+    | "filters"
+    | "quick_hotkeys"
+    | "organization"
+    | undefined
+  >(undefined);
+  const [showQuickSetupPrompt, setShowQuickSetupPrompt] = useState(false);
   const { cfg, lastCursor } = useCursorIntegration();
-  const queueRef = useRef<Generation[]>([]);
+  const { playOrEnqueue, clearQueue } = usePlaybackQueue(select, audioRef, playing);
   const lastCursorGenRef = useRef<Generation | null>(null);
+  const lastHandledCursorIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!isTauriApp()) return;
     try {
-      const [s, a] = await Promise.all([listHistory("session"), listHistory("archive")]);
+      const [s, a, f, t, cursor, sid] = await Promise.all([
+        listHistory("session"),
+        listHistory("archive"),
+        listFolders(),
+        listTags(),
+        listHistory("cursor"),
+        getSessionId(),
+      ]);
       setSession(s);
+      setCurrentSessionId(sid);
       setArchive(a);
+      setFolders(f);
+      setTags(t);
+      setCursorFeed(cursor);
     } catch (e) {
       setError(String(e));
     }
   }, []);
 
   const refreshInterrupted = useCallback(async () => {
+    if (!isTauriApp()) return [];
     try {
       const list = await listJobs("interrupted");
       setInterrupted(list);
@@ -52,50 +111,57 @@ function AppInner() {
     });
   }, [refresh, refreshInterrupted]);
 
-  // When any job finishes, refresh history and auto-select the new row
-  // (preserves the previous synchronous UX: "generate then immediately play").
+  useEffect(() => {
+    if (!isTauriApp()) return;
+    void getAppSettings().then((view) => {
+      if (!view.quick_setup_completed) setShowQuickSetupPrompt(true);
+    });
+  }, []);
+
+  const dismissQuickSetupPrompt = useCallback(async () => {
+    if (!isTauriApp()) {
+      setShowQuickSetupPrompt(false);
+      return;
+    }
+    try {
+      const view = await getAppSettings();
+      await setAppSettings({ ...view, quick_setup_completed: true });
+    } catch (e) {
+      setError(String(e));
+    }
+    setShowQuickSetupPrompt(false);
+  }, []);
+
+  // When any job finishes, refresh history and autoplay (queued if already playing).
   useEffect(() => {
     return onDone((g) => {
       void refresh();
-      select(g);
+      // Cursor / skill / quick_hotkey autoplay: generation:ready → dedicated listeners.
+      if (isCursorPlaybackSource(g.source) && cfg.autoplay) return;
+      if (g.source === "quick_hotkey") return;
+      playOrEnqueue(g, { loadEditorText: false });
     });
-  }, [onDone, refresh, select]);
+  }, [onDone, refresh, playOrEnqueue, cfg.autoplay]);
 
   useEffect(() => {
     if (!lastCursor) return;
+    if (lastHandledCursorIdRef.current === lastCursor.id) return;
+    lastHandledCursorIdRef.current = lastCursor.id;
     lastCursorGenRef.current = lastCursor;
     void refresh();
     if (cfg.autoplay) {
-      // PlaybackQueue: if something is already playing from cursor, enqueue.
-      // Manual current (source !== cursor) is preempted by cursor autoplay too.
-      if (playing && current?.source === "cursor") {
-        queueRef.current = [...queueRef.current, lastCursor];
-        setToast(`Cursor (kolejka ${queueRef.current.length}): ${lastCursor.title ?? "podsumowanie"}`);
-      } else {
-        select(lastCursor);
-        setToast(`Cursor: ${lastCursor.title ?? "podsumowanie"}`);
-      }
+      const { queued, queueLength } = playOrEnqueue(lastCursor, { loadEditorText: false });
+      setToast(
+        queued
+          ? `Cursor (kolejka ${queueLength}): ${lastCursor.title ?? "podsumowanie"}`
+          : `Cursor: ${lastCursor.title ?? "podsumowanie"}`,
+      );
     } else {
       setToast(`Cursor: ${lastCursor.title ?? "podsumowanie"}`);
     }
     const id = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(id);
-  }, [lastCursor, cfg.autoplay, refresh, select, playing, current?.source]);
-
-  // PlaybackQueue: when current cursor playback finishes, dequeue next.
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const onEnd = () => {
-      if (queueRef.current.length === 0) return;
-      if (current?.source !== "cursor") return;
-      const [next, ...rest] = queueRef.current;
-      queueRef.current = rest;
-      select(next);
-    };
-    audio.addEventListener("ended", onEnd);
-    return () => audio.removeEventListener("ended", onEnd);
-  }, [audioRef, current?.source, select]);
+  }, [lastCursor, cfg.autoplay, refresh, playOrEnqueue]);
 
   // Global shortcut Ctrl+Shift+P: replay last cursor summary.
   useEffect(() => {
@@ -104,16 +170,17 @@ function AppInner() {
         const g = lastCursorGenRef.current;
         if (g) {
           e.preventDefault();
-          select(g);
+          clearQueue();
+          select(g, { loadEditorText: false });
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [select]);
+  }, [select, clearQueue]);
 
   const onGenerated = (g: Generation) => {
-    select(g);
+    playOrEnqueue(g, { loadEditorText: false });
     refresh();
   };
 
@@ -122,10 +189,103 @@ function AppInner() {
     void refreshInterrupted();
   }, [refreshInterrupted]);
 
+  useEffect(() => {
+    if (!isTauriApp()) return;
+    let unlistenEditor: (() => void) | undefined;
+    let unlistenError: (() => void) | undefined;
+    let unlistenReady: (() => void) | undefined;
+
+    void listen<{ text: string; presetId: string; generationId: string }>(
+      "quick-hotkey:load-editor",
+      (ev) => {
+        setEditorText(ev.payload.text);
+        setToast("Szybki TTS: tekst w edytorze");
+        window.setTimeout(() => setToast(null), 3500);
+      },
+    ).then((fn) => {
+      unlistenEditor = fn;
+    });
+
+    void listen<{ message: string; presetId: string }>("quick-hotkey:error", (ev) => {
+      setError(ev.payload.message);
+    }).then((fn) => {
+      unlistenError = fn;
+    });
+
+    void listen<Generation>("generation:ready", (ev) => {
+      if (ev.payload?.source === "quick_hotkey") {
+        playOrEnqueue(ev.payload, { loadEditorText: false });
+      }
+    }).then((fn) => {
+      unlistenReady = fn;
+    });
+
+    return () => {
+      unlistenEditor?.();
+      unlistenError?.();
+      unlistenReady?.();
+    };
+  }, [setEditorText, playOrEnqueue]);
+
+  const ttsSettings = useTtsSettings(setError);
+
+  useAppMenu({
+    current,
+    setEditorText,
+    onRefresh: refresh,
+    onError: setError,
+    onOpenSettings: () => {
+      setSettingsInitialTab(undefined);
+      setSettingsOpen(true);
+    },
+    onOpenQuickHotkeys: () => {
+      setSettingsInitialTab("quick_hotkeys");
+      setSettingsOpen(true);
+    },
+    onOpenQuickSetup: () => {
+      setShowQuickSetupPrompt(false);
+      void openQuickSetupWindow().catch((e) => setError(String(e)));
+    },
+  });
+
   return (
-    <div className="h-full w-full grid" style={{ gridTemplateColumns: "3fr 1fr" }}>
-      <div className="grid border-r border-border" style={{ gridTemplateRows: "9fr 1fr" }}>
-        <MainPanel onGenerated={onGenerated} onError={setError} />
+    <div className="h-full w-full grid relative" style={{ gridTemplateColumns: "1fr 3fr 1fr" }}>
+      {showQuickSetupPrompt && (
+        <QuickSetupPrompt
+          onDismiss={() => void dismissQuickSetupPrompt()}
+          onSaved={() => setShowQuickSetupPrompt(false)}
+          onError={setError}
+        />
+      )}
+      <SettingsSidebar
+        settings={ttsSettings.settings}
+        voices={ttsSettings.voices}
+        voiceboxProfiles={ttsSettings.voiceboxProfiles}
+        voiceboxModels={ttsSettings.voiceboxModels}
+        voiceboxHealth={ttsSettings.voiceboxStatus}
+        onChange={ttsSettings.setSettings}
+        onError={setError}
+      />
+      <div
+        className="grid min-h-0 min-w-0 overflow-hidden h-full border-x border-border"
+        style={{ gridTemplateRows: "minmax(0, 1fr) auto" }}
+      >
+        <MainPanel
+          onGenerated={onGenerated}
+          onError={setError}
+          settings={ttsSettings.settings}
+          voiceboxProfiles={ttsSettings.voiceboxProfiles}
+          settingsOpen={settingsOpen}
+          onSettingsOpenChange={setSettingsOpen}
+          settingsInitialTab={settingsInitialTab}
+          onSettingsInitialTabConsumed={() => setSettingsInitialTab(undefined)}
+          onSettingsSuccess={(msg) => {
+            setToast(msg);
+            window.setTimeout(() => setToast(null), 3500);
+          }}
+          onOrganizationChanged={() => void refresh()}
+          onLocalDataCleared={() => void refresh()}
+        />
         <PlaybackBar
           current={current}
           playNonce={playNonce}
@@ -137,14 +297,25 @@ function AppInner() {
         <HistorySidebar
           session={session}
           archive={archive}
+          cursorFeed={cursorFeed}
+          folders={folders}
+          tags={tags}
           interrupted={interrupted}
+          currentSessionId={currentSessionId}
           currentId={current?.id ?? null}
-          onPlay={select}
+          onPlay={(g) => {
+            clearQueue();
+            select(g, { loadEditorText: false });
+          }}
           onChanged={() => {
             void refresh();
             void refreshInterrupted();
           }}
           onError={setError}
+          onOpenOrganizationSettings={() => {
+            setSettingsInitialTab("organization");
+            setSettingsOpen(true);
+          }}
         />
       </div>
       <RecoveryModal
@@ -179,11 +350,22 @@ function AppInner() {
 }
 
 export default function App() {
+  const inTauri = isTauriApp();
   return (
-    <PlaybackProvider>
-      <JobsProvider>
-        <AppInner />
-      </JobsProvider>
-    </PlaybackProvider>
+    <SkinProvider>
+      <TimelineViewProvider>
+        <div className="h-full w-full flex flex-col min-h-0">
+          {inTauri && <TitleBar />}
+          {!inTauri && <BrowserOnlyBanner />}
+          <div className="flex-1 min-h-0 min-w-0">
+            <PlaybackProvider>
+              <JobsProvider>
+                <AppInner />
+              </JobsProvider>
+            </PlaybackProvider>
+          </div>
+        </div>
+      </TimelineViewProvider>
+    </SkinProvider>
   );
 }

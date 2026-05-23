@@ -1,0 +1,12 @@
+/* Kopia do importu / edycji — wbudowana wersja: src/skins/builtin/light-zen.* */
+
+.btn,
+.field,
+.tag {
+  border-radius: 10px;
+}
+
+.history-item {
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgb(41 37 36 / 0.06);
+}

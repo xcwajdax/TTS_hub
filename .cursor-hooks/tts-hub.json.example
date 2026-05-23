@@ -2,10 +2,33 @@
   "enabled": true,
   "autoplay": true,
   "max_sentences": 10,
-  "model": "gemini-2.5-flash-preview-tts",
-  "voice": "Kore",
-  "style": "Powiedz spokojnie po polsku:",
+  "provider": "minimax",
+  "model": "speech-2.8-hd",
+  "voice": "Polish_female_1_sample1",
+  "style": null,
+  "format": "mp3",
+  "profile_id": null,
+  "language": "pl",
+  "engine": null,
+  "minimax_speed": 1.0,
+  "minimax_vol": 1.0,
+  "minimax_pitch": 0,
   "use_summary_markers": true,
   "dnd_until_ts": null,
-  "last_install_ts": null
+  "last_install_ts": null,
+  "text_filters": {
+    "active_preset_id": "00000000-0000-0000-0000-000000000001",
+    "presets": [
+      {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "Domyślny",
+        "builtins": {
+          "strip_fenced_code": true,
+          "strip_inline_code": true,
+          "strip_blockquotes": false
+        },
+        "custom": []
+      }
+    ]
+  }
 }

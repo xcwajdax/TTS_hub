@@ -8,3 +8,5 @@ src-tauri/target
 src-tauri/gen
 studios.env
 .env
+.cursor/skills/tts-hub-speak/config.json
+*.mp4

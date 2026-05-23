@@ -9,11 +9,16 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{broadcast, mpsc, Semaphore};
 
 use crate::app_settings::{SaveMode, MAX_CONCURRENT_JOBS_CAP};
-use crate::audio::{write_audio, AudioFormat};
+use crate::audio::{write_audio, write_downloaded_audio, AudioFormat};
 use crate::commands::{derive_title, GenerateReq};
-use crate::db::{Generation, STATUS_CANCELLED, STATUS_DONE, STATUS_FAILED};
+use crate::db::{Generation, GenerationUsage, STATUS_CANCELLED, STATUS_DONE, STATUS_FAILED};
 use crate::google::TtsRequest;
 use crate::state::AppState;
+use crate::minimax::{
+    hub_language_to_boost, model_from_id, MinimaxGenerateParams, MinimaxVoiceSetting,
+    DEFAULT_MINIMAX_LANGUAGE,
+};
+use crate::voicebox::engine_from_model;
 
 #[derive(Clone, Serialize)]
 pub struct JobPhaseEvent {
@@ -80,7 +85,9 @@ impl JobQueue {
 
     /// Enqueue a previously-persisted row id (status must already be 'queued' in DB).
     pub fn enqueue(&self, id: String) -> Result<()> {
-        self.tx.send(id).map_err(|e| anyhow::anyhow!("queue closed: {e}"))
+        self.tx
+            .send(id)
+            .map_err(|e| anyhow::anyhow!("queue closed: {e}"))
     }
 
     pub fn request_cancel(&self, id: &str) {
@@ -179,87 +186,269 @@ impl JobQueue {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .map(String::from)
+            .or_else(|| {
+                req.filtered_text
+                    .as_ref()
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+            })
             .unwrap_or_else(|| req.text.clone());
-
-        let tts_req = TtsRequest {
-            model: req.model.clone(),
-            text: synth_text,
-            voice: req.voice.clone(),
-            style: req.style.clone(),
-            multi_speaker: req.multi_speaker.clone(),
-        };
+        let synth_char_count = synth_text.chars().count() as i64;
 
         self.emit_phase(app, id, started, "requesting", chars);
-        let tts_result = state
-            .tts
-            .synthesize(&tts_req)
-            .await
-            .map_err(|e| format!("{e}"))?;
+        let provider = req
+            .provider
+            .as_deref()
+            .unwrap_or("google")
+            .trim()
+            .to_ascii_lowercase();
 
-        if self.take_cancel(id) {
-            self.handle_cancel(state, app, id);
-            return Ok(());
+        if provider == "voicebox" {
+            let profile_id = req
+                .profile_id
+                .as_deref()
+                .unwrap_or(&req.voice)
+                .trim()
+                .to_string();
+            if profile_id.is_empty() {
+                return Err("Voice Box profile is required".into());
+            }
+            let language = req
+                .language
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("pl");
+            let engine = req
+                .engine
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .or_else(|| engine_from_model(&req.model));
+            let instruct = req
+                .style
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+
+            let audio = state
+                .voicebox
+                .generate_audio(crate::voicebox::VoiceBoxGenerateParams {
+                    profile_id: &profile_id,
+                    text: &synth_text,
+                    language,
+                    engine,
+                    instruct,
+                    personality: req.personality,
+                })
+                .await
+                .map_err(|e| format!("{e}"))?;
+
+            if self.take_cancel(id) {
+                self.handle_cancel(state, app, id);
+                return Ok(());
+            }
+
+            self.emit_phase(app, id, started, "writing", chars);
+            let temp_dir: PathBuf = {
+                let paths = state.paths.read().map_err(|e| format!("{e}"))?;
+                paths.temp.clone()
+            };
+            let source_fmt = AudioFormat::from_str(&audio.format).unwrap_or(AudioFormat::Wav);
+            let written = write_downloaded_audio(&audio.bytes, source_fmt, &temp_dir, id, fmt)
+                .map_err(|e| format!("{e}"))?;
+
+            let title_src = req.summary_text.as_deref().unwrap_or(&req.text);
+            let title = derive_title(title_src);
+            let file_path = written.path.to_string_lossy().to_string();
+            let usage = GenerationUsage {
+                provider: Some("voicebox".to_string()),
+                input_chars: Some(synth_char_count),
+                prompt_tokens: None,
+                output_tokens: None,
+                total_tokens: None,
+            };
+            state
+                .db
+                .finalize_done(
+                    id,
+                    &file_path,
+                    written.format.ext(),
+                    audio.duration_ms,
+                    Some(&title),
+                    Some(&usage),
+                )
+                .map_err(|e| format!("{e}"))?;
+        } else if provider == "minimax" {
+            let voice_id = req.voice.trim().to_string();
+            if voice_id.is_empty() {
+                return Err("Minimax voice_id is required".into());
+            }
+            let model = model_from_id(&req.model).to_string();
+            let language_boost = hub_language_to_boost(
+                req.language
+                    .as_deref()
+                    .or(Some(DEFAULT_MINIMAX_LANGUAGE)),
+            );
+            let voice = MinimaxVoiceSetting {
+                voice_id,
+                speed: req.minimax_speed.unwrap_or(1.0),
+                vol: req.minimax_vol.unwrap_or(1.0),
+                pitch: req.minimax_pitch.unwrap_or(0),
+                english_normalization: language_boost == "English",
+            };
+            let audio = state
+                .minimax
+                .generate_audio(MinimaxGenerateParams {
+                    model: &model,
+                    text: &synth_text,
+                    voice: &voice,
+                    format: &req.format,
+                    language_boost: Some(language_boost),
+                })
+                .await
+                .map_err(|e| format!("{e}"))?;
+
+            if self.take_cancel(id) {
+                self.handle_cancel(state, app, id);
+                return Ok(());
+            }
+
+            self.emit_phase(app, id, started, "writing", chars);
+            let temp_dir: PathBuf = {
+                let paths = state.paths.read().map_err(|e| format!("{e}"))?;
+                paths.temp.clone()
+            };
+            let source_fmt = AudioFormat::from_str(&audio.format).unwrap_or(AudioFormat::Mp3);
+            let written = write_downloaded_audio(&audio.bytes, source_fmt, &temp_dir, id, fmt)
+                .map_err(|e| format!("{e}"))?;
+
+            let title_src = req.summary_text.as_deref().unwrap_or(&req.text);
+            let title = derive_title(title_src);
+            let file_path = written.path.to_string_lossy().to_string();
+            let usage = GenerationUsage {
+                provider: Some("minimax".to_string()),
+                input_chars: Some(synth_char_count),
+                prompt_tokens: None,
+                output_tokens: None,
+                total_tokens: None,
+            };
+            state
+                .db
+                .finalize_done(
+                    id,
+                    &file_path,
+                    written.format.ext(),
+                    None,
+                    Some(&title),
+                    Some(&usage),
+                )
+                .map_err(|e| format!("{e}"))?;
+        } else {
+            let tts_req = TtsRequest {
+                model: req.model.clone(),
+                text: synth_text,
+                voice: req.voice.clone(),
+                style: req.style.clone(),
+                multi_speaker: req.multi_speaker.clone(),
+            };
+
+            let tts_result = state
+                .tts
+                .synthesize(&tts_req)
+                .await
+                .map_err(|e| format!("{e}"))?;
+
+            if self.take_cancel(id) {
+                self.handle_cancel(state, app, id);
+                return Ok(());
+            }
+
+            self.emit_phase(app, id, started, "decoding", chars);
+            let stem = id.to_string();
+            self.emit_phase(app, id, started, "writing", chars);
+            let temp_dir: PathBuf = {
+                let paths = state.paths.read().map_err(|e| format!("{e}"))?;
+                paths.temp.clone()
+            };
+            let written =
+                write_audio(&tts_result, &temp_dir, &stem, fmt).map_err(|e| format!("{e}"))?;
+
+            let title_src = req.summary_text.as_deref().unwrap_or(&req.text);
+            let title = derive_title(title_src);
+            let file_path = written.path.to_string_lossy().to_string();
+            let usage = GenerationUsage {
+                provider: Some("google".to_string()),
+                input_chars: Some(synth_char_count),
+                prompt_tokens: tts_result
+                    .token_usage
+                    .as_ref()
+                    .and_then(|u| u.prompt_tokens),
+                output_tokens: tts_result
+                    .token_usage
+                    .as_ref()
+                    .and_then(|u| u.output_tokens),
+                total_tokens: tts_result.token_usage.as_ref().and_then(|u| u.total_tokens),
+            };
+            state
+                .db
+                .finalize_done(
+                    id,
+                    &file_path,
+                    fmt.ext(),
+                    Some(written.duration_ms as i64),
+                    Some(&title),
+                    Some(&usage),
+                )
+                .map_err(|e| format!("{e}"))?;
         }
-
-        self.emit_phase(app, id, started, "decoding", chars);
-        let stem = id.to_string();
-        self.emit_phase(app, id, started, "writing", chars);
-        let temp_dir: PathBuf = {
-            let paths = state.paths.read().map_err(|e| format!("{e}"))?;
-            paths.temp.clone()
-        };
-        let written =
-            write_audio(&tts_result, &temp_dir, &stem, fmt).map_err(|e| format!("{e}"))?;
-
-        let title_src = req.summary_text.as_deref().unwrap_or(&req.text);
-        let title = derive_title(title_src);
-        let file_path = written.path.to_string_lossy().to_string();
-        state
-            .db
-            .finalize_done(
-                id,
-                &file_path,
-                fmt.ext(),
-                Some(written.duration_ms as i64),
-                Some(&title),
-            )
-            .map_err(|e| format!("{e}"))?;
 
         self.emit_phase(app, id, started, "done", chars);
         let _ = self.broadcast_status(id, STATUS_DONE, None);
 
+        let row_after = state
+            .db
+            .get(id)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| row.clone());
+        let archive_fmt = {
+            let s = state.settings.read().map_err(|e| format!("{e}"))?;
+            AudioFormat::from_str(&s.save_format).unwrap_or(AudioFormat::Wav)
+        };
         let auto_archive = state
             .settings
             .read()
             .map(|s| s.save_mode == SaveMode::Auto)
             .unwrap_or(false);
-        let final_gen = if auto_archive {
-            let archive_fmt = {
-                let s = state.settings.read().map_err(|e| format!("{e}"))?;
-                AudioFormat::from_str(&s.save_format).unwrap_or(AudioFormat::Wav)
-            };
-            match crate::commands::do_archive(state, id, archive_fmt) {
+        let final_gen = if row_after.folder_id.is_some() {
+            match crate::commands::do_archive(
+                state,
+                id.to_string(),
+                archive_fmt,
+                row_after.folder_id.clone(),
+            ) {
                 Ok(g) => g,
-                Err(_) => state
-                    .db
-                    .get(id)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_else(|| row.clone()),
+                Err(_) => row_after.clone(),
+            }
+        } else if auto_archive {
+            match crate::commands::do_archive(state, id.to_string(), archive_fmt, None) {
+                Ok(g) => g,
+                Err(_) => row_after.clone(),
             }
         } else {
-            state
-                .db
-                .get(id)
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| row.clone())
+            row_after
         };
 
         if req.autoplay {
             let _ = app.emit("generation:ready", &final_gen);
         }
         let _ = app.emit("job:done", &final_gen);
+
+        if !auto_archive {
+            let _ = state.apply_temp_retention();
+        }
 
         Ok(())
     }
@@ -282,13 +471,7 @@ impl JobQueue {
         );
     }
 
-    fn finalize_failed(
-        &self,
-        state: &Arc<AppState>,
-        app: &AppHandle,
-        id: &str,
-        error: &str,
-    ) {
+    fn finalize_failed(&self, state: &Arc<AppState>, app: &AppHandle, id: &str, error: &str) {
         let _ = state.db.update_status(id, STATUS_FAILED, Some(error));
         let _ = self.broadcast_status(id, STATUS_FAILED, Some(error.to_string()));
         let _ = app.emit(

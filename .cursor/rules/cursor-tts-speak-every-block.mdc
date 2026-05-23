@@ -1,0 +1,61 @@
+---
+description: TTS Hub — mów każdy blok <!-- tts-summary --> (także pośrednie); włącz ręcznie w czacie
+alwaysApply: false
+---
+
+# TTS Hub — każdy blok podsumowania (ręcznie)
+
+**Włączanie:** dodaj tę regułę w czacie (Rule picker / `@cursor-tts-speak-every-block`) albo użyj `@tts-hub-speak`. Działa **obok** `cursor-tts-summary.mdc` (która domyślnie dotyczy **końcowego** podsumowania tury).
+
+## Zakres
+
+Gdy ta reguła jest aktywna, **każdy** blok `<!-- tts-summary -->` w odpowiedzi — także **pośredni** (checkpoint, status, krótki update przed dalszą pracą) — traktuj jak osobne podsumowanie do TTS. Nie czekaj do końca tury ani finalnej odpowiedzi.
+
+## Kiedy dodawać pośredni blok
+
+Dodaj krótki blok po polsku (1–4 zdania), gdy:
+
+- kończysz istotny etap (np. analiza, implementacja, test) i przechodzisz dalej;
+- zwracasz użytkownikowi status po dłuższej pracy narzędziami;
+- jest wyraźna przerwa w narracji — użytkownik ma usłyszeć postęp bez czekania na finał.
+
+Nie dodawaj bloku po każdym drobnym kroku (pojedyncze `Read`/`Grep`) — unikaj szumu i podwójnego odtwarzania tego samego tekstu.
+
+## Format bloku
+
+```
+<!-- tts-summary -->
+Krótkie, naturalne podsumowanie po polsku (1–10 zdań, bez kodu i list).
+<!-- /tts-summary -->
+```
+
+- język: polski, druga osoba;
+- bez kodu, backticków i list punktowanych wewnątrz markerów;
+- tylko postęp / ustalenia / ostrzeżenie / następny krok — nie powtarzaj całej odpowiedzi.
+
+## Obowiązkowe TTS po **każdym** bloku
+
+**Natychmiast** po napisaniu bloku (jeszcze w tej samej turze, przed kolejną pracą) uruchom z katalogu projektu:
+
+`pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ".cursor/skills/tts-hub-speak/scripts/speak-summary.ps1" -SummaryText "<dokładny tekst z tego bloku>"`
+
+- jeden blok → jedno wywołanie skryptu;
+- wiele bloków w jednej turze → wiele wywołań (kolejno, po kolei);
+- używaj **tylko** tekstu z danego bloku, nie całej odpowiedzi;
+- **fail-open:** błąd skryptu lub brak TTS Hub — kontynuuj pracę, nie blokuj użytkownika;
+- skrypt deduplikuje identyczny tekst — nie pomijaj wywołania z powodu „podobnego” podsumowania, chyba że tekst jest **identyczny** jak w poprzednim bloku w tej samej turze.
+
+Opcjonalnie: `-ConversationId "<id>"` jeśli znane.
+
+## Relacja z regułą domyślną
+
+| Reguła | Zakres |
+|--------|--------|
+| `cursor-tts-summary.mdc` (always) | końcowe podsumowanie tury + TTS na koniec |
+| `cursor-tts-speak-every-block.mdc` (ręcznie) | **dodatkowo** pośrednie bloki + TTS po każdym z nich |
+
+Przy włączonej regule manualnej **końcowy** blok na zakończenie tury nadal dodaj i odtwórz (jak w regule domyślnej).
+
+## Hooki Cursor
+
+Jeśli masz hook `cursor-tts.ps1`, wyłącz go przy trybie skill — unikniesz podwójnego odtwarzania (hook zwykle na koniec sesji, skill per blok).

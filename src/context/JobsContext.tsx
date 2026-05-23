@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Generation, JobStatus } from "../types";
+import { isTauriApp } from "../lib/tauriEnv";
+import type { Generation, GenerationSource, JobStatus } from "../types";
 
 export type Phase =
   | "idle"
@@ -91,6 +92,8 @@ export interface TrackedJob {
   error: string | null;
   title: string | null;
   text: string;
+  source?: GenerationSource;
+  provider?: string | null;
 }
 
 interface JobPhasePayload {
@@ -176,6 +179,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         error: gen.error ?? null,
         title: gen.title,
         text: gen.text,
+        source: gen.source,
+        provider: gen.provider ?? null,
       },
     }));
     setLatestId(gen.id);
@@ -201,6 +206,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
 
   // Wire Tauri events.
   useEffect(() => {
+    if (!isTauriApp()) return;
     let cancelled = false;
     const unlistens: UnlistenFn[] = [];
 
@@ -341,13 +347,23 @@ export interface JobProgressView {
   elapsedMs: number;
   etaMs: number;
   progress: number;
+  provider?: string | null;
+  error?: string | null;
+  failed: boolean;
 }
 
 export function useLatestJobProgress(): JobProgressView {
   const { jobs, latestId } = useJobs();
   const job = latestId ? jobs[latestId] : null;
   if (!job) {
-    return { active: false, phase: "idle", elapsedMs: 0, etaMs: 0, progress: 0 };
+    return {
+      active: false,
+      phase: "idle",
+      elapsedMs: 0,
+      etaMs: 0,
+      progress: 0,
+      failed: false,
+    };
   }
   const active = job.status === "queued" || job.status === "running";
   const progress =
@@ -362,5 +378,8 @@ export function useLatestJobProgress(): JobProgressView {
     elapsedMs: job.elapsedMs,
     etaMs: job.etaMs,
     progress,
+    provider: job.provider,
+    error: job.error,
+    failed: job.status === "failed",
   };
 }

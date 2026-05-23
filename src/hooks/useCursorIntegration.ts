@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getAppSettings } from "../api/tauri";
+import { isTauriApp } from "../lib/tauriEnv";
 import { defaultCursorIntegration, type CursorIntegration } from "../appSettings";
 import type { Generation } from "../types";
 
@@ -19,13 +20,15 @@ export function useCursorIntegration() {
   };
 
   useEffect(() => {
+    if (!isTauriApp()) return;
     void reload();
   }, []);
 
   useEffect(() => {
+    if (!isTauriApp()) return;
     let un: UnlistenFn | null = null;
     void listen<Generation>("generation:ready", (e) => {
-      if (e.payload?.source === "cursor") {
+      if (e.payload?.source === "cursor" || e.payload?.source === "cursor-skill") {
         setLastCursor(e.payload);
       }
     }).then((fn) => {

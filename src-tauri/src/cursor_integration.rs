@@ -1,8 +1,10 @@
 use anyhow::{anyhow, Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
+use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 use crate::app_settings::{AppSettings, CursorIntegration};
+use crate::text_filters::TextFiltersSettings;
 
 /// Resolve `~/.cursor` (or platform equivalent).
 pub fn cursor_dir() -> Result<PathBuf> {
@@ -44,31 +46,45 @@ pub fn tts_hub_config_path() -> Result<PathBuf> {
     Ok(cursor_dir()?.join("tts-hub.json"))
 }
 
+fn hooks_dir_has_script(dir: &Path) -> bool {
+    dir.join("cursor-tts.ps1").is_file()
+}
+
 /// Locate the source `.cursor-hooks/cursor-tts.ps1` shipped with TTS Hub.
 /// Tries (in order):
 /// 1. `TTS_HUB_HOOKS_DIR` env var (dev / packaging override)
-/// 2. `<exe_dir>/.cursor-hooks/`
-/// 3. `<exe_dir>/../../.cursor-hooks/` (cargo target/debug → repo root)
-/// 4. `<exe_dir>/../../../.cursor-hooks/` (cargo target/debug → src-tauri → repo root)
-pub fn source_hooks_dir() -> Result<PathBuf> {
+/// 2. Tauri bundled resource (`bundle.resources` → `$RESOURCE/_up_/.cursor-hooks/`)
+/// 3. `<exe_dir>/.cursor-hooks/` and parents up to repo root (cargo `target/debug` dev builds)
+pub fn source_hooks_dir(app: Option<&AppHandle>) -> Result<PathBuf> {
     if let Ok(v) = std::env::var("TTS_HUB_HOOKS_DIR") {
         let p = PathBuf::from(v);
-        if p.join("cursor-tts.ps1").is_file() {
+        if hooks_dir_has_script(&p) {
             return Ok(p);
+        }
+    }
+    if let Some(handle) = app {
+        if let Ok(p) = handle
+            .path()
+            .resolve("../.cursor-hooks", BaseDirectory::Resource)
+        {
+            if hooks_dir_has_script(&p) {
+                return Ok(p);
+            }
         }
     }
     let exe = std::env::current_exe().context("current_exe")?;
     let exe_dir = exe.parent().context("exe has no parent")?;
-    let candidates = [
-        exe_dir.join(".cursor-hooks"),
-        exe_dir.join("..").join(".cursor-hooks"),
-        exe_dir.join("..").join("..").join(".cursor-hooks"),
-        exe_dir.join("..").join("..").join("..").join(".cursor-hooks"),
-    ];
-    for c in &candidates {
-        if c.join("cursor-tts.ps1").is_file() {
-            return Ok(c.clone());
+    let mut rel = PathBuf::new();
+    for _ in 0..5 {
+        let candidate = if rel.as_os_str().is_empty() {
+            exe_dir.join(".cursor-hooks")
+        } else {
+            exe_dir.join(&rel).join(".cursor-hooks")
+        };
+        if hooks_dir_has_script(&candidate) {
+            return Ok(candidate);
         }
+        rel.push("..");
     }
     Err(anyhow!(
         "could not locate .cursor-hooks/ alongside the executable; set TTS_HUB_HOOKS_DIR"
@@ -170,9 +186,24 @@ fn atomic_write(path: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
-fn export_tts_hub_config(cfg: &CursorIntegration, install_ts: Option<i64>) -> Result<PathBuf> {
+#[derive(Debug, Clone, Serialize)]
+pub struct TtsHubExportedConfig {
+    #[serde(flatten)]
+    pub cursor: CursorIntegration,
+    pub text_filters: TextFiltersSettings,
+}
+
+fn export_tts_hub_config(
+    cfg: &CursorIntegration,
+    text_filters: &TextFiltersSettings,
+    install_ts: Option<i64>,
+) -> Result<PathBuf> {
     let path = tts_hub_config_path()?;
-    let mut value = serde_json::to_value(cfg)?;
+    let exported = TtsHubExportedConfig {
+        cursor: cfg.clone(),
+        text_filters: text_filters.clone(),
+    };
+    let mut value = serde_json::to_value(&exported)?;
     if let Some(ts) = install_ts {
         if let Some(obj) = value.as_object_mut() {
             obj.insert("last_install_ts".to_string(), serde_json::json!(ts));
@@ -184,43 +215,76 @@ fn export_tts_hub_config(cfg: &CursorIntegration, install_ts: Option<i64>) -> Re
 
 pub fn export_config(settings: &AppSettings) -> Result<PathBuf> {
     let install_ts = read_last_install_ts(&tts_hub_config_path()?).ok().flatten();
-    export_tts_hub_config(&settings.cursor_integration, install_ts)
+    export_tts_hub_config(
+        &settings.cursor_integration,
+        &settings.text_filters,
+        install_ts,
+    )
 }
 
-fn build_hook_entry(ps1: &Path) -> serde_json::Value {
-    let pwsh = if cfg!(windows) { "pwsh.exe" } else { "pwsh" };
+/// Cursor expects `{ "version": 1, "hooks": { "<event>": [ ... ] } }`.
+/// Older TTS Hub builds wrote hook events at the root — migrate those into `hooks`.
+fn extract_hooks_map(existing: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+    if let Some(hooks) = existing.get("hooks").and_then(|h| h.as_object()) {
+        return hooks.clone();
+    }
+    if let Some(root) = existing.as_object() {
+        return root
+            .iter()
+            .filter(|(k, _)| k.as_str() != "version")
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+    }
+    serde_json::Map::new()
+}
+
+fn wrap_hooks_json(hooks: serde_json::Map<String, serde_json::Value>) -> serde_json::Value {
     serde_json::json!({
-        "command": [
-            pwsh,
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy", "Bypass",
-            "-File", ps1.to_string_lossy()
-        ],
-        "id": "tts-hub-cursor-integration"
+        "version": 1,
+        "hooks": hooks
+    })
+}
+
+fn build_hook_entry(ps1: &Path, phase: &str, timeout_secs: u64) -> serde_json::Value {
+    let pwsh = if cfg!(windows) { "pwsh.exe" } else { "pwsh" };
+    // Cursor validates hooks.json strictly: `command` must be a string, not argv[].
+    let ps1_arg = ps1.to_string_lossy().replace('"', "\\\"");
+    let command = format!(
+        "{pwsh} -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{ps1_arg}\" -Phase {phase}"
+    );
+    serde_json::json!({
+        "command": command,
+        "timeout": timeout_secs
     })
 }
 
 fn merge_hooks_json(existing: serde_json::Value, ps1: &Path) -> serde_json::Value {
-    let mut root = match existing {
-        serde_json::Value::Object(_) => existing,
-        _ => serde_json::json!({}),
-    };
-    let obj = root.as_object_mut().expect("object");
+    let mut hooks = extract_hooks_map(&existing);
+    let entry_capture = build_hook_entry(ps1, "capture", 3);
+    let entry_speak = build_hook_entry(ps1, "speak", 5);
+    upsert_hook_array(&mut hooks, "afterAgentResponse", entry_capture);
+    upsert_hook_array(&mut hooks, "stop", entry_speak);
+    wrap_hooks_json(hooks)
+}
 
-    let mut entry_capture = build_hook_entry(ps1);
-    if let Some(o) = entry_capture.as_object_mut() {
-        o.insert("phase".to_string(), serde_json::json!("capture"));
+fn command_references_cursor_tts(command: &serde_json::Value) -> bool {
+    if let Some(s) = command.as_str() {
+        return s.contains("cursor-tts.ps1");
     }
-    let mut entry_speak = build_hook_entry(ps1);
-    if let Some(o) = entry_speak.as_object_mut() {
-        o.insert("phase".to_string(), serde_json::json!("speak"));
+    if let Some(a) = command.as_array() {
+        return a.iter().any(|p| {
+            p.as_str()
+                .map(|s| s.contains("cursor-tts.ps1"))
+                .unwrap_or(false)
+        });
     }
+    false
+}
 
-    upsert_hook_array(obj, "afterAgentResponse", entry_capture);
-    upsert_hook_array(obj, "stop", entry_speak);
-    root
+fn is_our_hook_entry(item: &serde_json::Value) -> bool {
+    item.get("command")
+        .map(command_references_cursor_tts)
+        .unwrap_or(false)
 }
 
 fn upsert_hook_array(
@@ -235,24 +299,7 @@ fn upsert_hook_array(
         serde_json::Value::Array(a) => a,
         _ => return,
     };
-    let entry_id = entry.get("id").and_then(|x| x.as_str()).unwrap_or("");
-    let pos = arr.iter().position(|item| {
-        item.get("id").and_then(|x| x.as_str()) == Some(entry_id)
-            || item
-                .get("command")
-                .and_then(|c| {
-                    if let Some(s) = c.as_str() {
-                        Some(s.contains("cursor-tts.ps1"))
-                    } else if let Some(a) = c.as_array() {
-                        Some(a.iter().any(|p| {
-                            p.as_str().map(|s| s.contains("cursor-tts.ps1")).unwrap_or(false)
-                        }))
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(false)
-    });
+    let pos = arr.iter().position(|item| is_our_hook_entry(item));
     if let Some(i) = pos {
         arr[i] = entry;
     } else {
@@ -260,14 +307,14 @@ fn upsert_hook_array(
     }
 }
 
-pub fn install_hooks(settings: &AppSettings) -> Result<InstallReport> {
+pub fn install_hooks(app: Option<&AppHandle>, settings: &AppSettings) -> Result<InstallReport> {
     if !pwsh_available() {
         return Err(anyhow!(
             "PowerShell 7+ (pwsh) was not found on PATH. Install from https://aka.ms/powershell and retry."
         ));
     }
 
-    let src_dir = source_hooks_dir()?;
+    let src_dir = source_hooks_dir(app)?;
     let src_ps1 = src_dir.join("cursor-tts.ps1");
     if !src_ps1.is_file() {
         return Err(anyhow!(
@@ -300,7 +347,11 @@ pub fn install_hooks(settings: &AppSettings) -> Result<InstallReport> {
     atomic_write(&hooks_json, &serde_json::to_string_pretty(&merged)?)?;
 
     let ts = chrono::Utc::now().timestamp_millis();
-    let cfg_path = export_tts_hub_config(&settings.cursor_integration, Some(ts))?;
+    let cfg_path = export_tts_hub_config(
+        &settings.cursor_integration,
+        &settings.text_filters,
+        Some(ts),
+    )?;
 
     Ok(InstallReport {
         copied_ps1: dst_ps1.to_string_lossy().to_string(),
@@ -321,34 +372,15 @@ pub fn uninstall_hooks(remove_script: bool, remove_config: bool) -> Result<Unins
         std::fs::write(&bak, &raw)?;
         backup = Some(bak.to_string_lossy().to_string());
 
-        let mut v: serde_json::Value =
+        let v: serde_json::Value =
             serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}));
-        if let Some(obj) = v.as_object_mut() {
-            for key in ["afterAgentResponse", "stop"] {
-                if let Some(serde_json::Value::Array(arr)) = obj.get_mut(key) {
-                    arr.retain(|item| {
-                        let by_id = item.get("id").and_then(|x| x.as_str())
-                            != Some("tts-hub-cursor-integration");
-                        let by_cmd = item
-                            .get("command")
-                            .and_then(|c| {
-                                if let Some(s) = c.as_str() {
-                                    Some(!s.contains("cursor-tts.ps1"))
-                                } else if let Some(a) = c.as_array() {
-                                    Some(!a.iter().any(|p| {
-                                        p.as_str().map(|s| s.contains("cursor-tts.ps1")).unwrap_or(false)
-                                    }))
-                                } else {
-                                    None
-                                }
-                            })
-                            .unwrap_or(true);
-                        by_id && by_cmd
-                    });
-                }
+        let mut hooks = extract_hooks_map(&v);
+        for key in ["afterAgentResponse", "stop"] {
+            if let Some(serde_json::Value::Array(arr)) = hooks.get_mut(key) {
+                arr.retain(|item| !is_our_hook_entry(item));
             }
         }
-        atomic_write(&hooks_json, &serde_json::to_string_pretty(&v)?)?;
+        atomic_write(&hooks_json, &serde_json::to_string_pretty(&wrap_hooks_json(hooks))?)?;
     }
 
     let mut removed_ps1 = false;

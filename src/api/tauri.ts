@@ -6,7 +6,19 @@ import type {
   CursorIntegrationStatus,
   CursorInstallReport,
 } from "../appSettings";
-import type { AudioFormat, GenerateRequest, Generation, HistoryScope, JobScope } from "../types";
+import type {
+  ArchiveFolder,
+  ArchiveTag,
+  AudioFormat,
+  FolderFilterId,
+  FolderRule,
+  FolderRuleInput,
+  GenerateRequest,
+  Generation,
+  HistoryScope,
+  JobScope,
+  UsageSummary,
+} from "../types";
 import type { TtsModelInfo } from "../ttsModels";
 
 /** Enqueue a generation. Returns the persisted row with status='queued'. */
@@ -14,8 +26,76 @@ export async function generate(req: GenerateRequest): Promise<Generation> {
   return invoke<Generation>("generate", { req });
 }
 
-export async function listHistory(scope: HistoryScope): Promise<Generation[]> {
-  return invoke<Generation[]>("list_history", { scope });
+export async function listHistory(
+  scope: HistoryScope,
+  folderId?: FolderFilterId | null,
+): Promise<Generation[]> {
+  return invoke<Generation[]>("list_history", {
+    scope,
+    folderId: folderId ?? null,
+  });
+}
+
+export async function listFolders(): Promise<ArchiveFolder[]> {
+  return invoke<ArchiveFolder[]>("list_folders");
+}
+
+export async function listTags(): Promise<ArchiveTag[]> {
+  return invoke<ArchiveTag[]>("list_tags");
+}
+
+export async function createTag(name: string, color?: string | null): Promise<ArchiveTag> {
+  return invoke<ArchiveTag>("create_tag", { name, color: color ?? null });
+}
+
+export async function renameTag(id: string, newName: string): Promise<ArchiveTag> {
+  return invoke<ArchiveTag>("rename_tag", { id, newName });
+}
+
+export async function deleteTag(id: string): Promise<void> {
+  return invoke("delete_tag", { id });
+}
+
+export async function setGenerationTags(
+  generationId: string,
+  tagIds: string[],
+): Promise<Generation> {
+  return invoke<Generation>("set_generation_tags", { generationId, tagIds });
+}
+
+export async function createFolder(name: string, color?: string | null): Promise<ArchiveFolder> {
+  return invoke<ArchiveFolder>("create_folder", { name, color: color ?? null });
+}
+
+export async function renameFolder(id: string, newName: string): Promise<ArchiveFolder> {
+  return invoke<ArchiveFolder>("rename_folder", { id, newName });
+}
+
+export async function deleteFolder(id: string, mode: "unassign" | "delete_items"): Promise<void> {
+  return invoke("delete_folder", { id, mode });
+}
+
+export async function moveToFolder(
+  generationId: string,
+  folderId: string | null,
+): Promise<Generation> {
+  return invoke<Generation>("move_to_folder", { generationId, folderId });
+}
+
+export async function listFolderRules(): Promise<FolderRule[]> {
+  return invoke<FolderRule[]>("list_folder_rules");
+}
+
+export async function upsertFolderRule(rule: FolderRuleInput): Promise<FolderRule> {
+  return invoke<FolderRule>("upsert_folder_rule", { rule });
+}
+
+export async function deleteFolderRule(id: string): Promise<void> {
+  return invoke("delete_folder_rule", { id });
+}
+
+export async function getTokenUsage(): Promise<UsageSummary> {
+  return invoke<UsageSummary>("get_token_usage");
 }
 
 export async function listJobs(scope: JobScope): Promise<Generation[]> {
@@ -50,12 +130,31 @@ export async function updateGenerationTitle(id: string, title: string): Promise<
   return invoke<Generation>("update_generation_title", { id, title });
 }
 
+export async function updateGenerationUiColor(
+  id: string,
+  uiColor: string | null,
+): Promise<Generation> {
+  return invoke<Generation>("update_generation_ui_color", { id, uiColor });
+}
+
 export async function deleteGeneration(id: string): Promise<void> {
   return invoke("delete_generation", { id });
 }
 
+export async function readTextFile(path: string): Promise<string> {
+  return invoke<string>("read_text_file", { path });
+}
+
+export async function exportGenerationToPath(id: string, destPath: string): Promise<void> {
+  return invoke("export_generation_to_path", { id, destPath });
+}
+
 export async function revealInExplorer(path: string): Promise<void> {
   return invoke("reveal_in_explorer", { path });
+}
+
+export async function copyGenerationAudioToClipboard(id: string): Promise<void> {
+  return invoke("copy_generation_audio_to_clipboard", { id });
 }
 
 export async function openArchiveFolder(): Promise<void> {
@@ -74,6 +173,19 @@ export async function pickTempFolder(): Promise<string | null> {
   return invoke<string | null>("pick_temp_folder");
 }
 
+export interface ClearLocalDataResult {
+  removedGenerations: number;
+  bytesRemoved: number;
+}
+
+export async function getClearLocalDataConfirmationWord(): Promise<string> {
+  return invoke<string>("get_clear_local_data_confirmation_word");
+}
+
+export async function clearLocalAppData(confirmation: string): Promise<ClearLocalDataResult> {
+  return invoke<ClearLocalDataResult>("clear_local_app_data", { confirmation });
+}
+
 export async function getAppSettings(): Promise<AppSettingsView> {
   return invoke<AppSettingsView>("get_app_settings");
 }
@@ -82,12 +194,158 @@ export async function setAppSettings(settings: AppSettings): Promise<AppSettings
   return invoke<AppSettingsView>("set_app_settings", { settings });
 }
 
+export interface ProbeResult {
+  ok: boolean;
+  message: string;
+  model_count?: number;
+}
+
+export async function probeGoogle(apiKey: string): Promise<ProbeResult> {
+  return invoke<ProbeResult>("probe_google", { apiKey });
+}
+
+export async function probeVoicebox(baseUrl: string): Promise<ProbeResult> {
+  return invoke<ProbeResult>("probe_voicebox", { baseUrl });
+}
+
+export async function probeMinimax(apiKey: string): Promise<ProbeResult> {
+  return invoke<ProbeResult>("probe_minimax", { apiKey });
+}
+
+export async function openQuickSetupWindow(): Promise<void> {
+  return invoke("open_quick_setup_window");
+}
+
+export async function closeQuickSetupWindow(): Promise<void> {
+  return invoke("close_quick_setup_window");
+}
+
+export async function testQuickHotkeyPreset(presetId: string): Promise<Generation> {
+  return invoke<Generation>("test_quick_hotkey_preset", { presetId });
+}
+
 export async function listVoices(): Promise<string[]> {
   return invoke<string[]>("list_voices");
 }
 
 export async function listModels(): Promise<TtsModelInfo[]> {
   return invoke<TtsModelInfo[]>("list_models");
+}
+
+export interface VoiceBoxHealth {
+  status: string;
+  model_loaded: boolean;
+  model_downloaded: boolean | null;
+  model_size: string | null;
+  gpu_available: boolean;
+  gpu_type: string | null;
+  vram_used_mb: number | null;
+  backend_type: string | null;
+  backend_variant: string | null;
+  gpu_compatibility_warning: string | null;
+}
+
+export interface VoiceBoxProfile {
+  id: string;
+  name: string;
+  description: string | null;
+  language: string;
+  default_engine: string | null;
+  personality: string | null;
+  generation_count: number;
+  sample_count: number;
+}
+
+export async function voiceboxHealth(): Promise<VoiceBoxHealth> {
+  return invoke<VoiceBoxHealth>("voicebox_health");
+}
+
+export async function listVoiceboxProfiles(): Promise<VoiceBoxProfile[]> {
+  return invoke<VoiceBoxProfile[]>("list_voicebox_profiles");
+}
+
+export async function listVoiceboxModels(): Promise<TtsModelInfo[]> {
+  return invoke<TtsModelInfo[]>("list_voicebox_models");
+}
+
+export interface MinimaxHealth {
+  configured: boolean;
+  ok: boolean;
+  message: string;
+}
+
+export interface MinimaxModelInfo {
+  id: string;
+  display_name: string;
+}
+
+export interface MinimaxLanguageInfo {
+  code: string;
+  language_boost: string;
+  display_name: string;
+}
+
+export interface MinimaxPresetVoice {
+  voice_id: string;
+  display_name: string;
+  language: string;
+}
+
+export interface MinimaxClonedVoice {
+  voice_id: string;
+  name: string;
+  created_at: number;
+}
+
+export interface MinimaxSyncVoicesResult {
+  system_count: number;
+  cloning_count: number;
+  generation_count: number;
+  synced_at: number;
+}
+
+export async function minimaxHealth(): Promise<MinimaxHealth> {
+  return invoke<MinimaxHealth>("minimax_health");
+}
+
+export function listMinimaxModels(): Promise<MinimaxModelInfo[]> {
+  return invoke<MinimaxModelInfo[]>("list_minimax_models");
+}
+
+export function listMinimaxLanguages(): Promise<MinimaxLanguageInfo[]> {
+  return invoke<MinimaxLanguageInfo[]>("list_minimax_languages");
+}
+
+export function listMinimaxPresetVoices(): Promise<MinimaxPresetVoice[]> {
+  return invoke<MinimaxPresetVoice[]>("list_minimax_preset_voices");
+}
+
+export async function listMinimaxClonedVoices(): Promise<MinimaxClonedVoice[]> {
+  return invoke<MinimaxClonedVoice[]>("list_minimax_cloned_voices");
+}
+
+export async function syncMinimaxVoices(): Promise<MinimaxSyncVoicesResult> {
+  return invoke<MinimaxSyncVoicesResult>("sync_minimax_voices");
+}
+
+export async function minimaxCloneVoice(params: {
+  sourcePath: string;
+  voiceId: string;
+  name: string;
+  model: string;
+  previewText: string;
+  promptPath?: string | null;
+  promptText?: string | null;
+}): Promise<MinimaxClonedVoice> {
+  return invoke<MinimaxClonedVoice>("minimax_clone_voice", {
+    source_path: params.sourcePath,
+    voice_id: params.voiceId,
+    name: params.name,
+    model: params.model,
+    preview_text: params.previewText,
+    prompt_path: params.promptPath ?? null,
+    prompt_text: params.promptText ?? null,
+  });
 }
 
 export interface VoiceSampleInfo {
@@ -139,6 +397,125 @@ export async function setCursorDnd(minutes: number): Promise<number | null> {
 
 export async function exportCursorHookConfig(): Promise<string> {
   return invoke<string>("export_cursor_hook_config");
+}
+
+export interface SkinListEntry {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  source: "builtin" | "custom";
+  dir_path?: string;
+}
+
+export interface SkinManifestPayload {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  extends?: string;
+  tokens?: Record<string, string>;
+  css?: string;
+  icons?: { filter?: string; variant?: string };
+  registry?: {
+    homepage?: string;
+    update_url?: string;
+    manifest_url?: string;
+  };
+}
+
+export interface CustomSkinLoaded {
+  manifest: SkinManifestPayload;
+  dir_path: string;
+  css_text?: string;
+}
+
+export async function listCustomSkins(): Promise<SkinListEntry[]> {
+  return invoke<SkinListEntry[]>("list_custom_skins");
+}
+
+export async function readCustomSkin(skinId: string): Promise<CustomSkinLoaded> {
+  return invoke<CustomSkinLoaded>("read_custom_skin", { skinId });
+}
+
+export async function installSkinArchive(
+  archivePath: string,
+  overwrite = false,
+): Promise<string> {
+  return invoke<string>("install_skin_archive", { archivePath, overwrite });
+}
+
+export async function exportSkin(skinId: string, destPath: string): Promise<void> {
+  return invoke("export_skin", { skinId, destPath });
+}
+
+export async function openSkinsFolder(): Promise<void> {
+  return invoke("open_skins_folder");
+}
+
+export async function pickSkinArchive(): Promise<string | null> {
+  return invoke<string | null>("pick_skin_archive");
+}
+
+export async function pickSkinExportPath(skinId: string): Promise<string | null> {
+  return invoke<string | null>("pick_skin_export_path", { skinId });
+}
+
+export type AvatarInfo = {
+  exists: boolean;
+  path: string | null;
+};
+
+export async function readImageFileBase64(path: string): Promise<string> {
+  return invoke<string>("read_image_file_base64", { path });
+}
+
+export async function listSourceAvatars(): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>("list_source_avatars");
+}
+
+export async function getSourceAvatar(source: string): Promise<AvatarInfo> {
+  return invoke<AvatarInfo>("get_source_avatar", { source });
+}
+
+export async function getVoiceAvatar(provider: string, voiceId: string): Promise<AvatarInfo> {
+  return invoke<AvatarInfo>("get_voice_avatar", { provider, voiceId });
+}
+
+export async function saveSourceAvatar(source: string, imageBase64: string): Promise<string> {
+  return invoke<string>("save_source_avatar", { source, imageBase64 });
+}
+
+export async function saveVoiceAvatar(
+  provider: string,
+  voiceId: string,
+  imageBase64: string,
+): Promise<string> {
+  return invoke<string>("save_voice_avatar", { provider, voiceId, imageBase64 });
+}
+
+export async function deleteSourceAvatar(source: string): Promise<void> {
+  return invoke("delete_source_avatar", { source });
+}
+
+export async function deleteVoiceAvatar(provider: string, voiceId: string): Promise<void> {
+  return invoke("delete_voice_avatar", { provider, voiceId });
+}
+
+export async function pickAvatarImage(): Promise<string | null> {
+  return invoke<string | null>("pick_avatar_image");
+}
+
+export async function openAvatarsFolder(): Promise<void> {
+  return invoke("open_avatars_folder");
+}
+
+export async function appRestart(): Promise<void> {
+  await invoke("app_restart");
+}
+
+export async function appExit(): Promise<void> {
+  return invoke("app_exit");
 }
 
 /** Local HTTP API (see src-tauri http_api.rs). Reliable for <audio> in the Tauri webview. */

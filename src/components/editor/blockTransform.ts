@@ -112,18 +112,20 @@ export function docToBlocks(
 export interface FlattenOptions {
   skipDisabled?: boolean;
   skipCode?: boolean;
+  skipBlockquote?: boolean;
 }
 
 export function blocksToPlainText(
   blocks: Block[],
   opts: FlattenOptions = {},
 ): string {
-  const { skipDisabled = true, skipCode = true } = opts;
+  const { skipDisabled = true, skipCode = true, skipBlockquote = false } = opts;
   const parts: string[] = [];
   for (const b of blocks) {
     if (skipDisabled && !b.included) continue;
     if (b.kind === "hr") continue;
     if (b.kind === "code" && skipCode) continue;
+    if (b.kind === "blockquote" && skipBlockquote) continue;
     const t = b.text.trim();
     if (!t) continue;
     parts.push(t);

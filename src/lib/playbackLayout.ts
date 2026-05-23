@@ -1,5 +1,3 @@
-/** Shared grid for PlaybackBar: left metadata | centered waveform | right details */
+/** Top row of PlaybackBar: metadata (left) | details (right). Waveform is a full-width row below. */
 export const PLAYBACK_BAR_GRID =
-  "grid grid-cols-[minmax(200px,280px)_1fr_minmax(180px,240px)] items-center gap-3";
-
-export const WAVEFORM_MAX_WIDTH = "max-w-[760px]";
+  "grid grid-cols-[minmax(200px,1fr)_minmax(180px,240px)] items-start gap-3";

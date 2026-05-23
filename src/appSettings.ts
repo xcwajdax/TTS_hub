@@ -1,6 +1,33 @@
 import type { AudioFormat } from "./types";
+import type { TextFiltersSettings } from "./lib/textFiltersTypes";
+import {
+  DEFAULT_TIMELINE_VIEW,
+  normalizeTimelineViewMode,
+  type TimelineViewMode,
+} from "./lib/timelineView";
+
+export type { TimelineViewMode };
+
+export type {
+  BuiltinFilterToggles,
+  CustomTextFilter,
+  TextFilterPreset,
+  TextFiltersSettings,
+  BuiltinFilterOverrides,
+} from "./lib/textFiltersTypes";
+export {
+  DEFAULT_BUILTIN_TOGGLES,
+  defaultTextFiltersSettings,
+  newCustomFilter,
+  newTextFilterPreset,
+  resolveActivePreset,
+} from "./lib/textFiltersTypes";
 
 export type SaveMode = "manual" | "auto";
+
+export type TtsProviderId = "google" | "voicebox" | "minimax";
+
+export const ALL_TTS_PROVIDERS: TtsProviderId[] = ["google", "voicebox", "minimax"];
 
 export interface ApiProfile {
   id: string;
@@ -12,9 +39,17 @@ export interface CursorIntegration {
   enabled: boolean;
   autoplay: boolean;
   max_sentences: number;
+  provider: string;
   model: string;
   voice: string;
   style: string | null;
+  format: string | null;
+  profile_id: string | null;
+  language: string | null;
+  engine: string | null;
+  minimax_speed: number | null;
+  minimax_vol: number | null;
+  minimax_pitch: number | null;
   use_summary_markers: boolean;
   dnd_until_ts: number | null;
   last_install_ts: number | null;
@@ -25,12 +60,164 @@ export function defaultCursorIntegration(): CursorIntegration {
     enabled: false,
     autoplay: true,
     max_sentences: 10,
-    model: "gemini-2.5-flash-preview-tts",
-    voice: "Kore",
-    style: "Powiedz spokojnie po polsku:",
+    provider: "minimax",
+    model: "speech-2.8-hd",
+    voice: "Polish_female_1_sample1",
+    style: null,
+    format: "mp3",
+    profile_id: null,
+    language: "pl",
+    engine: null,
+    minimax_speed: 1,
+    minimax_vol: 1,
+    minimax_pitch: 0,
     use_summary_markers: true,
     dnd_until_ts: null,
     last_install_ts: null,
+  };
+}
+
+export interface MinimaxPresetVoice {
+  voice_id: string;
+  display_name: string;
+  language: string;
+}
+
+export interface MinimaxClonedVoice {
+  voice_id: string;
+  name: string;
+  created_at: number;
+}
+
+export interface QuickHotkeyPreset {
+  id: string;
+  enabled: boolean;
+  name: string;
+  shortcut: string;
+  provider: string;
+  model: string;
+  voice: string;
+  style: string | null;
+  profile_id: string | null;
+  language: string | null;
+  engine: string | null;
+  minimax_speed: number | null;
+  minimax_vol: number | null;
+  minimax_pitch: number | null;
+  load_editor: boolean;
+  autoplay: boolean;
+  filter_preset_id: string | null;
+  format: string | null;
+}
+
+export interface QuickHotkeysSettings {
+  enabled: boolean;
+  presets: QuickHotkeyPreset[];
+}
+
+export function defaultQuickHotkeyPreset(name = "Szybki TTS"): QuickHotkeyPreset {
+  return {
+    id: crypto.randomUUID(),
+    enabled: true,
+    name,
+    shortcut: "Ctrl+Alt+1",
+    provider: "google",
+    model: "gemini-2.5-flash-preview-tts",
+    voice: "Kore",
+    style: "Powiedz spokojnie po polsku:",
+    profile_id: null,
+    language: "pl",
+    engine: null,
+    minimax_speed: 1,
+    minimax_vol: 1,
+    minimax_pitch: 0,
+    load_editor: false,
+    autoplay: true,
+    filter_preset_id: null,
+    format: null,
+  };
+}
+
+export function defaultQuickHotkeysSettings(): QuickHotkeysSettings {
+  return {
+    enabled: false,
+    presets: [defaultQuickHotkeyPreset()],
+  };
+}
+
+/** Slot szybkiej generacji z paska edytora (Gen Ust 1 / 2). */
+export interface EditorQuickGenSlot {
+  label: string;
+  provider: string;
+  model: string;
+  voice: string;
+  style: string | null;
+  profile_id: string | null;
+  language: string | null;
+  engine: string | null;
+  minimax_speed: number | null;
+  minimax_vol: number | null;
+  minimax_pitch: number | null;
+  filter_preset_id: string | null;
+  format: string | null;
+}
+
+export interface EditorQuickGenSettings {
+  slot1: EditorQuickGenSlot;
+  slot2: EditorQuickGenSlot;
+}
+
+export function defaultEditorQuickGenSlot(label: string): EditorQuickGenSlot {
+  return {
+    label,
+    provider: "google",
+    model: "gemini-2.5-flash-preview-tts",
+    voice: "Kore",
+    style: "Powiedz spokojnie po polsku:",
+    profile_id: null,
+    language: "pl",
+    engine: null,
+    minimax_speed: 1,
+    minimax_vol: 1,
+    minimax_pitch: 0,
+    filter_preset_id: null,
+    format: null,
+  };
+}
+
+export function defaultEditorQuickGenSettings(): EditorQuickGenSettings {
+  return {
+    slot1: defaultEditorQuickGenSlot("Gen Ust 1"),
+    slot2: defaultEditorQuickGenSlot("Gen Ust 2"),
+  };
+}
+
+/** Mapowanie widoku ustawień na payload zapisu (wszystkie pola AppSettings). */
+export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
+  return {
+    save_mode: view.save_mode,
+    save_format: view.save_format,
+    temp_path: view.temp_path,
+    archive_path: view.archive_path,
+    api_profiles: view.api_profiles,
+    active_api_id: view.active_api_id,
+    cursor_integration: view.cursor_integration,
+    max_concurrent_jobs: view.max_concurrent_jobs,
+    active_skin_id: view.active_skin_id,
+    skin_registry_urls: view.skin_registry_urls ?? [],
+    text_filters: view.text_filters,
+    minimax_cloned_voices: view.minimax_cloned_voices,
+    minimax_synced_voices: view.minimax_synced_voices,
+    minimax_voices_synced_at: view.minimax_voices_synced_at ?? null,
+    quick_hotkeys: view.quick_hotkeys,
+    editor_quick_gen: view.editor_quick_gen ?? defaultEditorQuickGenSettings(),
+    quick_setup_completed: view.quick_setup_completed,
+    enabled_providers: view.enabled_providers,
+    minimax_enabled_languages: view.minimax_enabled_languages,
+    voicebox_base_url: view.voicebox_base_url ?? null,
+    minimax_api_key: view.minimax_api_key ?? null,
+    temp_history_max: view.temp_history_max ?? DEFAULT_TEMP_HISTORY_MAX,
+    timeline_view: normalizeTimelineViewMode(view.timeline_view),
   };
 }
 
@@ -43,11 +230,38 @@ export interface AppSettings {
   active_api_id: string | null;
   cursor_integration: CursorIntegration;
   max_concurrent_jobs: number;
+  active_skin_id: string;
+  skin_registry_urls: string[];
+  text_filters?: TextFiltersSettings;
+  minimax_cloned_voices?: MinimaxClonedVoice[];
+  minimax_synced_voices?: MinimaxPresetVoice[];
+  minimax_voices_synced_at?: number | null;
+  quick_hotkeys?: QuickHotkeysSettings;
+  editor_quick_gen?: EditorQuickGenSettings;
+  quick_setup_completed?: boolean;
+  enabled_providers?: TtsProviderId[];
+  /** Hub codes (`pl`, `en`). Empty = all catalog languages. */
+  minimax_enabled_languages?: string[];
+  voicebox_base_url?: string | null;
+  minimax_api_key?: string | null;
+  /** Max temp history from prior app sessions; current session always kept in full. */
+  temp_history_max?: number;
+  /** Main playback bar waveform style: bars | bars-detailed | line */
+  timeline_view?: TimelineViewMode;
 }
+
+export { DEFAULT_TIMELINE_VIEW };
+
+export const DEFAULT_MINIMAX_LANGUAGE = "pl";
+export const DEFAULT_MINIMAX_VOICE_ID = "Polish_female_1_sample1";
 
 export const MIN_CONCURRENT_JOBS = 1;
 export const MAX_CONCURRENT_JOBS = 8;
 export const DEFAULT_MAX_CONCURRENT_JOBS = 3;
+
+export const MIN_TEMP_HISTORY_MAX = 10;
+export const MAX_TEMP_HISTORY_MAX = 500;
+export const DEFAULT_TEMP_HISTORY_MAX = 100;
 
 export interface CursorIntegrationStatus {
   api_ok: boolean;
@@ -72,6 +286,18 @@ export interface AppSettingsView extends AppSettings {
   effective_temp_path: string;
   effective_archive_path: string;
   env_api_key_available: boolean;
+  env_minimax_api_key_available: boolean;
+  effective_voicebox_url: string;
+  env_voicebox_url: string;
+  effective_minimax_configured: boolean;
+}
+
+export function isProviderEnabled(
+  enabled: TtsProviderId[] | undefined,
+  id: TtsProviderId,
+): boolean {
+  if (!enabled || enabled.length === 0) return true;
+  return enabled.includes(id);
 }
 
 export function newApiProfile(name = "Profil API", apiKey = ""): ApiProfile {

@@ -6,9 +6,10 @@ interface Props {
   size?: number;
   className?: string;
   spin?: boolean;
+  title?: string;
 }
 
-export default function Icon({ name, size = 32, className = "", spin = false }: Props) {
+export default function Icon({ name, size = 32, className = "", spin = false, title }: Props) {
   return (
     <img
       src={ICON_SRC[name]}
@@ -16,8 +17,9 @@ export default function Icon({ name, size = 32, className = "", spin = false }: 
       width={size}
       height={size}
       draggable={false}
+      title={title}
       className={`vl-icon block shrink-0 ${spin ? "animate-spin" : ""} ${className}`.trim()}
-      aria-hidden
+      aria-hidden={title ? undefined : true}
     />
   );
 }

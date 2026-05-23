@@ -1,32 +1,17 @@
 {
-  "afterAgentResponse": [
-    {
-      "id": "tts-hub-cursor-integration",
-      "command": [
-        "pwsh.exe",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy", "Bypass",
-        "-File", "{{PS1_PATH}}",
-        "-Phase", "capture"
-      ],
-      "timeout_ms": 3000
-    }
-  ],
-  "stop": [
-    {
-      "id": "tts-hub-cursor-integration",
-      "command": [
-        "pwsh.exe",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy", "Bypass",
-        "-File", "{{PS1_PATH}}",
-        "-Phase", "speak"
-      ],
-      "timeout_ms": 5000
-    }
-  ]
+  "version": 1,
+  "hooks": {
+    "afterAgentResponse": [
+      {
+        "command": "pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{{PS1_PATH}}\" -Phase capture",
+        "timeout": 3
+      }
+    ],
+    "stop": [
+      {
+        "command": "pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{{PS1_PATH}}\" -Phase speak",
+        "timeout": 5
+      }
+    ]
+  }
 }

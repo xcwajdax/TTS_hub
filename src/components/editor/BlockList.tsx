@@ -68,7 +68,7 @@ export default function BlockList({ blocks, onToggle, onFocusBlock, className }:
               </div>
               <div
                 className={`truncate mt-0.5 ${
-                  b.included ? "text-[#e6e8ee]" : "text-muted line-through"
+                  b.included ? "text-ink" : "text-muted line-through"
                 }`}
               >
                 {preview(b.text)}

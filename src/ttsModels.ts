@@ -17,5 +17,12 @@ export function formatModelLabel(modelId: string, models?: TtsModelInfo[]): stri
   if (known) return known.display_name;
   const fallback = FALLBACK_TTS_MODELS.find((m) => m.id === modelId);
   if (fallback) return fallback.display_name;
+  if (modelId.startsWith("voicebox:")) {
+    const engine = modelId.slice("voicebox:".length).replace(/_/g, " ");
+    return `Voice Box ${engine}`;
+  }
+  if (modelId.startsWith("minimax:")) {
+    return `Minimax ${modelId.slice("minimax:".length)}`;
+  }
   return modelId;
 }

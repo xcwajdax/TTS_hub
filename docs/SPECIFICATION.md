@@ -46,13 +46,13 @@ Proporcje siatki (desktop):
 
 ### 4.2 Odtwarzanie
 
-- **Waveform** z seekiem, czasem, głośnością i wyciszeniem.
+- **Waveform** z seekiem, czasem, głośnością i wyciszeniem; trzy tryby wizualizacji (słupki, słupki szczegółowe, linia fali), wybór w ustawieniach Wygląd, menu PPM na timeline lub domyślnie ze skórki (`preferences.timeline_view`).
 - Metadane: model, głos, format, statystyki tekstu (znaki, słowa, tempo).
 - Nawigacja po sesji (indeks X/Y).
 
 ### 4.3 Historia
 
-- **Sesja** — generacje bieżącego uruchomienia (folder `temp/`).
+- **Sesja** — niezarchiwizowane generacje w folderze `temp/` (bieżące uruchomienie oraz poprzednie, do limitu `temp_history_max` w ustawieniach). Lista w UI jest pogrupowana po sesjach (bieżąca na górze) i datach. Bieżąca sesja nie jest obcinana przez limit; najstarsze pozycje z poprzednich uruchomień są usuwane przy przekroczeniu limitu.
 - **Archiwum** — trwałe zapisy po akcji „Zapisz do archiwum”.
 - Edycja tytułu, rozwijany tekst, czas względny.
 - Akcje: Odtwórz, Zapisz (format z ustawień), Usuń, Pokaż w eksploratorze.
@@ -69,6 +69,7 @@ Proporcje siatki (desktop):
 - Tryb zapisu: **ręczny** / **automatyczny** do archiwum.
 - Format zapisu: WAV / MP3 / OGG.
 - Własne ścieżki folderów **temp** i **archive**.
+- **Maks. generacji w historii sesji (temp)** — limit globalny dla poprzednich uruchomień (domyślnie 100, zakres 10–500).
 
 ## 5. Modele TTS (domyślny zestaw)
 
@@ -114,3 +115,5 @@ Szczegóły: [API.md](./API.md) — port **8765**, brak auth, tylko loopback.
 - [ ] CI (build + lint).
 - [ ] Oficjalna licencja open source.
 - [ ] Instalator z podpisem kodu (Windows).
+- [ ] **Node Audio Routing** — node-owy edytor routingu audio + realtime mixer (`cpal`) + wirtualny mikrofon przez auto-detekcję VB-CABLE/VoiceMeeter. Node'y: TTS / mic / file / loopback → gain / mixer / ducking / EQ-comp-gate → speakers / file / virtual mic. Plan: [.cursor/plans/node-audio-routing.plan.md](../.cursor/plans/node-audio-routing.plan.md).
+- [ ] **VS Code / Cursor extension (TTS Hub)** — opcjonalna migracja cienkiej integracji z hook/skill do rozszerzenia VS Code: wykrywanie `<!-- tts-summary -->`, wywołanie lokalnego API Hub, status bar i ustawienia; logika syntezy pozostaje w aplikacji. Etapy: kryteria go/no-go → kontrakt API → MVP → współistnienie ze starym trybem → ewentualna dystrybucja VSIX. Plan: [.cursor/plans/vscode-cursor-extension.plan.md](../.cursor/plans/vscode-cursor-extension.plan.md).

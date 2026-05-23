@@ -12,12 +12,65 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "TTS Hub",
         "width": 1400,
         "height": 900,
         "minWidth": 1000,
         "minHeight": 600,
         "resizable": true,
+        "decorations": false,
+        "fullscreen": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
+      },
+      {
+        "label": "quick-setup",
+        "title": "TTS Hub — Szybka konfiguracja",
+        "width": 560,
+        "height": 680,
+        "minWidth": 480,
+        "minHeight": 520,
+        "resizable": true,
+        "visible": false,
+        "center": true,
+        "fullscreen": false
+      },
+      {
+        "label": "quick-hotkey-toast",
+        "title": "TTS Hub — skrót",
+        "width": 352,
+        "height": 168,
+        "minWidth": 280,
+        "minHeight": 72,
+        "maxWidth": 400,
+        "maxHeight": 420,
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "fullscreen": false
+      },
+      {
+        "label": "playback-toast",
+        "title": "TTS Hub — odtwarzanie",
+        "width": 320,
+        "height": 196,
+        "minWidth": 280,
+        "minHeight": 160,
+        "maxWidth": 400,
+        "maxHeight": 240,
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
         "fullscreen": false
       }
     ],
@@ -32,6 +85,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": ["../.cursor-hooks/"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

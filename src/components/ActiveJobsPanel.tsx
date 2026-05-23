@@ -1,7 +1,8 @@
 import { cancelJob, discardJob, resumeJob } from "../api/tauri";
-import { PHASE_LABEL, useJobs, type TrackedJob } from "../context/JobsContext";
+import { useJobs, type TrackedJob } from "../context/JobsContext";
 import type { Generation } from "../types";
-
+import JobProgressCard from "./JobProgressCard";
+import { providerDisplayName } from "../lib/jobProgressUi";
 
 interface Props {
   interrupted: Generation[];
@@ -9,49 +10,20 @@ interface Props {
   onError: (e: string) => void;
 }
 
-function fmtTime(ms: number): string {
-  if (!isFinite(ms) || ms < 0) ms = 0;
-  return `${(Math.round(ms / 100) / 10).toFixed(1)}s`;
-}
-
 function ActiveJobRow({ job, onCancel }: { job: TrackedJob; onCancel: () => void }) {
-  const active = job.status === "queued" || job.status === "running";
-  const pct =
-    active && job.etaMs > 0
-      ? Math.min(99, Math.round((job.elapsedMs / job.etaMs) * 100))
-      : 0;
-  const label = job.status === "queued" ? "W kolejce" : PHASE_LABEL[job.phase];
   return (
-    <div className="rounded-md border border-border bg-panel2/60 px-2 py-1.5 flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1 truncate text-xs" title={job.text}>
-          {job.title?.trim() || job.text.split("\n")[0] || "(bez tytułu)"}
-        </div>
-        <button
-          type="button"
-          className="text-[11px] text-muted hover:text-red-300"
-          onClick={onCancel}
-          title="Anuluj"
-        >
-          Anuluj
-        </button>
-      </div>
-      <div className="flex items-center justify-between text-[10px] text-muted">
-        <span>{label}</span>
-        <span className="tabular-nums">
-          {fmtTime(job.elapsedMs)}
-          {active && job.etaMs > 0 ? ` / ~${fmtTime(job.etaMs)}` : ""}
-        </span>
-      </div>
-      <div className="h-1 w-full bg-panel rounded overflow-hidden">
-        <div
-          className={`h-full transition-[width] duration-200 ease-out ${
-            job.status === "queued" ? "bg-muted/60" : "bg-accent"
-          }`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
+    <JobProgressCard
+      title={job.title?.trim() || job.text.split("\n")[0] || "(bez tytułu)"}
+      subtitle={job.source === "quick_hotkey" ? `Skrót · ${providerDisplayName(job.provider)}` : providerDisplayName(job.provider)}
+      status={job.status}
+      phase={job.phase}
+      provider={job.provider}
+      elapsedMs={job.elapsedMs}
+      etaMs={job.etaMs}
+      error={job.error}
+      onCancel={onCancel}
+      compact
+    />
   );
 }
 

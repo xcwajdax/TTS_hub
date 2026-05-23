@@ -49,7 +49,7 @@ Można opublikować **repozytorium z dokumentacją i kodem** już teraz, oznacza
 - [ ] GitHub Actions: `npm ci`, `npm run build`, `cargo check` w `src-tauri`.
 - [ ] Dependabot / Renovate.
 - [ ] Releases z artefaktami MSI/EXE z Actions.
-- [ ] CONTRIBUTING.md dla kontrybutorów.
+- [x] [PROJECT_GUIDELINES.md](PROJECT_GUIDELINES.md) — zasady pracy (zamiast CONTRIBUTING dla OSS).
 - [ ] Usunięcie warningu Rust `dead_code` (`new_api_profile`).
 
 ---

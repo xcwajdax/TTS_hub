@@ -4,6 +4,7 @@ import {
   formatDurationMs,
   speechRateCharsPerSec,
 } from "../lib/formatTime";
+import { getGenerationTokenUsage } from "../lib/tokenUsage";
 import type { Generation } from "../types";
 
 interface Props {
@@ -25,6 +26,7 @@ export default function PlaybackBarDetails({ gen, sessionIndex, sessionTotal }: 
   const wordCount = countWords(gen.text);
   const rate = speechRateCharsPerSec(charCount, gen.duration_ms);
   const styleLabel = gen.style?.trim();
+  const tokenUsage = getGenerationTokenUsage(gen);
 
   const showSession =
     sessionIndex != null &&
@@ -55,6 +57,17 @@ export default function PlaybackBarDetails({ gen, sessionIndex, sessionTotal }: 
           <>
             <span className="text-muted/60"> · </span>
             {sessionIndex + 1} / {sessionTotal}
+          </>
+        )}
+        {tokenUsage && (
+          <>
+            <span className="text-muted/60"> · </span>
+            <span title={tokenUsage.title}>
+              {tokenUsage.primary}
+              {tokenUsage.detail ? (
+                <span className="text-muted/70"> {tokenUsage.detail}</span>
+              ) : null}
+            </span>
           </>
         )}
       </div>

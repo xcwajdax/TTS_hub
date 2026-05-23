@@ -9,7 +9,7 @@ This folder contains the source files installed into `~/.cursor/` by the **Curso
 | Plik | Cel |
 |------|-----|
 | `cursor-tts.ps1`         | Główny skrypt: tryb `capture` (zapis odpowiedzi) i `speak` (ekstrakcja + POST do `/generate`). |
-| `hooks.json.template`    | Wzorzec wpisów `afterAgentResponse` + `stop` do scalenia z `~/.cursor/hooks.json`. |
+| `hooks.json.template`    | Wzorzec `version` + `hooks.{afterAgentResponse,stop}` do scalenia z `~/.cursor/hooks.json`. |
 | `tts-hub.json.example`   | Przykładowy `tts-hub.json` (config integracji eksportowany z UI). |
 
 ## Wymagania

@@ -1,0 +1,45 @@
+---
+description: Plany implementacji — akapit otwarcia w <!-- tts-summary --> na początku (TTS Hub)
+alwaysApply: true
+---
+
+# Plan — otwarcie z markerami TTS
+
+Przy **każdym nowym** planie implementacji (lista kroków, fazy, spec wykonania, plik `.cursor/plans/*.plan.md`, odpowiedź w trybie planowania) **zacznij od akapitu** opakowanego markerami — **przed** szczegółami (checklisty, pliki, diagramy).
+
+```
+<!-- tts-summary -->
+Krótkie otwarcie planu po polsku (3–8 zdań lub jeden zwarty akapit).
+<!-- /tts-summary -->
+```
+
+## Treść akapitu (wymagane punkty)
+
+Akapyt w markerach musi jasno powiedzieć (zgodnie z regułą executive opening):
+
+1. **Co się zmieni** — które części kodu, konfiguracji lub zachowania.
+2. **Co powstanie** — nowe pliki, moduły, API, UI, zależności (jeśli są).
+3. **Co się poprawi** — wydajność, UX, niezawodność, utrzymanie, poprawność.
+4. **Jak pójdzie praca** — kolejność kroków, kamienie milowe, weryfikacja; orientacyjny nakład pracy.
+
+Zasady jak przy podsumowaniach TTS: polski, druga osoba, **bez** kodu, backticków i list punktowanych **wewnątrz** markerów.
+
+## Kolejność w dokumencie
+
+| Kontekst | Gdzie wstawić blok |
+|----------|-------------------|
+| Odpowiedź w czacie (plan) | **Pierwsza** treść widoczna dla użytkownika, potem szczegóły |
+| Plik `.plan.md` z frontmatter YAML | **Tuż po** zamykającym `---` frontmatter, przed nagłówkami i treścią |
+| Rewizja planu | Zaktualizuj akapit w markerach, gdy zmienia się zakres lub kolejność prac |
+
+Po bloku otwarcia dopiero szczegółowy plan (sekcje, checklisty, tabele, mermaid itd.).
+
+## TTS Hub
+
+Gdy dostarczasz plan w **czacie**, po napisaniu bloku otwarcia uruchom (jak w `cursor-tts-summary.mdc`):
+
+`pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ".cursor/skills/tts-hub-speak/scripts/speak-summary.ps1" -SummaryText "<tekst z tego bloku otwarcia>"`
+
+Przy zapisie samego pliku `.plan.md` bez odpowiedzi w czacie — TTS opcjonalnie przy następnym podsumowaniu tury; w czacie z planem — **zawsze** odtwórz otwarcie.
+
+**Fail-open:** brak TTS Hub lub błąd skryptu nie blokuje pisania planu.

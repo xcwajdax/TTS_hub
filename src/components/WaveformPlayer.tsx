@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayback } from "../context/PlaybackContext";
+import {
+  TIMELINE_VIEW_CHANGE_EVENT,
+  useTimelineView,
+} from "../context/TimelineViewContext";
 import { useAudioWaveform } from "../hooks/useAudioWaveform";
 import { formatTime } from "../lib/formatTime";
+import {
+  formatPlaybackRateLabel,
+  PLAYBACK_RATE_OPTIONS,
+  type PlaybackRate,
+} from "../lib/playbackPrefs";
+import { timelineViewBarCount } from "../lib/timelineView";
 import { drawWaveform } from "../lib/waveformCanvas";
+import TimelineContextMenu from "./TimelineContextMenu";
 
 const DEFAULT_VOLUME = 0.8;
 const VOLUME_STORAGE_KEY = "tts-hub.playback.volume";
@@ -20,11 +31,14 @@ function readStoredVolume(): number {
 }
 
 export default function WaveformPlayer({ src, className = "" }: Props) {
-  const { audioRef, playing, togglePlay } = usePlayback();
+  const { audioRef, playing, togglePlay, seekTo, playbackRate, setPlaybackRate } = usePlayback();
+  const { mode: timelineMode } = useTimelineView();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
-  const { peaks, duration: decodedDuration, loading } = useAudioWaveform(src);
+  const barCount = timelineViewBarCount(timelineMode);
+  const { peaks, duration: decodedDuration, loading } = useAudioWaveform(src, barCount);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(readStoredVolume);
@@ -85,8 +99,20 @@ export default function WaveformPlayer({ src, className = "" }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawWaveform(ctx, w, h, peaks, progress);
-  }, [peaks, progress]);
+
+    drawWaveform(ctx, w, h, peaks, progress, timelineMode);
+  }, [peaks, progress, timelineMode]);
+
+  useEffect(() => {
+    const onSkin = () => draw();
+    const onTimeline = () => draw();
+    window.addEventListener("tts-hub-skin-change", onSkin);
+    window.addEventListener(TIMELINE_VIEW_CHANGE_EVENT, onTimeline);
+    return () => {
+      window.removeEventListener("tts-hub-skin-change", onSkin);
+      window.removeEventListener(TIMELINE_VIEW_CHANGE_EVENT, onTimeline);
+    };
+  }, [draw]);
 
   useEffect(() => {
     draw();
@@ -97,13 +123,22 @@ export default function WaveformPlayer({ src, className = "" }: Props) {
     return () => ro.disconnect();
   }, [draw]);
 
-  const seek = (clientX: number) => {
+  const seekAtClientX = (clientX: number) => {
     const audio = audioRef.current;
     const wrap = wrapRef.current;
-    if (!audio || !wrap || !duration) return;
+    if (!audio || !wrap) return;
+
     const rect = wrap.getBoundingClientRect();
+    if (rect.width <= 0) return;
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    audio.currentTime = ratio * duration;
+
+    const audioDuration =
+      Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;
+    const total = audioDuration ?? (duration > 0 ? duration : 0);
+    if (total <= 0) return;
+
+    seekTo(ratio * total);
+    setCurrentTime(audio.currentTime);
   };
 
   const changeVolume = (nextVolume: number) => {
@@ -122,77 +157,109 @@ export default function WaveformPlayer({ src, className = "" }: Props) {
   };
 
   return (
-    <div className={`relative flex w-full min-w-0 items-stretch gap-2 ${className}`}>
+    <div className={`flex flex-col gap-2 min-w-0 ${className}`}>
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
+        <button
+          type="button"
+          onClick={togglePlay}
+          disabled={loading}
+          className="shrink-0 w-8 h-8 rounded-full bg-panel2 border border-border flex items-center justify-center text-sm hover:border-accent hover:text-accent transition-colors disabled:opacity-40"
+          aria-label={playing ? "Pauza" : "Odtwarzaj"}
+        >
+          {loading ? (
+            <span className="w-3 h-3 border-2 border-muted border-t-accent rounded-full animate-spin" />
+          ) : playing ? (
+            "❚❚"
+          ) : (
+            "▶"
+          )}
+        </button>
+
+        <span className="text-[10px] tabular-nums text-muted shrink-0 min-w-[72px]">
+          {formatTime(currentTime)}
+          <span className="text-muted/60"> / </span>
+          {formatTime(duration)}
+        </span>
+
+        <div
+          className="flex h-8 shrink-0 items-center gap-2 px-2 rounded-lg border border-border bg-panel2 text-muted ml-auto"
+          aria-label="Sterowanie glosnoscia"
+        >
+          <button
+            type="button"
+            onClick={toggleMute}
+            className="w-7 h-7 rounded-md border border-border bg-panel/90 flex items-center justify-center text-xs hover:border-accent hover:text-accent transition-colors"
+            aria-label={effectiveMuted ? "Wlacz dzwiek" : "Wycisz"}
+            title={effectiveMuted ? "Wlacz dzwiek" : "Wycisz"}
+          >
+            {effectiveMuted ? "🔇" : volume < 0.5 ? "🔉" : "🔊"}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={volumePercent}
+            onChange={(e) => changeVolume(Number(e.currentTarget.value) / 100)}
+            className="w-20 cursor-pointer [accent-color:rgb(var(--color-accent2))]"
+            aria-label="Glosnosc"
+            aria-valuetext={`${volumePercent}%`}
+            title={`Glosnosc ${volumePercent}%`}
+          />
+          <span className="text-[10px] tabular-nums min-w-[34px] text-right">
+            {volumePercent}%
+          </span>
+        </div>
+
+        <label className="flex h-8 shrink-0 items-center gap-1.5 px-2 rounded-lg border border-border bg-panel2 text-muted">
+          <span className="text-[10px] whitespace-nowrap">Tempo</span>
+          <select
+            value={playbackRate}
+            onChange={(e) => setPlaybackRate(Number(e.currentTarget.value) as PlaybackRate)}
+            className="text-[10px] bg-panel border border-border rounded px-1 py-0.5 text-foreground cursor-pointer hover:border-accent focus:border-accent outline-none"
+            aria-label="Predkosc odtwarzania"
+            title="Globalna predkosc odtwarzania"
+          >
+            {PLAYBACK_RATE_OPTIONS.map((rate) => (
+              <option key={rate} value={rate}>
+                {formatPlaybackRateLabel(rate)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <div
         ref={wrapRef}
-        className="relative flex-1 min-w-0 h-11 rounded-lg border border-border bg-panel2 overflow-hidden cursor-pointer group"
-        onClick={(e) => {
-          if ((e.target as HTMLElement).closest("[data-no-seek]")) return;
-          seek(e.clientX);
+        className="relative w-full min-w-0 h-11 rounded-lg border border-border bg-panel2 overflow-hidden cursor-pointer group"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY });
         }}
-        role="slider"
-        aria-label="Pozycja odtwarzania"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          seekAtClientX(e.clientX);
+        }}
+        role="progressbar"
+        aria-label="Pozycja odtwarzania — kliknij, aby przeskoczyc; prawy przycisk: wyglad"
         aria-valuemin={0}
         aria-valuemax={duration}
         aria-valuenow={currentTime}
       >
         <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" aria-hidden />
-        <div className="absolute inset-0 bg-gradient-to-r from-bg/40 via-transparent to-bg/20 pointer-events-none" />
-
-        <div className="relative z-10 flex items-center gap-2 h-full px-2">
-          <button
-            type="button"
-            data-no-seek
-            onClick={togglePlay}
-            disabled={loading}
-            className="shrink-0 w-8 h-8 rounded-full bg-panel/90 border border-border flex items-center justify-center text-sm hover:border-accent hover:text-accent transition-colors disabled:opacity-40"
-            aria-label={playing ? "Pauza" : "Odtwarzaj"}
-          >
-            {loading ? (
-              <span className="w-3 h-3 border-2 border-muted border-t-accent rounded-full animate-spin" />
-            ) : playing ? (
-              "❚❚"
-            ) : (
-              "▶"
-            )}
-          </button>
-
-          <span className="text-[10px] tabular-nums text-muted shrink-0 min-w-[72px]" data-no-seek>
-            {formatTime(currentTime)}
-            <span className="text-muted/60"> / </span>
-            {formatTime(duration)}
-          </span>
-        </div>
+        {timelineMode !== "line" && (
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/40 via-transparent to-bg/20 pointer-events-none" />
+        )}
       </div>
 
-      <div
-        className="flex h-11 shrink-0 items-center gap-2 px-2 rounded-lg border border-border bg-panel2 text-muted"
-        aria-label="Sterowanie glosnoscia"
-      >
-        <button
-          type="button"
-          onClick={toggleMute}
-          className="w-8 h-8 rounded-md border border-border bg-panel/90 flex items-center justify-center text-xs hover:border-accent hover:text-accent transition-colors"
-          aria-label={effectiveMuted ? "Wlacz dzwiek" : "Wycisz"}
-          title={effectiveMuted ? "Wlacz dzwiek" : "Wycisz"}
-        >
-          {effectiveMuted ? "🔇" : volume < 0.5 ? "🔉" : "🔊"}
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={volumePercent}
-          onChange={(e) => changeVolume(Number(e.currentTarget.value) / 100)}
-          className="w-20 accent-[#22d3ee] cursor-pointer"
-          aria-label="Glosnosc"
-          aria-valuetext={`${volumePercent}%`}
-          title={`Glosnosc ${volumePercent}%`}
+      {contextMenu && (
+        <TimelineContextMenu
+          anchorX={contextMenu.x}
+          anchorY={contextMenu.y}
+          onClose={() => setContextMenu(null)}
         />
-        <span className="text-[10px] tabular-nums min-w-[34px] text-right">
-          {volumePercent}%
-        </span>
-      </div>
+      )}
     </div>
   );
 }

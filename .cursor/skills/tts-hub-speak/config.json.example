@@ -1,0 +1,34 @@
+{
+  "api_base": "http://127.0.0.1:8765",
+  "prefer_app_config": true,
+  "active_preset": "minimax",
+  "presets": {
+    "minimax": {
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_female_1_sample1",
+      "language": "pl",
+      "format": "mp3",
+      "minimax_speed": 1.0,
+      "minimax_vol": 1.0,
+      "minimax_pitch": 0
+    },
+    "google": {
+      "provider": "google",
+      "model": "gemini-2.5-flash-preview-tts",
+      "voice": "Kore",
+      "style": "Powiedz spokojnie po polsku:",
+      "format": "wav"
+    },
+    "voicebox": {
+      "provider": "voicebox",
+      "model": "voicebox:chatterbox",
+      "voice": "<profile-id-from-GET-voicebox-profiles>",
+      "profile_id": "<profile-id>",
+      "language": "pl",
+      "format": "wav"
+    }
+  },
+  "autoplay": true,
+  "respect_dnd": true
+}

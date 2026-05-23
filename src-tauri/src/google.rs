@@ -5,17 +5,48 @@ use std::sync::RwLock;
 
 /// Fallback when the models API is unreachable.
 pub const DEFAULT_TTS_MODELS: &[(&str, &str)] = &[
-    ("gemini-3.1-flash-tts-preview", "Gemini 3.1 Flash TTS (Preview)"),
-    ("gemini-2.5-flash-preview-tts", "Gemini 2.5 Flash Preview TTS"),
+    (
+        "gemini-3.1-flash-tts-preview",
+        "Gemini 3.1 Flash TTS (Preview)",
+    ),
+    (
+        "gemini-2.5-flash-preview-tts",
+        "Gemini 2.5 Flash Preview TTS",
+    ),
     ("gemini-2.5-pro-preview-tts", "Gemini 2.5 Pro Preview TTS"),
 ];
 
 pub const VOICES: &[&str] = &[
-    "Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede",
-    "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba",
-    "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar",
-    "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
-    "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat",
+    "Zephyr",
+    "Puck",
+    "Charon",
+    "Kore",
+    "Fenrir",
+    "Leda",
+    "Orus",
+    "Aoede",
+    "Callirrhoe",
+    "Autonoe",
+    "Enceladus",
+    "Iapetus",
+    "Umbriel",
+    "Algieba",
+    "Despina",
+    "Erinome",
+    "Algenib",
+    "Rasalgethi",
+    "Laomedeia",
+    "Achernar",
+    "Alnilam",
+    "Schedar",
+    "Gacrux",
+    "Pulcherrima",
+    "Achird",
+    "Zubenelgenubi",
+    "Vindemiatrix",
+    "Sadachbia",
+    "Sadaltager",
+    "Sulafat",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +69,15 @@ pub struct TtsResult {
     pub sample_rate: u32,
     pub channels: u16,
     pub bits_per_sample: u16,
+    pub token_usage: Option<ApiTokenUsage>,
+}
+
+/// Token counts from Gemini `usageMetadata` (when present).
+#[derive(Debug, Clone, Default)]
+pub struct ApiTokenUsage {
+    pub prompt_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub total_tokens: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,8 +146,20 @@ struct SpeakerVoiceConfig {
 #[derive(Debug, Deserialize)]
 struct GenContentRes {
     candidates: Option<Vec<Candidate>>,
+    #[serde(rename = "usageMetadata", default)]
+    usage_metadata: Option<UsageMetadata>,
     #[serde(default)]
     error: Option<ApiError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsageMetadata {
+    #[serde(rename = "promptTokenCount", default)]
+    prompt_token_count: Option<i64>,
+    #[serde(rename = "candidatesTokenCount", default)]
+    candidates_token_count: Option<i64>,
+    #[serde(rename = "totalTokenCount", default)]
+    total_token_count: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -183,10 +235,7 @@ impl GoogleTts {
     }
 
     fn current_api_key(&self) -> String {
-        self.api_key
-            .read()
-            .map(|k| k.clone())
-            .unwrap_or_default()
+        self.api_key.read().map(|k| k.clone()).unwrap_or_default()
     }
 
     pub async fn list_tts_models(&self) -> Result<Vec<TtsModelInfo>> {
@@ -232,6 +281,54 @@ impl GoogleTts {
         Ok(models)
     }
 
+    /// Like `list_tts_models`, but surfaces HTTP/API errors (for setup wizard probes).
+    pub async fn probe_api_key(api_key: &str) -> Result<usize, String> {
+        let key = api_key.trim();
+        if key.is_empty() {
+            return Err("Podaj klucz API Google (GOOGLE_API_KEY).".into());
+        }
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+            key
+        );
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Połączenie z Google API nie powiodło się: {e}"))?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            let detail = if text.len() > 400 {
+                format!("{}…", &text[..400])
+            } else {
+                text
+            };
+            return Err(format!("Google API HTTP {}: {}", status, detail));
+        }
+        let parsed: ListModelsRes = serde_json::from_str(&text)
+            .map_err(|e| format!("Nieprawidłowa odpowiedź Google API: {e}"))?;
+        let count = parsed
+            .models
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|m| {
+                m.name
+                    .strip_prefix("models/")
+                    .map(|id| id.contains("tts"))
+                    .unwrap_or(false)
+            })
+            .count();
+        if count == 0 {
+            return Err("Brak modeli TTS w odpowiedzi API — sprawdź klucz i uprawnienia.".into());
+        }
+        Ok(count)
+    }
+
     pub async fn synthesize(&self, req: &TtsRequest) -> Result<TtsResult> {
         let final_text = build_tts_content(req);
 
@@ -262,7 +359,9 @@ impl GoogleTts {
         };
 
         let body = GenContentReq {
-            contents: vec![Content { parts: vec![Part { text: &final_text }] }],
+            contents: vec![Content {
+                parts: vec![Part { text: &final_text }],
+            }],
             generation_config: GenerationConfig {
                 response_modalities: vec!["AUDIO".to_string()],
                 speech_config,
@@ -287,7 +386,11 @@ impl GoogleTts {
         let text = resp.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(anyhow!("Google API HTTP {}: {}", status, truncate(&text, 500)));
+            return Err(anyhow!(
+                "Google API HTTP {}: {}",
+                status,
+                truncate(&text, 500)
+            ));
         }
 
         let parsed: GenContentRes = serde_json::from_str(&text)
@@ -312,11 +415,18 @@ impl GoogleTts {
 
         let (sample_rate, channels, bits_per_sample) = parse_audio_mime(&inline.mime_type);
 
+        let token_usage = parsed.usage_metadata.map(|u| ApiTokenUsage {
+            prompt_tokens: u.prompt_token_count,
+            output_tokens: u.candidates_token_count,
+            total_tokens: u.total_token_count,
+        });
+
         Ok(TtsResult {
             pcm_bytes: pcm,
             sample_rate,
             channels,
             bits_per_sample,
+            token_usage,
         })
     }
 }
@@ -349,7 +459,11 @@ fn parse_audio_mime(mime: &str) -> (u32, u16, u16) {
 }
 
 fn truncate(s: &str, n: usize) -> String {
-    if s.len() <= n { s.to_string() } else { format!("{}...", &s[..n]) }
+    if s.len() <= n {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..n])
+    }
 }
 
 fn default_model_list() -> Vec<TtsModelInfo> {
@@ -395,8 +509,16 @@ fn build_tts_content(req: &TtsRequest) -> String {
 fn looks_like_tts_instruction(text: &str) -> bool {
     let lower = text.to_lowercase();
     [
-        "say ", "say:", "read ", "read aloud", "tts ", "speak ", "powiedz", "przeczytaj",
-        "make ", "narrat",
+        "say ",
+        "say:",
+        "read ",
+        "read aloud",
+        "tts ",
+        "speak ",
+        "powiedz",
+        "przeczytaj",
+        "make ",
+        "narrat",
     ]
     .iter()
     .any(|p| lower.starts_with(p))

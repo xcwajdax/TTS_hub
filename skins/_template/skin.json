@@ -1,0 +1,18 @@
+{
+  "id": "my-skin",
+  "name": "My Skin",
+  "version": "1.0.0",
+  "author": "Your Name",
+  "extends": "vibelife",
+  "preferences": {
+    "timeline_view": "bars"
+  },
+  "tokens": {
+    "color-accent": "124 92 255",
+    "color-accent2": "34 211 238"
+  },
+  "css": "skin.css",
+  "registry": {
+    "homepage": "https://example.com/my-skin"
+  }
+}

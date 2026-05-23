@@ -9,41 +9,152 @@ import {
   type RefObject,
 } from "react";
 import { playbackAudioSrc } from "../api/tauri";
+import {
+  readStoredPlaybackRate,
+  savePlaybackRate,
+  type PlaybackRate,
+} from "../lib/playbackPrefs";
 import type { Generation } from "../types";
+
+export interface SelectOptions {
+  /** When false, playback switches without loading source text into the editor. */
+  loadEditorText?: boolean;
+}
 
 interface PlaybackContextValue {
   current: Generation | null;
   playing: boolean;
   playNonce: number;
   audioRef: RefObject<HTMLAudioElement | null>;
+  analyserRef: RefObject<AnalyserNode | null>;
   src: string | null;
   editorText: string;
   setEditorText: (text: string) => void;
-  select: (g: Generation) => void;
+  select: (g: Generation, options?: SelectOptions) => void;
   togglePlay: () => void;
   restart: () => void;
+  /** Seek to position in seconds; keeps play/pause state. */
+  seekTo: (seconds: number) => void;
+  playbackRate: PlaybackRate;
+  setPlaybackRate: (rate: PlaybackRate) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
 
+interface AudioGraph {
+  ctx: AudioContext;
+  analyser: AnalyserNode;
+}
+
+const AUDIO_GRAPHS_KEY = "__ttsHubAudioGraphs__";
+const VOLUME_STORAGE_KEY = "tts-hub.playback.volume";
+const MUTED_STORAGE_KEY = "tts-hub.playback.muted";
+const DEFAULT_VOLUME = 0.8;
+
+function readStoredVolume(): number {
+  const stored = window.localStorage.getItem(VOLUME_STORAGE_KEY);
+  const value = stored == null ? DEFAULT_VOLUME : Number(stored);
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : DEFAULT_VOLUME;
+}
+
+/** Survives React Strict Mode remounts and Vite HMR (module scope resets on hot reload). */
+function getAudioGraphMap(): WeakMap<HTMLMediaElement, AudioGraph> {
+  const g = globalThis as typeof globalThis & {
+    [key: string]: WeakMap<HTMLMediaElement, AudioGraph> | undefined;
+  };
+  if (!g[AUDIO_GRAPHS_KEY]) {
+    g[AUDIO_GRAPHS_KEY] = new WeakMap();
+  }
+  return g[AUDIO_GRAPHS_KEY];
+}
+
+/** One MediaElementSource per HTMLMediaElement; reuse graph when the same node is seen again. */
+function ensureAudioGraph(audio: HTMLMediaElement): AudioGraph | null {
+  const map = getAudioGraphMap();
+  const existing = map.get(audio);
+  if (existing) return existing;
+
+  const ctx = new AudioContext();
+  try {
+    const source = ctx.createMediaElementSource(audio);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.75;
+    source.connect(analyser);
+    analyser.connect(ctx.destination);
+    const graph = { ctx, analyser };
+    map.set(audio, graph);
+    return graph;
+  } catch {
+    void ctx.close();
+    return null;
+  }
+}
+
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
   const [current, setCurrent] = useState<Generation | null>(null);
   const [playNonce, setPlayNonce] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [editorText, setEditorText] = useState("");
+  const [playbackRate, setPlaybackRateState] = useState<PlaybackRate>(readStoredPlaybackRate);
 
   const src = current ? playbackAudioSrc(current.id) : null;
+
+  const resumeAudioContext = useCallback(async () => {
+    const ctx = audioContextRef.current;
+    if (!ctx || ctx.state !== "suspended") return;
+    try {
+      await ctx.resume();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const graph = ensureAudioGraph(audio);
+    if (!graph) return;
+
+    audioContextRef.current = graph.ctx;
+    analyserRef.current = graph.analyser;
+  }, []);
+
+  const setPlaybackRate = useCallback((rate: PlaybackRate) => {
+    setPlaybackRateState(rate);
+    savePlaybackRate(rate);
+    const audio = audioRef.current;
+    if (audio) audio.playbackRate = rate;
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) audio.playbackRate = playbackRate;
+  }, [playbackRate, src, playNonce]);
 
   const playAudio = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
+    await resumeAudioContext();
     try {
       await audio.play();
-    } catch {
-      // blocked until user gesture
+    } catch (err) {
+      console.warn("[playback] audio.play() blocked or failed:", err);
     }
+  }, [resumeAudioContext]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const volume = readStoredVolume();
+    const muted = window.localStorage.getItem(MUTED_STORAGE_KEY) === "true";
+    audio.volume = volume;
+    audio.muted = muted || volume === 0;
   }, []);
 
   useEffect(() => {
@@ -59,8 +170,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     return () => audio.removeEventListener("canplay", start);
   }, [src, playNonce, playAudio]);
 
-  const select = useCallback((g: Generation) => {
-    setEditorText(g.text);
+  const select = useCallback((g: Generation, options?: SelectOptions) => {
+    if (options?.loadEditorText !== false) {
+      setEditorText(g.text);
+    }
     setCurrent((prev) => {
       if (prev?.id === g.id) setPlayNonce((n) => n + 1);
       return g;
@@ -78,21 +191,45 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (audio.paused) void playAudio();
-    else audio.pause();
-  }, [playAudio]);
+    if (audio.paused) {
+      void resumeAudioContext();
+      void playAudio();
+    } else {
+      audio.pause();
+    }
+  }, [playAudio, resumeAudioContext]);
+
+  const seekTo = useCallback(
+    (seconds: number) => {
+      const audio = audioRef.current;
+      if (!audio || !Number.isFinite(seconds)) return;
+
+      const max =
+        Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;
+      const target = max != null ? Math.min(Math.max(0, seconds), max) : Math.max(0, seconds);
+      const resume = !audio.paused && !audio.ended;
+
+      audio.currentTime = target;
+      if (resume) void playAudio();
+    },
+    [playAudio],
+  );
 
   const value: PlaybackContextValue = {
     current,
     playing,
     playNonce,
     audioRef,
+    analyserRef,
     src,
     editorText,
     setEditorText,
     select,
     togglePlay,
     restart,
+    seekTo,
+    playbackRate,
+    setPlaybackRate,
   };
 
   return (
@@ -101,6 +238,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       <audio
         ref={audioRef}
         className="sr-only"
+        crossOrigin="anonymous"
         preload="auto"
         src={src ?? undefined}
         onPlay={() => setPlaying(true)}

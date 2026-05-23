@@ -1,0 +1,97 @@
+/* Light / Zen — warm cream UI, soft shadows, generous radius (Flow-inspired) */
+
+html[data-skin="light-zen"] .btn,
+html[data-skin="light-zen"] .btn-primary,
+html[data-skin="light-zen"] .field,
+html[data-skin="light-zen"] .tag {
+  border-radius: 10px;
+}
+
+html[data-skin="light-zen"] .btn {
+  box-shadow: 0 1px 2px rgb(41 37 36 / 0.04);
+}
+
+html[data-skin="light-zen"] .btn-primary {
+  box-shadow: 0 2px 8px rgb(124 108 220 / 0.22);
+}
+
+html[data-skin="light-zen"] .history-item,
+html[data-skin="light-zen"] .history-list__heading {
+  border-radius: 14px;
+}
+
+html[data-skin="light-zen"] .history-item {
+  box-shadow: 0 1px 3px rgb(41 37 36 / 0.06);
+  border: 1px solid rgb(var(--color-border) / 0.85);
+}
+
+html[data-skin="light-zen"] .history-item--current,
+html[data-skin="light-zen"] .history-item--playing {
+  box-shadow: var(--glow-current);
+}
+
+html[data-skin="light-zen"] .field:focus,
+html[data-skin="light-zen"] textarea:focus,
+html[data-skin="light-zen"] select:focus {
+  box-shadow: 0 0 0 3px rgb(var(--color-accent) / 0.18);
+}
+
+html[data-skin="light-zen"] .tts-playback-viz {
+  background-color: rgb(var(--color-panel));
+  border-color: rgb(var(--color-border));
+  --color-accent: 124 108 220;
+  --color-accent2: 167 139 250;
+  --color-muted: 120 113 108;
+}
+
+html[data-skin="light-zen"] .tts-playback-viz__shade {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--color-bg) / 0.5) 0%,
+    transparent 45%,
+    rgb(var(--color-bg) / 0.25) 100%
+  );
+}
+
+html[data-skin="light-zen"] .playback-toast-toolbar__btn {
+  border-color: rgb(var(--color-border));
+  background-color: rgb(var(--color-panel));
+  color: rgb(var(--color-text));
+}
+
+html[data-skin="light-zen"] .playback-toast-toolbar__btn:hover {
+  border-color: rgb(var(--color-accent));
+  color: rgb(var(--color-accent));
+}
+
+/* Tekst na jasnych panelach — nie biały na białym (legacy text-white) */
+html[data-skin="light-zen"] .text-white:not(.btn-primary) {
+  color: rgb(var(--color-text-heading));
+}
+
+html[data-skin="light-zen"] .hover\:text-white:hover {
+  color: rgb(var(--color-text-heading));
+}
+
+html[data-skin="light-zen"] .text-white\/90 {
+  color: rgb(var(--color-text-heading) / 0.9);
+}
+
+html[data-skin="light-zen"] .text-white\/80 {
+  color: rgb(var(--color-text-heading) / 0.8);
+}
+
+html[data-skin="light-zen"] .text-white\/70 {
+  color: rgb(var(--color-text-heading) / 0.7);
+}
+
+html[data-skin="light-zen"] .history-item-now-playing {
+  color: rgb(var(--color-accent));
+  background: rgb(var(--color-accent-soft));
+  border-color: rgb(var(--color-accent) / 0.35);
+}
+
+html[data-skin="light-zen"] code {
+  color: rgb(var(--color-text));
+  background: rgb(var(--color-code-bg));
+}
