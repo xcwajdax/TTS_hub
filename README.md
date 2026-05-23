@@ -41,15 +41,15 @@ TTS Hub to **natywna aplikacja desktopowa** (Tauri 2), która zamienia tekst na 
 
 ## 🔊 Posłuchaj (próbki)
 
-Ten sam krótki tekst w **pięciu głosach** (wygenerowane lokalnie przez TTS Hub):
+Ten sam krótki tekst w **pięciu głosach** (wygenerowane lokalnie przez TTS Hub). Kliknij link — odsłuchasz na stronie pliku w GitHubie (README nie obsługuje osadzonego `<audio>`).
 
-| Głos | Odtwarzacz |
-|------|------------|
-| MiniMax — **Grzegorz Braun** (klon) | <audio controls src="docs/samples/minimax-grzegorz-braun.mp3"></audio> |
-| MiniMax — kobieta PL | <audio controls src="docs/samples/minimax-polish-female.mp3"></audio> |
-| MiniMax — mężczyzna PL | <audio controls src="docs/samples/minimax-polish-male.mp3"></audio> |
-| Google — Kore | <audio controls src="docs/samples/google-kore.wav"></audio> |
-| Google — Charon | <audio controls src="docs/samples/google-charon.wav"></audio> |
+| Głos | Próbka |
+|------|--------|
+| MiniMax — **Grzegorz Braun** (klon) | [▶ minimax-grzegorz-braun.mp3](docs/samples/minimax-grzegorz-braun.mp3) |
+| MiniMax — kobieta PL | [▶ minimax-polish-female.mp3](docs/samples/minimax-polish-female.mp3) |
+| MiniMax — mężczyzna PL | [▶ minimax-polish-male.mp3](docs/samples/minimax-polish-male.mp3) |
+| Google — Kore | [▶ google-kore.wav](docs/samples/google-kore.wav) |
+| Google — Charon | [▶ google-charon.wav](docs/samples/google-charon.wav) |
 
 Pełna lista i regeneracja: **[docs/samples/](docs/samples/)** (`generate-readme-samples.ps1`).
 

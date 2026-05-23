@@ -1,5 +1,7 @@
 # Próbki audio (README)
 
+Pliki są w repo i linkują się z głównego [README](../../README.md#-posłuchaj-próbki). GitHub **nie renderuje** tagu `<audio>` w README — używamy linków markdown do tych plików.
+
 Ten sam tekst demo we wszystkich plikach:
 
 > TTS Hub zamienia tekst na mowę na Twoim komputerze. Słuchasz właśnie tej samej próbki w kilku głosach. Wybierz provider i głos w ustawieniach albo przez lokalne API.
