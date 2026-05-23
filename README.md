@@ -20,10 +20,16 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/main-window.png" alt="TTS Hub — główny widok aplikacji z waveformem, ustawieniami Gemini TTS i panelem archiwum" width="920" />
+  <img src="docs/screenshots/skin-vibelife.png" alt="TTS Hub — skórka VIBELIFE" width="920" />
 </p>
 
-<p align="center"><em>Główny widok: generacja, próbki głosów, odtwarzacz z waveformem i historia (sesja / archiwum).</em></p>
+<p align="center">
+  <img src="docs/screenshots/skin-matrix.png" alt="TTS Hub — skórka Matrix" width="450" />
+  &nbsp;
+  <img src="docs/screenshots/skin-light-zen.png" alt="TTS Hub — skórka Light / Zen" width="450" />
+</p>
+
+<p align="center"><em>Trzy wbudowane skórki: <strong>VIBELIFE</strong> (domyślna), <strong>Matrix</strong>, <strong>Light / Zen</strong> — przełącznik w pasku tytułu okna desktopowego.</em></p>
 
 ---
 
