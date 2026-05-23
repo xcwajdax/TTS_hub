@@ -13,7 +13,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-v0.1.0_preview-orange)](docs/PUBLICATION_READINESS.md)
 
-[Instalacja](#-szybki-start) · [Posłuchaj](#-posłuchaj-próbki) · [Funkcje](#-funkcje) · [API](#-lokalne-api-http) · [Model](#-model-i-koszty) · [Dokumentacja](#-dokumentacja)
+[Pobierz](#-pobierz-windows) · [Instalacja](#-szybki-start) · [Posłuchaj](#-posłuchaj-próbki) · [Funkcje](#-funkcje) · [API](#-lokalne-api-http) · [Model](#-model-i-koszty) · [Dokumentacja](#-dokumentacja)
 
 </div>
 
@@ -79,6 +79,19 @@ Pełna lista i regeneracja: **[docs/samples/](docs/samples/)** (`generate-readme
 
 ---
 
+## 📥 Pobierz (Windows)
+
+**[Release v0.1.0 (pre-release)](https://github.com/xcwajdax/TTS_hub/releases/tag/v0.1.0)** — gotowe instalatory (x64):
+
+| Plik | Opis |
+|------|------|
+| [**TTS-Hub-0.1.0-x64-setup.exe**](https://github.com/xcwajdax/TTS_hub/releases/download/v0.1.0/TTS.Hub_0.1.0_x64-setup.exe) | Instalator NSIS (zalecany) |
+| [**TTS-Hub-0.1.0-x64.msi**](https://github.com/xcwajdax/TTS_hub/releases/download/v0.1.0/TTS.Hub_0.1.0_x64_en-US.msi) | Pakiet MSI |
+
+Po instalacji: skopiuj `studios.env.example` → `%USERPROFILE%\.tts_hub\` lub użyj **Szybkiej konfiguracji** w aplikacji. Wymagany **WebView2** (Win 11 — zwykle już jest).
+
+---
+
 ## 🚀 Szybki start
 
 ### Wymagania
@@ -131,13 +144,13 @@ Przechwycenie używa symulacji **Ctrl+C** (jak ręczne kopiowanie). W terminalac
 
 > **Cursor Browser / zwykła przeglądarka:** adres `http://localhost:1420` to tylko frontend Vite (podgląd UI). Bez okna Tauri nie ma mostu `invoke` — używaj okna „TTS Hub” po `npm run tauri dev`. Skrypty i integracja Cursor korzystają z API na porcie **8765**, gdy aplikacja desktopowa działa.
 
-### Build instalatora
+### Build instalatora (ze źródeł)
 
 ```powershell
 npm run tauri build
 ```
 
-Wynik: `src-tauri/target/release/` oraz paczka w `src-tauri/target/release/bundle/`.
+Wynik: `src-tauri/target/release/tts-hub.exe` oraz `src-tauri/target/release/bundle/` (NSIS `.exe`, MSI).
 
 > Przed release sprawdź, że `npm run build` przechodzi — patrz [gotowość do publikacji](docs/PUBLICATION_READINESS.md).
 
