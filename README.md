@@ -26,7 +26,6 @@
 <p align="center"><em>Okno desktopowe (Tauri): providery, edytor blokowy, historia sesji i odtwarzacz z waveformem. Skórki: <strong>VIBELIFE</strong>, <strong>Matrix</strong>, <strong>Light / Zen</strong> — przełącznik w pasku tytułu.</em></p>
 
 <p align="center">
-  <img src="docs/screenshots/main-generating.png" alt="TTS Hub — generacja w toku i aktywne zadania" width="450" />
   <img src="docs/screenshots/settings-cursor.png" alt="TTS Hub — integracja Cursor z głosem sklonowanym" width="450" />
 </p>
 
