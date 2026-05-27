@@ -5,7 +5,7 @@ export const HISTORY_TOOLBAR_BTN =
 
 export const HISTORY_TOOLBAR_BTN_ACTIVE = "history-toolbar-btn-active";
 
-export type HistoryScopeTab = "session" | "archive" | "cursor";
+export type HistoryScopeTab = "session" | "archive" | "cursor" | "soundboard";
 
 export const SCOPE_TAB_META: Record<
   HistoryScopeTab,
@@ -18,4 +18,9 @@ export const SCOPE_TAB_META: Record<
     title: "Wszystko z Cursor (sesja + archiwum)",
   },
   archive: { icon: "archive", label: "Archiwum" },
+  soundboard: {
+    icon: "play",
+    label: "Soundboard",
+    title: "8 slotów audio · Ctrl+Shift+1–8",
+  },
 };

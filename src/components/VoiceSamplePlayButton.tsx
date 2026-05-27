@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { audioSrc, ensureVoiceSample } from "../api/tauri";
 import { usePlayback } from "../context/PlaybackContext";
+import { applyAudioSink } from "../lib/audioOutputDevice";
 import Icon from "./Icon";
 
 interface Props {
@@ -23,7 +24,7 @@ export default function VoiceSamplePlayButton({
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const { playbackRate } = usePlayback();
+  const { playbackRate, outputDeviceId, audioOutputSupported } = usePlayback();
 
   const stopAudio = () => {
     const audio = audioRef.current;
@@ -46,6 +47,12 @@ export default function VoiceSamplePlayButton({
       stopAudio();
       audio.src = audioSrc(path);
       audio.playbackRate = playbackRate;
+      if (audioOutputSupported) {
+        const sink = await applyAudioSink(audio, undefined, outputDeviceId);
+        if (!sink.ok) {
+          console.warn("[voice-sample] setSinkId failed:", sink.message);
+        }
+      }
       audio.onended = () => setPlaying(false);
       audio.onpause = () => {
         if (audio.currentTime === 0 || audio.ended) setPlaying(false);

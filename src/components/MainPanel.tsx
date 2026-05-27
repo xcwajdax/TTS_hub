@@ -13,6 +13,11 @@ import {
 import { usePlayback } from "../context/PlaybackContext";
 import { useJobs, useLatestJobProgress } from "../context/JobsContext";
 import { editorSlotToSettingsState } from "../lib/editorQuickGen";
+import {
+  VOICE_PROFILE_GENERATE_EVENT,
+  type VoiceProfileGenerateDetail,
+} from "../lib/voiceProfileActions";
+import { touchVoiceProfilePreviews, voiceProfileToSettingsState } from "../lib/voiceProfiles";
 import { ensureTextFiltersWithFactory } from "../lib/filterPresetCatalog";
 import { applyTextFilters } from "../lib/textFilters";
 import {
@@ -234,6 +239,7 @@ export default function MainPanel({
     tts: SettingsState,
     formatOverride: string | null,
     presetForFilter: TextFilterPreset,
+    voiceProfileId?: string | null,
   ) => {
     const filtered = applyTextFilters(
       sourceText,
@@ -288,6 +294,7 @@ export default function MainPanel({
         minimax_pitch: tts.provider === "minimax" ? tts.minimaxPitch : null,
       });
       trackEnqueued(g);
+      void touchVoiceProfilePreviews(tts, filtered, voiceProfileId).catch(() => undefined);
       resetEditor();
     } catch (e) {
       onError(String(e));
@@ -295,6 +302,35 @@ export default function MainPanel({
       setEnqueuing(false);
     }
   };
+
+  const generateWithProfileRef = useRef<(profileId: string) => void>(() => undefined);
+
+  generateWithProfileRef.current = (profileId: string) => {
+    void (async () => {
+      const view = await getAppSettings();
+      const profile = view.voice_profiles?.find((p) => p.id === profileId);
+      if (!profile) {
+        onError("Nie znaleziono profilu głosu.");
+        return;
+      }
+      const tts = voiceProfileToSettingsState(profile);
+      const presetForFilter: TextFilterPreset = {
+        ...activePreset,
+        builtins: { ...activePreset.builtins, ...filterSession.builtinOverrides },
+      };
+      await enqueueGeneration(tts, null, presetForFilter, profile.id);
+    })();
+  };
+
+  useEffect(() => {
+    const onProfileGenerate = (ev: Event) => {
+      const profileId = (ev as CustomEvent<VoiceProfileGenerateDetail>).detail?.profileId;
+      if (!profileId) return;
+      generateWithProfileRef.current(profileId);
+    };
+    window.addEventListener(VOICE_PROFILE_GENERATE_EVENT, onProfileGenerate);
+    return () => window.removeEventListener(VOICE_PROFILE_GENERATE_EVENT, onProfileGenerate);
+  }, []);
 
   const onGenerate = async () => {
     await enqueueGeneration(settings, null, {
@@ -305,9 +341,12 @@ export default function MainPanel({
 
   const onGenSlot = async (which: "slot1" | "slot2") => {
     const slot = which === "slot1" ? editorQuickGen.slot1 : editorQuickGen.slot2;
-    const tts = editorSlotToSettingsState(slot);
+    const tts = editorSlotToSettingsState(
+      slot,
+      appSettingsSnapshot?.voice_profiles ?? [],
+    );
     const preset = resolvePresetForGen(slot);
-    await enqueueGeneration(tts, slot.format, preset);
+    await enqueueGeneration(tts, slot.format, preset, slot.voice_profile_id);
   };
 
   const showProgress = progress.active || progress.phase === "done" || progress.failed;

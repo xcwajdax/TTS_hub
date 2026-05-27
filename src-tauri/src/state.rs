@@ -8,6 +8,8 @@ use crate::db::Db;
 use crate::google::GoogleTts;
 use crate::job_queue::JobQueue;
 use crate::paths::AppPaths;
+use crate::plugins::soundboard::{soundboard_settings_path, SoundboardSettings};
+use crate::plugins::state::PluginsState;
 use crate::minimax::MinimaxClient;
 use crate::voicebox::VoiceBoxClient;
 
@@ -24,6 +26,10 @@ pub struct AppState {
     pub minimax: MinimaxClient,
     pub session_id: String,
     pub job_queue: OnceLock<Arc<JobQueue>>,
+    pub soundboard_path: std::path::PathBuf,
+    pub soundboard: RwLock<SoundboardSettings>,
+    pub plugins_state_path: std::path::PathBuf,
+    pub plugins_state: RwLock<PluginsState>,
 }
 
 impl AppState {
@@ -43,6 +49,10 @@ impl AppState {
         let voicebox = VoiceBoxClient::new(settings.effective_voicebox_url(&env_voicebox_url));
         let minimax = MinimaxClient::new(settings.effective_minimax_key(&env_minimax_key));
         let session_id = Uuid::new_v4().to_string();
+        let soundboard_path = soundboard_settings_path(&paths);
+        let soundboard = SoundboardSettings::load(&soundboard_path)?;
+        let plugins_state_path = PluginsState::path(&paths);
+        let plugins_state = PluginsState::load(&plugins_state_path, &soundboard)?;
 
         // Mark any leftover queued/running rows from prior crash as interrupted.
         let _ = db.mark_orphans_interrupted();
@@ -68,8 +78,20 @@ impl AppState {
             minimax,
             session_id,
             job_queue: OnceLock::new(),
+            soundboard_path,
+            soundboard: RwLock::new(soundboard),
+            plugins_state_path,
+            plugins_state: RwLock::new(plugins_state),
         };
         state.persist_settings()?;
+        {
+            let sb = state.soundboard.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+            state.persist_soundboard(&sb)?;
+        }
+        {
+            let ps = state.plugins_state.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+            state.persist_plugins_state(&ps)?;
+        }
         Ok(state)
     }
 
@@ -107,6 +129,14 @@ impl AppState {
     pub fn persist_settings(&self) -> Result<()> {
         let settings = self.settings.read().map_err(|e| anyhow::anyhow!("{e}"))?;
         settings.save(&self.settings_path)
+    }
+
+    pub fn persist_soundboard(&self, soundboard: &SoundboardSettings) -> Result<()> {
+        soundboard.save(&self.soundboard_path)
+    }
+
+    pub fn persist_plugins_state(&self, plugins: &PluginsState) -> Result<()> {
+        plugins.save(&self.plugins_state_path)
     }
 
     /// Trims oldest prior-session temp rows when over `temp_history_max`; current session untouched.

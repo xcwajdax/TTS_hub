@@ -52,6 +52,7 @@ import { normalizeTimelineViewMode } from "../lib/timelineView";
 import { DEFAULT_SKIN_ID } from "../skins/applySkin";
 import ClearLocalDataPanel from "./ClearLocalDataPanel";
 import AvatarsSettingsPanel from "./avatars/AvatarsSettingsPanel";
+import AudioOutputSettingsPanel from "./AudioOutputSettingsPanel";
 
 type Tab =
   | "general"
@@ -364,7 +365,7 @@ export default function AdvancedSettingsModal({
 
         {tab === "avatars" && (
           <div className="flex-1 overflow-y-auto p-4 text-sm">
-            <AvatarsSettingsPanel onError={onError} />
+            <AvatarsSettingsPanel onError={onError} initialGoogleVoices={voices} />
           </div>
         )}
 
@@ -398,6 +399,8 @@ export default function AdvancedSettingsModal({
 
         {tab === "general" && (
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 text-sm">
+          <AudioOutputSettingsPanel />
+
           <section className="flex flex-col gap-3">
             <h3 className="text-xs uppercase tracking-wide text-muted">Providery TTS</h3>
             <p className="text-[11px] text-muted">

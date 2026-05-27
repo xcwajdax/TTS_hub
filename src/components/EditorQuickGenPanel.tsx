@@ -7,10 +7,15 @@ import {
   type VoiceBoxHealth,
   type VoiceBoxProfile,
 } from "../api/tauri";
+import { getAppSettings } from "../api/tauri";
 import type { EditorQuickGenSettings, EditorQuickGenSlot, TextFilterPreset } from "../appSettings";
+import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import { settingsStateToPreset, presetToSettingsState } from "../lib/quickHotkeyPreset";
-import type { QuickHotkeyPreset } from "../appSettings";
+import type { QuickHotkeyPreset, TtsVoiceProfile } from "../appSettings";
+import { applyVoiceProfileToSlot } from "../lib/editorQuickGen";
+import { resolveVoiceProfile } from "../lib/voiceProfiles";
 import TtsPresetFields from "./TtsPresetFields";
+import VoiceProfileSelect from "./VoiceProfileSelect";
 
 interface Props {
   value: EditorQuickGenSettings;
@@ -39,6 +44,7 @@ function slotToHotkeyShape(slot: EditorQuickGenSlot): QuickHotkeyPreset {
     autoplay: true,
     filter_preset_id: slot.filter_preset_id,
     format: slot.format,
+    voice_profile_id: slot.voice_profile_id,
   };
 }
 
@@ -57,6 +63,7 @@ function hotkeyShapeToSlot(base: EditorQuickGenSlot, preset: QuickHotkeyPreset):
     minimax_pitch: preset.minimax_pitch,
     filter_preset_id: preset.filter_preset_id,
     format: preset.format,
+    voice_profile_id: preset.voice_profile_id,
   };
 }
 
@@ -69,6 +76,7 @@ function SlotEditor({
   voiceboxProfiles,
   voiceboxModels,
   voiceboxHealthState,
+  voiceProfiles,
   onError,
 }: {
   title: string;
@@ -79,10 +87,12 @@ function SlotEditor({
   voiceboxProfiles: VoiceBoxProfile[];
   voiceboxModels: import("../ttsModels").TtsModelInfo[];
   voiceboxHealthState: VoiceBoxHealth | null;
+  voiceProfiles: TtsVoiceProfile[];
   onError: (message: string) => void;
 }) {
   const hotkey = slotToHotkeyShape(slot);
-  const ttsState = presetToSettingsState(hotkey);
+  const ttsState = presetToSettingsState(hotkey, voiceProfiles);
+  const linkedProfile = resolveVoiceProfile(voiceProfiles, slot.voice_profile_id);
 
   return (
     <article className="border border-border rounded-lg bg-panel2/40 p-3 flex flex-col gap-3">
@@ -94,6 +104,29 @@ function SlotEditor({
           value={slot.label}
           onChange={(e) => onChange({ ...slot, label: e.target.value })}
         />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        Profil głosu
+        <VoiceProfileSelect
+          value={slot.voice_profile_id}
+          onChange={(voiceProfileId) => {
+            if (!voiceProfileId) {
+              onChange({ ...slot, voice_profile_id: null });
+              return;
+            }
+            const profile = resolveVoiceProfile(voiceProfiles, voiceProfileId);
+            if (profile) {
+              onChange(applyVoiceProfileToSlot(slot, profile));
+            } else {
+              onChange({ ...slot, voice_profile_id: voiceProfileId });
+            }
+          }}
+        />
+        {linkedProfile ? (
+          <span className="text-[10px] text-muted/90">
+            Używany profil: {linkedProfile.name} ({linkedProfile.provider})
+          </span>
+        ) : null}
       </label>
       <TtsPresetFields
         state={ttsState}
@@ -151,12 +184,21 @@ export default function EditorQuickGenPanel({
   const [voiceboxProfiles, setVoiceboxProfiles] = useState<VoiceBoxProfile[]>([]);
   const [voiceboxModels, setVoiceboxModels] = useState<import("../ttsModels").TtsModelInfo[]>([]);
   const [voiceboxHealthState, setVoiceboxHealthState] = useState<VoiceBoxHealth | null>(null);
+  const [voiceProfiles, setVoiceProfiles] = useState<TtsVoiceProfile[]>([]);
 
   useEffect(() => {
     listVoices().then(setVoices).catch(() => setVoices([]));
     listVoiceboxProfiles().then(setVoiceboxProfiles).catch(() => setVoiceboxProfiles([]));
     listVoiceboxModels().then(setVoiceboxModels).catch(() => setVoiceboxModels([]));
     voiceboxHealth().then(setVoiceboxHealthState).catch(() => setVoiceboxHealthState(null));
+    const loadProfiles = () => {
+      void getAppSettings()
+        .then((view) => setVoiceProfiles(view.voice_profiles ?? []))
+        .catch(() => setVoiceProfiles([]));
+    };
+    loadProfiles();
+    window.addEventListener(VOICE_PROFILES_CHANGED, loadProfiles);
+    return () => window.removeEventListener(VOICE_PROFILES_CHANGED, loadProfiles);
   }, []);
 
   return (
@@ -174,6 +216,7 @@ export default function EditorQuickGenPanel({
         voiceboxProfiles={voiceboxProfiles}
         voiceboxModels={voiceboxModels}
         voiceboxHealthState={voiceboxHealthState}
+        voiceProfiles={voiceProfiles}
         onError={onError}
       />
       <SlotEditor
@@ -185,6 +228,7 @@ export default function EditorQuickGenPanel({
         voiceboxProfiles={voiceboxProfiles}
         voiceboxModels={voiceboxModels}
         voiceboxHealthState={voiceboxHealthState}
+        voiceProfiles={voiceProfiles}
         onError={onError}
       />
     </section>

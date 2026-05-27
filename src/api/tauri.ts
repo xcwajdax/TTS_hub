@@ -20,6 +20,7 @@ import type {
   UsageSummary,
 } from "../types";
 import type { TtsModelInfo } from "../ttsModels";
+import type { PluginManifest, SoundboardPublicView } from "../plugins/types";
 
 /** Enqueue a generation. Returns the persisted row with status='queued'. */
 export async function generate(req: GenerateRequest): Promise<Generation> {
@@ -510,12 +511,78 @@ export async function openAvatarsFolder(): Promise<void> {
   return invoke("open_avatars_folder");
 }
 
+export async function getPlugins(): Promise<PluginManifest[]> {
+  return invoke<PluginManifest[]>("get_plugins");
+}
+
+export async function installPlugin(id: string): Promise<PluginManifest[]> {
+  return invoke<PluginManifest[]>("install_plugin", { id });
+}
+
+export async function uninstallPlugin(id: string): Promise<PluginManifest[]> {
+  return invoke<PluginManifest[]>("uninstall_plugin", { id });
+}
+
+export async function setPluginEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<PluginManifest[]> {
+  return invoke<PluginManifest[]>("set_plugin_enabled", { id, req: { enabled } });
+}
+
+export async function setSoundboardEnabled(
+  enabled: boolean,
+): Promise<SoundboardPublicView> {
+  return invoke<SoundboardPublicView>("set_soundboard_enabled", { req: { enabled } });
+}
+
+export async function getSoundboard(): Promise<SoundboardPublicView> {
+  return invoke<SoundboardPublicView>("get_soundboard");
+}
+
+export async function setSoundboardSlot(
+  index: number,
+  body: { generationId?: string; filePath?: string },
+): Promise<SoundboardPublicView> {
+  return invoke<SoundboardPublicView>("set_soundboard_slot", { index, req: body });
+}
+
+export async function updateSoundboardSlot(
+  index: number,
+  body: { label?: string; shortcut?: string; enabled?: boolean },
+): Promise<SoundboardPublicView> {
+  return invoke<SoundboardPublicView>("update_soundboard_slot", { index, req: body });
+}
+
+export async function clearSoundboardSlot(index: number): Promise<SoundboardPublicView> {
+  return invoke<SoundboardPublicView>("clear_soundboard_slot", { index });
+}
+
+export async function playSoundboardSlot(index: number): Promise<void> {
+  return invoke("play_soundboard_slot", { index });
+}
+
 export async function appRestart(): Promise<void> {
   await invoke("app_restart");
 }
 
 export async function appExit(): Promise<void> {
   return invoke("app_exit");
+}
+
+/** WebView2: allow enumerateDevices() to return speaker IDs. */
+export async function prepareAudioDeviceEnumeration(): Promise<void> {
+  await invoke("prepare_audio_device_enumeration");
+}
+
+export interface NativeAudioOutputDevice {
+  id: string;
+  label: string;
+}
+
+/** Windows WASAPI list when Chromium enumerateDevices returns no outputs. */
+export async function listNativeAudioOutputDevices(): Promise<NativeAudioOutputDevice[]> {
+  return invoke<NativeAudioOutputDevice[]>("list_native_audio_output_devices");
 }
 
 /** Local HTTP API (see src-tauri http_api.rs). Reliable for <audio> in the Tauri webview. */

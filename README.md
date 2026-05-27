@@ -214,7 +214,7 @@ Po **każdej turze** z podsumowaniem (także pośredniej), gdy aktywujesz skill:
 1. **TTS Hub uruchomiony** — API `http://127.0.0.1:8765`.
 2. Skopiuj `.cursor/skills/tts-hub-speak/config.json.example` → `config.json`.
 3. W Cursorze: **`@tts-hub-speak`** — agent owija podsumowanie w `<!-- tts-summary -->` i woła skrypt `speak-summary.ps1`.
-4. Provider: domyślnie **MiniMax** w `config.json`; opcjonalnie nadpisanie z panelu **Integracja Cursor** w aplikacji (`prefer_app_config: true`).
+4. Głos i model: ustaw w **Integracja Cursor** w aplikacji (np. klon Makłowicza); skill z `prefer_app_config: true` bierze `voice_id` stamtąd, nie z osobnego wpisu w config skillu.
 
 Szczegóły: [docs/CURSOR_SKILL.md](docs/CURSOR_SKILL.md)
 

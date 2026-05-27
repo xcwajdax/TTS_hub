@@ -28,6 +28,9 @@ pub struct EditorQuickGenSlot {
     pub filter_preset_id: Option<String>,
     #[serde(default)]
     pub format: Option<String>,
+    /// Saved TTS voice profile (`voice_profiles` in settings.json).
+    #[serde(default)]
+    pub voice_profile_id: Option<String>,
 }
 
 fn default_slot1_label() -> String {
@@ -62,6 +65,7 @@ impl Default for EditorQuickGenSlot {
             minimax_pitch: Some(0),
             filter_preset_id: None,
             format: None,
+            voice_profile_id: None,
         }
     }
 }
@@ -116,6 +120,12 @@ impl EditorQuickGenSlot {
             *fmt = fmt.trim().to_lowercase();
             if !matches!(fmt.as_str(), "wav" | "mp3" | "ogg") {
                 self.format = None;
+            }
+        }
+        if let Some(id) = self.voice_profile_id.as_mut() {
+            *id = id.trim().to_string();
+            if id.is_empty() {
+                self.voice_profile_id = None;
             }
         }
     }

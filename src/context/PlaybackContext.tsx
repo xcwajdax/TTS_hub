@@ -8,7 +8,12 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { playbackAudioSrc } from "../api/tauri";
+import { audioSrc, playbackAudioSrc } from "../api/tauri";
+import { useAudioOutputDevices } from "../hooks/useAudioOutputDevices";
+import {
+  applyAudioSink,
+  type AudioOutputDeviceInfo,
+} from "../lib/audioOutputDevice";
 import {
   readStoredPlaybackRate,
   savePlaybackRate,
@@ -21,6 +26,11 @@ export interface SelectOptions {
   loadEditorText?: boolean;
 }
 
+export interface PlayClipOptions {
+  path: string;
+  label?: string;
+}
+
 interface PlaybackContextValue {
   current: Generation | null;
   playing: boolean;
@@ -31,12 +41,24 @@ interface PlaybackContextValue {
   editorText: string;
   setEditorText: (text: string) => void;
   select: (g: Generation, options?: SelectOptions) => void;
+  /** One-shot clip (e.g. soundboard); pauses main TTS player. */
+  playClip: (options: PlayClipOptions) => void;
   togglePlay: () => void;
   restart: () => void;
   /** Seek to position in seconds; keeps play/pause state. */
   seekTo: (seconds: number) => void;
   playbackRate: PlaybackRate;
   setPlaybackRate: (rate: PlaybackRate) => void;
+  outputDeviceId: string;
+  setOutputDeviceId: (deviceId: string) => void;
+  audioOutputDevices: AudioOutputDeviceInfo[];
+  audioOutputSupported: boolean;
+  audioOutputLoading: boolean;
+  refreshAudioOutputDevices: (forcePrepare?: boolean, silent?: boolean) => Promise<void>;
+  canPickSystemAudioOutput: boolean;
+  pickSystemAudioOutput: () => Promise<AudioOutputDeviceInfo | null>;
+  audioOutputEnumerationNotice: string | null;
+  lastSinkError: string | null;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
@@ -93,6 +115,7 @@ function ensureAudioGraph(audio: HTMLMediaElement): AudioGraph | null {
 
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const clipAudioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
 
@@ -101,8 +124,33 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [playing, setPlaying] = useState(false);
   const [editorText, setEditorText] = useState("");
   const [playbackRate, setPlaybackRateState] = useState<PlaybackRate>(readStoredPlaybackRate);
+  const [lastSinkError, setLastSinkError] = useState<string | null>(null);
+
+  const {
+    devices: audioOutputDevices,
+    outputDeviceId,
+    setOutputDeviceId,
+    loading: audioOutputLoading,
+    supported: audioOutputSupported,
+    refresh: refreshAudioOutputDevices,
+    canPickSystemOutput: canPickSystemAudioOutput,
+    pickSystemOutput: pickSystemAudioOutput,
+    enumerationNotice: audioOutputEnumerationNotice,
+  } = useAudioOutputDevices();
 
   const src = current ? playbackAudioSrc(current.id) : null;
+
+  const applyCurrentSink = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio || !audioOutputSupported) return;
+    const result = await applyAudioSink(audio, audioContextRef.current, outputDeviceId);
+    if (!result.ok) {
+      setLastSinkError(result.message);
+      console.warn("[playback] setSinkId failed:", result.message);
+    } else {
+      setLastSinkError(null);
+    }
+  }, [audioOutputSupported, outputDeviceId]);
 
   const resumeAudioContext = useCallback(async () => {
     const ctx = audioContextRef.current;
@@ -123,7 +171,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
     audioContextRef.current = graph.ctx;
     analyserRef.current = graph.analyser;
-  }, []);
+    void applyCurrentSink();
+  }, [applyCurrentSink]);
+
+  useEffect(() => {
+    void applyCurrentSink();
+  }, [outputDeviceId, applyCurrentSink]);
 
   const setPlaybackRate = useCallback((rate: PlaybackRate) => {
     setPlaybackRateState(rate);
@@ -140,13 +193,15 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const playAudio = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
+    await applyCurrentSink();
     await resumeAudioContext();
     try {
       await audio.play();
+      void refreshAudioOutputDevices();
     } catch (err) {
       console.warn("[playback] audio.play() blocked or failed:", err);
     }
-  }, [resumeAudioContext]);
+  }, [applyCurrentSink, refreshAudioOutputDevices, resumeAudioContext]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -179,6 +234,28 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       return g;
     });
   }, []);
+
+  const playClip = useCallback(
+    ({ path }: PlayClipOptions) => {
+      const main = audioRef.current;
+      if (main && !main.paused) {
+        main.pause();
+      }
+      setPlaying(false);
+
+      const clip = clipAudioRef.current;
+      if (!clip) return;
+      clip.src = audioSrc(path);
+      clip.load();
+      const start = () => {
+        void clip.play().catch((err) => {
+          console.warn("[playback] clip play failed:", err);
+        });
+      };
+      clip.addEventListener("canplay", start, { once: true });
+    },
+    [],
+  );
 
   const restart = useCallback(() => {
     setPlayNonce((n) => n + 1);
@@ -225,11 +302,22 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     editorText,
     setEditorText,
     select,
+    playClip,
     togglePlay,
     restart,
     seekTo,
     playbackRate,
     setPlaybackRate,
+    outputDeviceId,
+    setOutputDeviceId,
+    audioOutputDevices,
+    audioOutputSupported,
+    audioOutputLoading,
+    refreshAudioOutputDevices,
+    canPickSystemAudioOutput,
+    pickSystemAudioOutput,
+    audioOutputEnumerationNotice,
+    lastSinkError,
   };
 
   return (
@@ -245,6 +333,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
       />
+      <audio ref={clipAudioRef} className="sr-only" preload="auto" />
     </PlaybackContext.Provider>
   );
 }

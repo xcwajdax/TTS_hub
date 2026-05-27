@@ -5,7 +5,7 @@ use axum::{
     extract::{Extension, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -15,8 +15,8 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::audio::AudioFormat;
 use crate::commands::{
     create_folder_impl, delete_folder_impl, delete_folder_rule_impl, do_archive, enqueue_request,
-    list_folder_rules_impl, list_folders_impl, move_to_folder_impl, rename_folder_impl,
-    upsert_folder_rule_impl, GenerateReq,
+    list_folder_rules_impl, list_folders_impl, minimax_clone_voice_impl, move_to_folder_impl,
+    rename_folder_impl, sync_minimax_voices_impl, upsert_folder_rule_impl, GenerateReq,
 };
 use crate::cursor_integration::{self, TtsHubExportedConfig};
 use crate::text_filters::{self, TextFilterPreset};
@@ -89,8 +89,29 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         .route("/jobs/:id/cancel", post(job_cancel))
         .route("/jobs/:id/resume", post(job_resume))
         .route("/cursor/config", get(cursor_config))
+        .route("/minimax/sync-voices", post(minimax_sync_voices_http))
+        .route("/minimax/clone-voice", post(minimax_clone_voice_http))
         .route("/text/filter", post(text_filter))
         .route("/integration/status", get(integration_status))
+        .route("/plugins", get(plugins_list))
+        .route("/plugins/:id/install", post(plugin_install))
+        .route("/plugins/:id/install", delete(plugin_uninstall))
+        .route("/plugins/:id", patch(plugin_set_enabled))
+        .route("/plugins/soundboard", get(soundboard_get))
+        .route(
+            "/plugins/soundboard/slots/:index",
+            put(soundboard_put_slot)
+                .patch(soundboard_patch_slot)
+                .delete(soundboard_delete_slot),
+        )
+        .route(
+            "/plugins/soundboard/slots/:index/play",
+            post(soundboard_play_slot),
+        )
+        .route(
+            "/plugins/soundboard/slots/:index/audio",
+            get(soundboard_slot_audio),
+        )
         .with_state(state)
         .layer(Extension(app_handle))
         .layer(cors);
@@ -314,6 +335,72 @@ async fn job_discard(State(state): State<AppArc>, Path(id): Path<String>) -> Res
     match state.db.delete(&id) {
         Ok(()) => Json(serde_json::json!({ "discarded": id })).into_response(),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MinimaxCloneVoiceBody {
+    source_path: String,
+    voice_id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    preview_text: Option<String>,
+    #[serde(default)]
+    prompt_path: Option<String>,
+    #[serde(default)]
+    prompt_text: Option<String>,
+}
+
+async fn minimax_clone_voice_http(
+    State(state): State<AppArc>,
+    Json(body): Json<MinimaxCloneVoiceBody>,
+) -> Response {
+    let voice_id = body.voice_id.trim().to_string();
+    if voice_id.is_empty() {
+        return json_err(StatusCode::BAD_REQUEST, "voice_id is required".to_string());
+    }
+    let source_path = body.source_path.trim().to_string();
+    if source_path.is_empty() || !std::path::Path::new(&source_path).is_file() {
+        return json_err(
+            StatusCode::BAD_REQUEST,
+            format!("source_path not found: {source_path}"),
+        );
+    }
+    let name = body
+        .name
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| voice_id.clone());
+    let model = body
+        .model
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "minimax:speech-2.8-hd".to_string());
+    let preview_text = body.preview_text.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
+        "Szanowni państwo, witam w kolejnym odcinku kulinarnej podróży.".to_string()
+    });
+    match minimax_clone_voice_impl(
+        &state,
+        source_path,
+        voice_id,
+        name,
+        model,
+        preview_text,
+        body.prompt_path,
+        body.prompt_text,
+    )
+    .await
+    {
+        Ok(entry) => Json(entry).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn minimax_sync_voices_http(State(state): State<AppArc>) -> Response {
+    match sync_minimax_voices_impl(&state).await {
+        Ok(result) => Json(result).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
 
@@ -572,6 +659,166 @@ fn audio_bytes_response(bytes: Vec<u8>, mime: &'static str, range_header: Option
         bytes,
     )
         .into_response()
+}
+
+async fn plugins_list(State(state): State<AppArc>) -> Response {
+    match crate::plugins::get_plugins_list(&state) {
+        Ok(list) => Json(list).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PluginEnabledBody {
+    enabled: bool,
+}
+
+async fn plugin_install(
+    State(state): State<AppArc>,
+    Extension(app): Extension<AppHandle>,
+    Path(id): Path<String>,
+) -> Response {
+    match crate::plugins::install_plugin_impl(&state, &id) {
+        Ok(list) => {
+            let _ = crate::plugins::reload_after_plugin_change(&app, &state);
+            Json(list).into_response()
+        }
+        Err(e) => json_err(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+async fn plugin_uninstall(
+    State(state): State<AppArc>,
+    Extension(app): Extension<AppHandle>,
+    Path(id): Path<String>,
+) -> Response {
+    match crate::plugins::uninstall_plugin_impl(&state, &id) {
+        Ok(list) => {
+            let _ = crate::plugins::reload_after_plugin_change(&app, &state);
+            Json(list).into_response()
+        }
+        Err(e) => json_err(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+async fn plugin_set_enabled(
+    State(state): State<AppArc>,
+    Extension(app): Extension<AppHandle>,
+    Path(id): Path<String>,
+    Json(body): Json<PluginEnabledBody>,
+) -> Response {
+    match crate::plugins::set_plugin_enabled_impl(&state, &id, body.enabled) {
+        Ok(list) => {
+            let _ = crate::plugins::reload_after_plugin_change(&app, &state);
+            Json(list).into_response()
+        }
+        Err(e) => json_err(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+async fn soundboard_get(State(state): State<AppArc>) -> Response {
+    match crate::plugins::get_soundboard_public(&state) {
+        Ok(view) => Json(view).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn soundboard_put_slot(
+    State(state): State<AppArc>,
+    Extension(app): Extension<AppHandle>,
+    Path(index): Path<usize>,
+    Json(body): Json<crate::plugins::soundboard::AssignSoundboardSlotReq>,
+) -> Response {
+    if let Err(e) = crate::plugins::set_soundboard_slot_impl(&state, index, body) {
+        return json_err(StatusCode::BAD_REQUEST, e);
+    }
+    let _ = crate::global_shortcuts::reload_all(&app, &state);
+    match crate::plugins::get_soundboard_public(&state) {
+        Ok(view) => Json(view).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn soundboard_patch_slot(
+    State(state): State<AppArc>,
+    Extension(app): Extension<AppHandle>,
+    Path(index): Path<usize>,
+    Json(body): Json<crate::plugins::soundboard::PatchSoundboardSlotReq>,
+) -> Response {
+    if let Err(e) = crate::plugins::update_soundboard_slot_impl(&state, index, body) {
+        return json_err(StatusCode::BAD_REQUEST, e);
+    }
+    let _ = crate::global_shortcuts::reload_all(&app, &state);
+    match crate::plugins::get_soundboard_public(&state) {
+        Ok(view) => Json(view).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn soundboard_delete_slot(
+    State(state): State<AppArc>,
+    Extension(app): Extension<AppHandle>,
+    Path(index): Path<usize>,
+) -> Response {
+    if let Err(e) = crate::plugins::clear_soundboard_slot_impl(&state, index) {
+        return json_err(StatusCode::BAD_REQUEST, e);
+    }
+    let _ = crate::global_shortcuts::reload_all(&app, &state);
+    match crate::plugins::get_soundboard_public(&state) {
+        Ok(view) => Json(view).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn soundboard_play_slot(
+    State(state): State<AppArc>,
+    Extension(app): Extension<AppHandle>,
+    Path(index): Path<usize>,
+) -> Response {
+    match crate::plugins::play_soundboard_slot_impl(&app, &state, index) {
+        Ok(()) => Json(serde_json::json!({ "ok": true, "slot_index": index })).into_response(),
+        Err(e) => json_err(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+async fn soundboard_slot_audio(
+    State(state): State<AppArc>,
+    Path(index): Path<usize>,
+    headers: HeaderMap,
+) -> Response {
+    let path = match crate::plugins::soundboard::soundboard_slot_audio_path(&state, index) {
+        Ok(p) => p,
+        Err(e) => return json_err(StatusCode::NOT_FOUND, e),
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => {
+            return json_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("read failed: {e}"),
+            )
+        }
+    };
+    let mime = mime_for_path(&path);
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok());
+    audio_bytes_response(bytes, mime, range)
+}
+
+fn mime_for_path(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase())
+        .as_deref()
+    {
+        Some("wav") => "audio/wav",
+        Some("mp3") => "audio/mpeg",
+        Some("ogg") => "audio/ogg",
+        _ => "application/octet-stream",
+    }
 }
 
 async fn delete_one(State(state): State<AppArc>, Path(id): Path<String>) -> Response {

@@ -1,4 +1,6 @@
 mod app_settings;
+mod global_shortcuts;
+mod plugins;
 mod avatars;
 mod audio;
 mod commands;
@@ -21,10 +23,15 @@ mod state;
 mod text_filters;
 mod voice_samples;
 mod minimax;
+mod voice_profiles;
 mod voicebox;
 mod local_storage;
+mod audio_output_devices;
+mod webview_media_permissions;
 
 use std::sync::Arc;
+
+use tauri::Manager;
 
 pub fn run() {
     let app_state = match state::AppState::initialize() {
@@ -125,6 +132,8 @@ pub fn run() {
             commands::clear_local_app_data,
             commands::app_restart,
             commands::app_exit,
+            commands::prepare_audio_device_enumeration,
+            commands::list_native_audio_output_devices,
             commands::read_image_file_base64,
             commands::list_source_avatars,
             commands::get_source_avatar,
@@ -135,6 +144,16 @@ pub fn run() {
             commands::delete_voice_avatar,
             commands::pick_avatar_image,
             commands::open_avatars_folder,
+            commands::get_plugins,
+            commands::install_plugin,
+            commands::uninstall_plugin,
+            commands::set_plugin_enabled,
+            commands::get_soundboard,
+            commands::set_soundboard_enabled,
+            commands::set_soundboard_slot,
+            commands::update_soundboard_slot,
+            commands::clear_soundboard_slot,
+            commands::play_soundboard_slot,
         ])
         .on_menu_event(|app, event| menu::handle_event(app, event))
         .setup(move |app| {
@@ -156,8 +175,27 @@ pub fn run() {
                 }
             });
             selection_capture::ensure_foreground_tracker(handle.clone());
-            if let Err(e) = quick_hotkeys::reload_from_settings(&handle, &app_state) {
-                eprintln!("quick hotkeys registration: {e:#}");
+            if let Err(e) = global_shortcuts::reload_all(&handle, &app_state) {
+                eprintln!("global shortcuts registration: {e:#}");
+            }
+            webview_media_permissions::grant_microphone_for_playback_webviews(&handle);
+            if let Some(main) = handle.get_webview_window("main") {
+                let script = r#"
+                  (() => {
+                    if (window.__ttsHubAudioUnlockStarted) return;
+                    window.__ttsHubAudioUnlockStarted = true;
+                    (async () => {
+                      try {
+                        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        s.getTracks().forEach((t) => t.stop());
+                        window.dispatchEvent(new Event("tts-hub-audio-unlock"));
+                      } catch (e) {
+                        console.warn("[tts-hub] audio unlock:", e);
+                      }
+                    })();
+                  })();
+                "#;
+                let _ = main.eval(script);
             }
             Ok(())
         })

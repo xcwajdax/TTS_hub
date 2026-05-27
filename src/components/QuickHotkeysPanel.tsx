@@ -8,9 +8,16 @@ import {
   type VoiceBoxHealth,
   type VoiceBoxProfile,
 } from "../api/tauri";
-import type { QuickHotkeyPreset, QuickHotkeysSettings, TextFilterPreset } from "../appSettings";
+import { getAppSettings } from "../api/tauri";
+import type {
+  QuickHotkeyPreset,
+  QuickHotkeysSettings,
+  TextFilterPreset,
+  TtsVoiceProfile,
+} from "../appSettings";
 import { defaultQuickHotkeyPreset } from "../appSettings";
 import {
+  applyVoiceProfileToPreset,
   findShortcutConflict,
   migrateLegacyShortcut,
   presetToSettingsState,
@@ -18,10 +25,13 @@ import {
   shortcutDisplayLabel,
   suggestShortcutForSlot,
 } from "../lib/quickHotkeyPreset";
+import { resolveVoiceProfile } from "../lib/voiceProfiles";
+import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import type { TtsModelInfo } from "../ttsModels";
 import { useJobs } from "../context/JobsContext";
 import ShortcutEditor from "./ShortcutEditor";
 import TtsPresetFields from "./TtsPresetFields";
+import VoiceProfileSelect from "./VoiceProfileSelect";
 
 interface Props {
   value: QuickHotkeysSettings;
@@ -45,6 +55,7 @@ export default function QuickHotkeysPanel({
   const [voiceboxHealthState, setVoiceboxHealthState] = useState<VoiceBoxHealth | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [voiceProfiles, setVoiceProfiles] = useState<TtsVoiceProfile[]>([]);
 
   const migratedLegacy = useRef(false);
   useEffect(() => {
@@ -66,6 +77,14 @@ export default function QuickHotkeysPanel({
     listVoiceboxProfiles().then(setVoiceboxProfiles).catch(() => setVoiceboxProfiles([]));
     listVoiceboxModels().then(setVoiceboxModels).catch(() => setVoiceboxModels([]));
     voiceboxHealth().then(setVoiceboxHealthState).catch(() => setVoiceboxHealthState(null));
+    const loadProfiles = () => {
+      void getAppSettings()
+        .then((view) => setVoiceProfiles(view.voice_profiles ?? []))
+        .catch(() => setVoiceProfiles([]));
+    };
+    loadProfiles();
+    window.addEventListener(VOICE_PROFILES_CHANGED, loadProfiles);
+    return () => window.removeEventListener(VOICE_PROFILES_CHANGED, loadProfiles);
   }, []);
 
   const updateMaster = (enabled: boolean) => onChange({ ...value, enabled });
@@ -145,7 +164,8 @@ export default function QuickHotkeysPanel({
       <div className="flex flex-col gap-3">
         {value.presets.map((preset) => {
           const expanded = expandedId === preset.id;
-          const ttsState = presetToSettingsState(preset);
+          const ttsState = presetToSettingsState(preset, voiceProfiles);
+          const linkedProfile = resolveVoiceProfile(voiceProfiles, preset.voice_profile_id);
           const shortcut = migrateLegacyShortcut(preset.shortcut);
           const conflict = findShortcutConflict(shortcut, value.presets, preset.id);
           return (
@@ -208,6 +228,29 @@ export default function QuickHotkeysPanel({
                       conflict ? `Ten skrót jest już używany przez „${conflict.name}".` : null
                     }
                   />
+                  <label className="flex flex-col gap-1 text-xs text-muted">
+                    Profil głosu
+                    <VoiceProfileSelect
+                      value={preset.voice_profile_id}
+                      onChange={(voiceProfileId) => {
+                        if (!voiceProfileId) {
+                          updatePreset(preset.id, { voice_profile_id: null });
+                          return;
+                        }
+                        const profile = resolveVoiceProfile(voiceProfiles, voiceProfileId);
+                        if (profile) {
+                          updatePreset(preset.id, applyVoiceProfileToPreset(preset, profile));
+                        } else {
+                          updatePreset(preset.id, { voice_profile_id: voiceProfileId });
+                        }
+                      }}
+                    />
+                    {linkedProfile ? (
+                      <span className="text-[10px] text-muted/90">
+                        Używany profil: {linkedProfile.name}
+                      </span>
+                    ) : null}
+                  </label>
                   <TtsPresetFields
                     state={ttsState}
                     voices={voices}

@@ -25,7 +25,6 @@ import {
 import { DEFAULT_TTS_MODEL, FALLBACK_TTS_MODELS, type TtsModelInfo } from "../ttsModels";
 import { isProviderEnabled, type TtsProviderId } from "../appSettings";
 import type { SpeakerConfig, TtsModel, TtsProvider } from "../types";
-import MinimaxVoiceCloneModal from "./MinimaxVoiceCloneModal";
 import VoiceSamplePlayButton from "./VoiceSamplePlayButton";
 import VoiceSamples from "./VoiceSamples";
 
@@ -97,8 +96,6 @@ export default function Settings({
   const [minimaxStatus, setMinimaxStatus] = useState<MinimaxHealth | null>(null);
   const [minimaxSyncedAt, setMinimaxSyncedAt] = useState<number | null>(null);
   const [syncingVoices, setSyncingVoices] = useState(false);
-  const [cloneModalOpen, setCloneModalOpen] = useState(false);
-
   const reloadMinimaxVoices = () => {
     listMinimaxPresetVoices().then(setMinimaxPresets).catch(() => setMinimaxPresets([]));
     listMinimaxClonedVoices().then(setMinimaxCloned).catch(() => setMinimaxCloned([]));
@@ -378,13 +375,6 @@ export default function Settings({
               >
                 {syncingVoices ? "Synchronizuję głosy…" : "Synchronizuj głosy z API"}
               </button>
-              <button
-                type="button"
-                className="btn-primary text-xs w-full"
-                onClick={() => setCloneModalOpen(true)}
-              >
-                Stwórz głos
-              </button>
             </div>
           </div>
         ) : (
@@ -495,18 +485,6 @@ export default function Settings({
           Probki Gemini sa ukryte dla Voice Box. Profile Voice Box korzystaja z probek zapisanych w lokalnym serwerze.
         </div>
       )}
-
-      <MinimaxVoiceCloneModal
-        open={cloneModalOpen && state.provider === "minimax"}
-        onClose={() => setCloneModalOpen(false)}
-        model={state.model}
-        onCloned={(v) => {
-          setMinimaxCloned((prev) => [...prev.filter((c) => c.voice_id !== v.voice_id), v]);
-          onChange({ ...state, voice: v.voice_id });
-          setCloneModalOpen(false);
-        }}
-        onError={onError ?? (() => undefined)}
-      />
 
       {state.provider === "google" && state.multiSpeaker && (
         <div className="grid grid-cols-1 gap-3">

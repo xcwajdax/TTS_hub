@@ -14,6 +14,7 @@ interface Props {
   disabled?: boolean;
   conflictMessage?: string | null;
   label?: string;
+  compact?: boolean;
 }
 
 function KbdChip({ children }: { children: string }) {
@@ -30,6 +31,7 @@ export default function ShortcutEditor({
   disabled,
   conflictMessage,
   label = "Skrót klawiszowy",
+  compact = false,
 }: Props) {
   const captureId = useId();
   const captureRef = useRef<HTMLDivElement>(null);
@@ -89,7 +91,11 @@ export default function ShortcutEditor({
   const parts = shortcutKeyParts(value);
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-accent/30 bg-panel2/50 p-3">
+    <section
+      className={`flex flex-col rounded-lg border border-accent/30 bg-panel2/50 ${
+        compact ? "gap-2 p-2" : "gap-3 p-3"
+      }`}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</h4>
         {value && (
@@ -148,9 +154,9 @@ export default function ShortcutEditor({
         </button>
       )}
 
-      <div className="flex flex-col gap-1.5">
+      <div className={`flex flex-col gap-1.5 ${compact ? "" : ""}`}>
         <span className="text-[10px] uppercase tracking-wide text-muted">Szybki wybór</span>
-        <div className="flex flex-wrap gap-1.5">
+        <div className={`flex flex-wrap gap-1 ${compact ? "max-h-16 overflow-y-auto" : "gap-1.5"}`}>
           {SHORTCUT_QUICK_PICKS.map((pick) => {
             const active = value.toLowerCase() === pick.toLowerCase();
             return (
@@ -177,37 +183,44 @@ export default function ShortcutEditor({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] text-muted" htmlFor={`${captureId}-manual`}>
-          Wpisz ręcznie (opcjonalnie)
-        </label>
-        <div className="flex gap-2">
-          <input
-            id={`${captureId}-manual`}
-            className="field flex-1 font-mono text-sm"
-            value={manual}
-            disabled={disabled || recording}
-            placeholder="np. F9 lub Ctrl+Alt+1"
-            onChange={(e) => {
-              setManual(e.target.value);
-              setManualError(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                applyManual();
-              }
-            }}
-            onBlur={() => {
-              if (manual.trim() && manual !== value) applyManual();
-            }}
-          />
-          <button type="button" className="btn text-xs shrink-0" disabled={disabled || recording} onClick={applyManual}>
-            Zastosuj
-          </button>
+      {!compact ? (
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] text-muted" htmlFor={`${captureId}-manual`}>
+            Wpisz ręcznie (opcjonalnie)
+          </label>
+          <div className="flex gap-2">
+            <input
+              id={`${captureId}-manual`}
+              className="field flex-1 font-mono text-sm"
+              value={manual}
+              disabled={disabled || recording}
+              placeholder="np. F9 lub Ctrl+Alt+1"
+              onChange={(e) => {
+                setManual(e.target.value);
+                setManualError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  applyManual();
+                }
+              }}
+              onBlur={() => {
+                if (manual.trim() && manual !== value) applyManual();
+              }}
+            />
+            <button
+              type="button"
+              className="btn text-xs shrink-0"
+              disabled={disabled || recording}
+              onClick={applyManual}
+            >
+              Zastosuj
+            </button>
+          </div>
+          {manualError && <p className="text-[11px] text-red-300">{manualError}</p>}
         </div>
-        {manualError && <p className="text-[11px] text-red-300">{manualError}</p>}
-      </div>
+      ) : null}
 
       {conflictMessage && <p className="text-[11px] text-amber-300">{conflictMessage}</p>}
     </section>

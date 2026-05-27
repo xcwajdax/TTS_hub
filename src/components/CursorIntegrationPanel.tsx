@@ -223,8 +223,8 @@ export default function CursorIntegrationPanel({ value, onChange, voices, onErro
             każdej turze z podsumowaniem (także pośredniej).
           </li>
           <li>
-            Ustawienia providera poniżej nadpisują skill, gdy <code>prefer_app_config</code> jest włączone w
-            config.json.
+            Gdy <code>prefer_app_config</code> w config.json — skill bierze stąd provider, model,{" "}
+            <strong>voice_id</strong> i strojenie MiniMax (to samo co hooki).
           </li>
         </ol>
         <span className="text-heading/70">

@@ -15,7 +15,7 @@ use crate::db::{Generation, GenerationUsage, STATUS_CANCELLED, STATUS_DONE, STAT
 use crate::google::TtsRequest;
 use crate::state::AppState;
 use crate::minimax::{
-    hub_language_to_boost, model_from_id, MinimaxGenerateParams, MinimaxVoiceSetting,
+    hub_language_to_boost, model_from_id, MinimaxClient, MinimaxGenerateParams, MinimaxVoiceSetting,
     DEFAULT_MINIMAX_LANGUAGE,
 };
 use crate::voicebox::engine_from_model;
@@ -284,6 +284,26 @@ impl JobQueue {
             let voice_id = req.voice.trim().to_string();
             if voice_id.is_empty() {
                 return Err("Minimax voice_id is required".into());
+            }
+            {
+                let presets = {
+                    let settings = state.settings.read().map_err(|e| format!("{e}"))?;
+                    MinimaxClient::effective_preset_voices(
+                        &settings.minimax_synced_voices,
+                        &settings.effective_minimax_enabled_languages(),
+                    )
+                };
+                let exists = state
+                    .minimax
+                    .voice_exists_on_account(&voice_id, &presets)
+                    .await
+                    .map_err(|e| format!("{e}"))?;
+                if !exists {
+                    return Err(format!(
+                        "Głos „{voice_id}” nie istnieje w MiniMax. \
+                         Kliknij „Synchronizuj głosy z API” lub sklonuj go ponownie („Stwórz głos”)."
+                    ));
+                }
             }
             let model = model_from_id(&req.model).to_string();
             let language_boost = hub_language_to_boost(
