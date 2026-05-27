@@ -13,6 +13,7 @@ import {
 } from "../lib/playbackPrefs";
 import { timelineViewBarCount } from "../lib/timelineView";
 import { drawWaveform } from "../lib/waveformCanvas";
+import AudioOutputSelect from "./AudioOutputSelect";
 import TimelineContextMenu from "./TimelineContextMenu";
 
 const DEFAULT_VOLUME = 0.8;
@@ -209,6 +210,8 @@ export default function WaveformPlayer({ src, className = "" }: Props) {
             {volumePercent}%
           </span>
         </div>
+
+        <AudioOutputSelect />
 
         <label className="flex h-8 shrink-0 items-center gap-1.5 px-2 rounded-lg border border-border bg-panel2 text-muted">
           <span className="text-[10px] whitespace-nowrap">Tempo</span>

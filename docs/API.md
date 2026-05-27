@@ -31,6 +31,33 @@ Serwer startuje automatycznie z aplikacją desktopową.
 | `POST` | `/folder-rules` | Dodanie/aktualizacja reguły. |
 | `DELETE` | `/folder-rules/{id}` | Usunięcie reguły. |
 | `GET` | `/audio/{id}` | Strumień audio (WAV/MP3/OGG wg zapisu). |
+| `GET` | `/plugins` | Lista wbudowanych rozszerzeń (`installed`, `enabled`). |
+| `POST` | `/plugins/{id}/install` | Zainstaluj rozszerzenie (np. `soundboard`). |
+| `DELETE` | `/plugins/{id}/install` | Odinstaluj rozszerzenie. |
+| `PATCH` | `/plugins/{id}` | Włącz/wyłącz: body `{ "enabled": true \| false }`. |
+| `GET` | `/plugins/soundboard` | Stan 8 slotów soundboarda. |
+| `PUT` | `/plugins/soundboard/slots/{index}` | Przypisanie audio (`generation_id` **lub** `file_path`). |
+| `PATCH` | `/plugins/soundboard/slots/{index}` | Metadane slotu (`label`, `shortcut`, `enabled`). |
+| `DELETE` | `/plugins/soundboard/slots/{index}` | Wyczyść slot. |
+| `POST` | `/plugins/soundboard/slots/{index}/play` | Odtwórz slot (emituje zdarzenie w aplikacji). |
+| `GET` | `/plugins/soundboard/slots/{index}/audio` | Strumień pliku przypisanego do slotu. |
+
+## Soundboard (agent)
+
+Indeksy slotów: `0`–`7`. Domyślne skróty globalne: `Ctrl+Shift+1` … `Ctrl+Shift+8`.
+
+```powershell
+# Przypisz generację do slotu 0
+Invoke-RestMethod -Uri "http://127.0.0.1:8765/plugins/soundboard/slots/0" -Method Put `
+  -ContentType "application/json" -Body '{"generation_id":"<uuid>"}'
+
+# Przypisz plik z dysku (kopiowany do %APPDATA%\TTS_hub\plugins\soundboard\)
+Invoke-RestMethod -Uri "http://127.0.0.1:8765/plugins/soundboard/slots/1" -Method Put `
+  -ContentType "application/json" -Body '{"file_path":"C:\\path\\clip.mp3"}'
+
+# Odtwórz
+Invoke-RestMethod -Uri "http://127.0.0.1:8765/plugins/soundboard/slots/0/play" -Method Post
+```
 
 ## `GET /health`
 
@@ -119,12 +146,25 @@ curl "http://127.0.0.1:8765/history?scope=archive"
 curl http://127.0.0.1:8765/audio/<id> --output speech.wav
 ```
 
+### MiniMax — klon głosu / synchronizacja
+
+```powershell
+# Klon (plik audio na dysku; TTS Hub musi działać)
+curl -X POST http://127.0.0.1:8765/minimax/clone-voice `
+  -H "Content-Type: application/json" `
+  -d '{"source_path":"C:/path/maklowicz_28s.mp3","voice_id":"robert_maklowicz","name":"Robert Maklowicz","model":"minimax:speech-2.8-hd"}'
+
+curl -X POST http://127.0.0.1:8765/minimax/sync-voices
+```
+
+Skrypt: `scripts/dev/clone-maklowicz.ps1`
+
 ### MiniMax (skill / Cursor)
 
 ```powershell
 curl -X POST http://127.0.0.1:8765/generate `
   -H "Content-Type: application/json" `
-  -d '{"provider":"minimax","text":"Test.","summary_text":"Test.","model":"speech-2.8-hd","voice":"Polish_female_1_sample1","language":"pl","format":"mp3","autoplay":true,"source":"cursor-skill"}'
+  -d '{"provider":"minimax","text":"Test.","summary_text":"Test.","model":"speech-2.8-hd","voice":"robert_maklowicz","language":"pl","format":"mp3","minimax_speed":0.9,"minimax_pitch":-2,"autoplay":true,"source":"cursor-skill"}'
 ```
 
 ### Voice Box

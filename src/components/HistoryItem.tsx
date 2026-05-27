@@ -33,6 +33,7 @@ import HistoryItemColorPicker from "./history/HistoryItemColorPicker";
 import HistoryItemInlinePlayback from "./history/HistoryItemInlinePlayback";
 import HistoryTokenInfoButton from "./history/HistoryTokenInfoButton";
 import HistoryItemTagPicker from "./history/HistoryItemTagPicker";
+import SoundboardAssignMenu from "./history/SoundboardAssignMenu";
 
 interface Props {
   gen: Generation;
@@ -44,6 +45,7 @@ interface Props {
   onPlay: (g: Generation) => void;
   onChanged: () => void;
   onError: (e: string) => void;
+  onAssignSoundboard?: (generationId: string, slotIndex: number) => void;
 }
 
 const ACTION_ICON = 16;
@@ -63,6 +65,7 @@ export default function HistoryItem({
   onPlay,
   onChanged,
   onError,
+  onAssignSoundboard,
 }: Props) {
   const { playing } = usePlayback();
   const [editing, setEditing] = useState(false);
@@ -453,6 +456,15 @@ export default function HistoryItem({
           onChanged={onChanged}
           onError={onError}
         />
+
+        {onAssignSoundboard && gen.status === "done" && gen.file_path && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <SoundboardAssignMenu
+              disabled={saving}
+              onAssign={(slot) => onAssignSoundboard(gen.id, slot)}
+            />
+          </div>
+        )}
 
         <div className="relative">
           <button

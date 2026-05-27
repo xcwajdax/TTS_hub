@@ -4,18 +4,28 @@ import {
   type HistoryScopeTab,
 } from "../../lib/historyToolbar";
 
-const TAB_ORDER: HistoryScopeTab[] = ["session", "cursor", "archive"];
+const TAB_ORDER: HistoryScopeTab[] = ["session", "cursor", "archive", "soundboard"];
 
 interface Props {
   scope: HistoryScopeTab;
   counts: Record<HistoryScopeTab, number>;
   onScopeChange: (scope: HistoryScopeTab) => void;
+  soundboardInstalled?: boolean;
 }
 
-export default function HistoryScopeTabs({ scope, counts, onScopeChange }: Props) {
+export default function HistoryScopeTabs({
+  scope,
+  counts,
+  onScopeChange,
+  soundboardInstalled = false,
+}: Props) {
+  const tabs = soundboardInstalled
+    ? TAB_ORDER
+    : TAB_ORDER.filter((id) => id !== "soundboard");
+
   return (
     <div className="flex border-b border-border shrink-0" role="tablist" aria-label="Zakres historii">
-      {TAB_ORDER.map((id) => {
+      {tabs.map((id) => {
         const meta = SCOPE_TAB_META[id];
         const active = scope === id;
         const count = counts[id];
@@ -34,8 +44,11 @@ export default function HistoryScopeTabs({ scope, counts, onScopeChange }: Props
             onClick={() => onScopeChange(id)}
           >
             <Icon name={meta.icon} size={18} />
-            {count > 0 && (
+            {count > 0 && id !== "soundboard" && (
               <span className="text-[10px] tabular-nums text-muted/60 leading-none">{count}</span>
+            )}
+            {id === "soundboard" && count > 0 && (
+              <span className="text-[10px] tabular-nums text-accent/80 leading-none">{count}</span>
             )}
           </button>
         );

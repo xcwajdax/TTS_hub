@@ -26,7 +26,7 @@ $ExamplePath = Join-Path $SkillRoot 'config.json.example'
 $WorkDir = Join-Path $env:TEMP 'cursor-tts-skill'
 $LogFile = Join-Path $WorkDir 'cursor-tts-skill.log'
 $DedupeFile = Join-Path $WorkDir 'last-summary.sha1'
-$DefaultMinimaxVoice = 'Polish_female_1_sample1'
+$DefaultMinimaxVoice = 'robert_maklowicz'
 $DefaultMinimaxLanguage = 'pl'
 
 if (-not (Test-Path $WorkDir)) {
@@ -183,8 +183,7 @@ function Merge-TtsSettings {
             $minimaxVol = $rebases.MinimaxVol
             $minimaxPitch = $rebases.MinimaxPitch
         }
-        # Skill: only provider + minimax tuning from app; model/voice/style stay on presets.{provider}
-        # (avoids gemini model / Kore voice paired with minimax from inconsistent Cursor panel).
+        # Provider-specific fields from app (same as hook cursor-tts.ps1) — voice_id z Integracji Cursor.
         if ($provider -eq 'voicebox') {
             if ($App.PSObject.Properties['profile_id'] -and $App.profile_id) {
                 $profileId = [string]$App.profile_id
@@ -195,8 +194,26 @@ function Merge-TtsSettings {
             if ($App.PSObject.Properties['engine'] -and $App.engine) {
                 $engine = [string]$App.engine
             }
+            if ($App.PSObject.Properties['voice'] -and $App.voice) {
+                $voice = [string]$App.voice
+            }
+            if ($App.PSObject.Properties['model'] -and $App.model) {
+                $model = [string]$App.model
+            }
         }
         if ($provider -eq 'minimax') {
+            if ($App.PSObject.Properties['voice'] -and $App.voice) {
+                $voice = [string]$App.voice
+            }
+            if ($App.PSObject.Properties['model'] -and $App.model) {
+                $model = [string]$App.model
+            }
+            if ($App.PSObject.Properties['language'] -and $App.language) {
+                $language = [string]$App.language
+            }
+            if ($App.PSObject.Properties['format'] -and $App.format) {
+                $format = [string]$App.format
+            }
             if ($App.PSObject.Properties['minimax_speed'] -and $null -ne $App.minimax_speed) {
                 $minimaxSpeed = [double]$App.minimax_speed
             }
@@ -205,6 +222,20 @@ function Merge-TtsSettings {
             }
             if ($App.PSObject.Properties['minimax_pitch'] -and $null -ne $App.minimax_pitch) {
                 $minimaxPitch = [int]$App.minimax_pitch
+            }
+        }
+        if ($provider -eq 'google') {
+            if ($App.PSObject.Properties['voice'] -and $App.voice) {
+                $voice = [string]$App.voice
+            }
+            if ($App.PSObject.Properties['model'] -and $App.model) {
+                $model = [string]$App.model
+            }
+            if ($App.PSObject.Properties['style'] -and $App.style) {
+                $style = [string]$App.style
+            }
+            if ($App.PSObject.Properties['format'] -and $App.format) {
+                $format = [string]$App.format
             }
         }
         if ($App.PSObject.Properties['autoplay']) {

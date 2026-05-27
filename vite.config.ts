@@ -26,5 +26,8 @@ export default defineConfig(async () => ({
       ? { protocol: "ws", host, port: 1421 }
       : undefined,
     watch: { ignored: ["**/src-tauri/**"] },
+    headers: {
+      "Permissions-Policy": "speaker-selection=(self), microphone=(self), camera=(self)",
+    },
   },
 }));

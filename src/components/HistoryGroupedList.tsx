@@ -17,6 +17,7 @@ interface Props {
   onPlay: (g: Generation) => void;
   onChanged: () => void;
   onError: (e: string) => void;
+  onAssignSoundboard?: (generationId: string, slotIndex: number) => void;
 }
 
 function DateGroupSections({
@@ -29,6 +30,7 @@ function DateGroupSections({
   onPlay,
   onChanged,
   onError,
+  onAssignSoundboard,
 }: {
   groups: ReturnType<typeof groupGenerationsByDate>;
   folders: ArchiveFolder[];
@@ -39,6 +41,7 @@ function DateGroupSections({
   onPlay: (g: Generation) => void;
   onChanged: () => void;
   onError: (e: string) => void;
+  onAssignSoundboard?: (generationId: string, slotIndex: number) => void;
 }) {
   return (
     <>
@@ -61,6 +64,7 @@ function DateGroupSections({
                   onPlay={onPlay}
                   onChanged={onChanged}
                   onError={onError}
+                  onAssignSoundboard={onAssignSoundboard}
                 />
               </li>
             ))}
@@ -84,6 +88,7 @@ export default function HistoryGroupedList({
   onPlay,
   onChanged,
   onError,
+  onAssignSoundboard,
 }: Props) {
   const dateGroups = useMemo(() => groupGenerationsByDate(items), [items]);
   const sessionGroups = useMemo(
@@ -131,6 +136,7 @@ export default function HistoryGroupedList({
               onPlay={onPlay}
               onChanged={onChanged}
               onError={onError}
+              onAssignSoundboard={onAssignSoundboard}
             />
           </div>
         ))}
@@ -150,6 +156,7 @@ export default function HistoryGroupedList({
         onPlay={onPlay}
         onChanged={onChanged}
         onError={onError}
+        onAssignSoundboard={onAssignSoundboard}
       />
     </div>
   );

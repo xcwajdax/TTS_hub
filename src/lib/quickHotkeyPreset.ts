@@ -1,5 +1,10 @@
-import type { QuickHotkeyPreset } from "../appSettings";
+import type { QuickHotkeyPreset, TtsVoiceProfile } from "../appSettings";
 import type { SettingsState } from "../components/Settings";
+import {
+  applyVoiceProfileToSlot,
+} from "./editorQuickGen";
+import { resolveTtsFromVoiceProfileId } from "./voiceProfiles";
+import type { EditorQuickGenSlot } from "../appSettings";
 import type { TtsProvider } from "../types";
 
 const DEFAULT_SPEAKERS = [
@@ -22,7 +27,7 @@ export const SHORTCUT_QUICK_PICKS: string[] = [
   "Alt+Shift+Y",
 ];
 
-export function presetToSettingsState(preset: QuickHotkeyPreset): SettingsState {
+function presetInlineSettingsState(preset: QuickHotkeyPreset): SettingsState {
   return {
     provider: (preset.provider as TtsProvider) || "google",
     model: preset.model,
@@ -35,6 +40,53 @@ export function presetToSettingsState(preset: QuickHotkeyPreset): SettingsState 
     minimaxSpeed: preset.minimax_speed ?? 1,
     minimaxVol: preset.minimax_vol ?? 1,
     minimaxPitch: preset.minimax_pitch ?? 0,
+  };
+}
+
+export function presetToSettingsState(
+  preset: QuickHotkeyPreset,
+  voiceProfiles: TtsVoiceProfile[] = [],
+): SettingsState {
+  return resolveTtsFromVoiceProfileId(
+    voiceProfiles,
+    preset.voice_profile_id,
+    presetInlineSettingsState(preset),
+  );
+}
+
+export function applyVoiceProfileToPreset(
+  preset: QuickHotkeyPreset,
+  profile: import("../appSettings").TtsVoiceProfile,
+): QuickHotkeyPreset {
+  const slot: EditorQuickGenSlot = {
+    label: preset.name,
+    provider: preset.provider,
+    model: preset.model,
+    voice: preset.voice,
+    style: preset.style,
+    profile_id: preset.profile_id,
+    language: preset.language,
+    engine: preset.engine,
+    minimax_speed: preset.minimax_speed,
+    minimax_vol: preset.minimax_vol,
+    minimax_pitch: preset.minimax_pitch,
+    filter_preset_id: preset.filter_preset_id,
+    format: preset.format,
+    voice_profile_id: preset.voice_profile_id,
+  };
+  const next = applyVoiceProfileToSlot(slot, profile);
+  return {
+    ...preset,
+    voice_profile_id: next.voice_profile_id,
+    provider: next.provider,
+    model: next.model,
+    voice: next.voice,
+    style: next.style,
+    profile_id: next.profile_id,
+    language: next.language,
+    minimax_speed: next.minimax_speed,
+    minimax_vol: next.minimax_vol,
+    minimax_pitch: next.minimax_pitch,
   };
 }
 

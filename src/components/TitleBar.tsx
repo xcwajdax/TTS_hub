@@ -2,6 +2,7 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
+import TitleBarAudioOutput from "./TitleBarAudioOutput";
 import TitleBarSkinSwitcher from "./TitleBarSkinSwitcher";
 import { isTauriApp } from "../lib/tauriEnv";
 import { appExit, appRestart } from "../api/tauri";
@@ -14,6 +15,7 @@ type MenuId =
   | "settings"
   | "quick_setup"
   | "quick_hotkeys"
+  | "soundboard"
   | "about"
   | "restart"
   | "quit";
@@ -44,6 +46,7 @@ const MENUS: { label: string; items: MenuEntry[] }[] = [
       { id: "settings", label: "Ustawienia…" },
       { id: "quick_setup", label: "Szybka konfiguracja…" },
       { id: "quick_hotkeys", label: "Szybkie skróty…" },
+      { id: "soundboard", label: "Soundboard…" },
     ],
   },
   {
@@ -193,6 +196,7 @@ export default function TitleBar() {
         <span className="title-bar__title">TTS Hub</span>
       </div>
 
+      <TitleBarAudioOutput />
       <TitleBarSkinSwitcher />
 
       <div className="title-bar__controls">

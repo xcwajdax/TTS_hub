@@ -6,12 +6,12 @@
     "minimax": {
       "provider": "minimax",
       "model": "speech-2.8-hd",
-      "voice": "Polish_female_1_sample1",
+      "voice": "robert_maklowicz",
       "language": "pl",
       "format": "mp3",
-      "minimax_speed": 1.0,
+      "minimax_speed": 0.9,
       "minimax_vol": 1.0,
-      "minimax_pitch": 0
+      "minimax_pitch": -2
     },
     "google": {
       "provider": "google",

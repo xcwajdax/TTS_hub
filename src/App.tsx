@@ -29,14 +29,41 @@ import { usePlaybackToastRemote } from "./hooks/usePlaybackToastRemote";
 import { usePlaybackToastWindow } from "./hooks/usePlaybackToastWindow";
 import BrowserOnlyBanner from "./components/BrowserOnlyBanner";
 import TitleBar from "./components/TitleBar";
+import AppViewTabs, { type AppView } from "./components/AppViewTabs";
+import type { HistoryScopeTab } from "./lib/historyToolbar";
+import ExtensionsHub from "./plugins/ExtensionsHub";
+import SoundboardView from "./plugins/soundboard/SoundboardView";
+import { BUILTIN_PLUGIN_STUBS } from "./plugins/registry";
+import { getPlugins } from "./api/tauri";
+import { PLUGINS_CHANGED } from "./plugins/events";
+import type { PluginManifest } from "./plugins/types";
 import { isCursorPlaybackSource } from "./lib/cursorSource";
 import { isTauriApp } from "./lib/tauriEnv";
 import { usePlaybackQueue } from "./hooks/usePlaybackQueue";
 import { TimelineViewProvider } from "./context/TimelineViewContext";
 import { SkinProvider } from "./skins/SkinProvider";
 
-function AppInner() {
-  const { current, playing, playNonce, select, audioRef, setEditorText } = usePlayback();
+interface AppInnerProps {
+  appView: AppView;
+  activePluginId: string | null;
+  historyInitialScope?: HistoryScopeTab;
+  onHistoryInitialScopeConsumed: () => void;
+  onFocusSoundboard: () => void;
+  onOpenPlugin: (id: string) => void;
+  onBackToHub: () => void;
+  onNavigateExtensions: () => void;
+}
+
+function AppInner({
+  appView,
+  activePluginId,
+  historyInitialScope,
+  onHistoryInitialScopeConsumed,
+  onFocusSoundboard,
+  onOpenPlugin,
+  onBackToHub,
+}: AppInnerProps) {
+  const { current, playing, playNonce, select, audioRef, setEditorText, playClip } = usePlayback();
   const { onDone } = useJobs();
   useBroadcastPlaybackViz();
   usePlaybackToastWindow();
@@ -64,6 +91,7 @@ function AppInner() {
     | undefined
   >(undefined);
   const [showQuickSetupPrompt, setShowQuickSetupPrompt] = useState(false);
+  const [plugins, setPlugins] = useState<PluginManifest[]>(BUILTIN_PLUGIN_STUBS);
   const { cfg, lastCursor } = useCursorIntegration();
   const { playOrEnqueue, clearQueue } = usePlaybackQueue(select, audioRef, playing);
   const lastCursorGenRef = useRef<Generation | null>(null);
@@ -109,7 +137,23 @@ function AppInner() {
     void refreshInterrupted().then((list) => {
       if (list.length > 0) setShowRecovery(true);
     });
+    if (isTauriApp()) {
+      void getPlugins()
+        .then(setPlugins)
+        .catch(() => setPlugins(BUILTIN_PLUGIN_STUBS));
+    }
   }, [refresh, refreshInterrupted]);
+
+  useEffect(() => {
+    if (!isTauriApp()) return;
+    const sync = () => {
+      void getPlugins()
+        .then(setPlugins)
+        .catch(() => {});
+    };
+    window.addEventListener(PLUGINS_CHANGED, sync);
+    return () => window.removeEventListener(PLUGINS_CHANGED, sync);
+  }, []);
 
   useEffect(() => {
     if (!isTauriApp()) return;
@@ -220,12 +264,31 @@ function AppInner() {
       unlistenReady = fn;
     });
 
+    let unlistenSb: (() => void) | undefined;
+    let unlistenSbErr: (() => void) | undefined;
+
+    void listen<{ slotIndex: number; path: string; label: string }>("soundboard:play", (ev) => {
+      playClip({ path: ev.payload.path, label: ev.payload.label });
+      setToast(`Soundboard: ${ev.payload.label}`);
+      window.setTimeout(() => setToast(null), 2500);
+    }).then((fn) => {
+      unlistenSb = fn;
+    });
+
+    void listen<{ message: string; slotIndex: number }>("soundboard:error", (ev) => {
+      setError(ev.payload.message);
+    }).then((fn) => {
+      unlistenSbErr = fn;
+    });
+
     return () => {
       unlistenEditor?.();
       unlistenError?.();
       unlistenReady?.();
+      unlistenSb?.();
+      unlistenSbErr?.();
     };
-  }, [setEditorText, playOrEnqueue]);
+  }, [setEditorText, playOrEnqueue, playClip]);
 
   const ttsSettings = useTtsSettings(setError);
 
@@ -246,7 +309,54 @@ function AppInner() {
       setShowQuickSetupPrompt(false);
       void openQuickSetupWindow().catch((e) => setError(String(e)));
     },
+    onOpenSoundboard: onFocusSoundboard,
   });
+
+  if (appView === "extensions") {
+    return (
+      <div className="h-full w-full flex flex-col min-h-0 relative">
+        {activePluginId === "soundboard" ? (
+          <SoundboardView
+            onBack={onBackToHub}
+            onError={setError}
+            onToast={(msg) => {
+              setToast(msg);
+              window.setTimeout(() => setToast(null), 2500);
+            }}
+          />
+        ) : (
+          <ExtensionsHub
+            plugins={plugins}
+            onPluginsChange={setPlugins}
+            onOpenPlugin={onOpenPlugin}
+            onError={setError}
+            onToast={(msg) => {
+              setToast(msg);
+              window.setTimeout(() => setToast(null), 3500);
+            }}
+          />
+        )}
+        {error && (
+          <div
+            className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setError(null)}
+            title="Kliknij aby zamknac"
+          >
+            {error}
+          </div>
+        )}
+        {toast && (
+          <div
+            className="fixed bottom-4 left-4 max-w-md bg-emerald-900/80 border border-emerald-700 text-emerald-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setToast(null)}
+            title="Kliknij aby zamknac"
+          >
+            {toast}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full grid relative" style={{ gridTemplateColumns: "1fr 3fr 1fr" }}>
@@ -263,8 +373,13 @@ function AppInner() {
         voiceboxProfiles={ttsSettings.voiceboxProfiles}
         voiceboxModels={ttsSettings.voiceboxModels}
         voiceboxHealth={ttsSettings.voiceboxStatus}
+        recentGenerations={session}
         onChange={ttsSettings.setSettings}
         onError={setError}
+        onProfileSaved={(msg) => {
+          setToast(msg);
+          window.setTimeout(() => setToast(null), 3500);
+        }}
       />
       <div
         className="grid min-h-0 min-w-0 overflow-hidden h-full border-x border-border"
@@ -303,6 +418,12 @@ function AppInner() {
           interrupted={interrupted}
           currentSessionId={currentSessionId}
           currentId={current?.id ?? null}
+          initialScope={historyInitialScope}
+          onInitialScopeConsumed={onHistoryInitialScopeConsumed}
+          onSoundboardToast={(msg) => {
+            setToast(msg);
+            window.setTimeout(() => setToast(null), 2500);
+          }}
           onPlay={(g) => {
             clearQueue();
             select(g, { loadEditorText: false });
@@ -351,20 +472,48 @@ function AppInner() {
 
 export default function App() {
   const inTauri = isTauriApp();
+  const [appView, setAppView] = useState<AppView>("tts");
+  const [activePluginId, setActivePluginId] = useState<string | null>(null);
+  const [historyInitialScope, setHistoryInitialScope] = useState<HistoryScopeTab | undefined>(
+    undefined,
+  );
+
   return (
     <SkinProvider>
       <TimelineViewProvider>
-        <div className="h-full w-full flex flex-col min-h-0">
-          {inTauri && <TitleBar />}
-          {!inTauri && <BrowserOnlyBanner />}
-          <div className="flex-1 min-h-0 min-w-0">
-            <PlaybackProvider>
+        <PlaybackProvider>
+          <div className="h-full w-full flex flex-col min-h-0">
+            {inTauri && <TitleBar />}
+            {!inTauri && <BrowserOnlyBanner />}
+            <AppViewTabs view={appView} onViewChange={setAppView} />
+            <div className="flex-1 min-h-0 min-w-0">
               <JobsProvider>
-                <AppInner />
+                <AppInner
+                  appView={appView}
+                  activePluginId={activePluginId}
+                  historyInitialScope={historyInitialScope}
+                  onHistoryInitialScopeConsumed={() => setHistoryInitialScope(undefined)}
+                  onFocusSoundboard={() => {
+                    setAppView("tts");
+                    setHistoryInitialScope("soundboard");
+                  }}
+                  onOpenPlugin={(id) => {
+                    if (id === "soundboard") {
+                      setAppView("tts");
+                      setHistoryInitialScope("soundboard");
+                      setActivePluginId(null);
+                      return;
+                    }
+                    setAppView("extensions");
+                    setActivePluginId(id);
+                  }}
+                  onBackToHub={() => setActivePluginId(null)}
+                  onNavigateExtensions={() => setAppView("extensions")}
+                />
               </JobsProvider>
-            </PlaybackProvider>
+            </div>
           </div>
-        </div>
+        </PlaybackProvider>
       </TimelineViewProvider>
     </SkinProvider>
   );

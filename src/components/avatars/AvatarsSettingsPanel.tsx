@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   deleteSourceAvatar,
@@ -25,23 +25,46 @@ type CropTarget =
   | { kind: "source"; source: GenerationSource }
   | { kind: "voice"; provider: TtsProvider; voiceId: string; label: string };
 
+type VoiceOption = { id: string; label: string };
+
 interface Props {
   onError: (message: string) => void;
+  /** Preloaded Google voices from parent modal (optional). */
+  initialGoogleVoices?: string[];
 }
 
-export default function AvatarsSettingsPanel({ onError }: Props) {
+function emptyVoicePlaceholder(provider: TtsProvider): string {
+  switch (provider) {
+    case "google":
+      return "Brak głosów";
+    case "minimax":
+      return "Brak głosów — zsynchronizuj w zakładce Ogólne";
+    case "voicebox":
+      return "Brak profili — uruchom Voice Box";
+  }
+}
+
+export default function AvatarsSettingsPanel({ onError, initialGoogleVoices }: Props) {
   const sourcePaths = useSourceAvatars();
   const [revision, setRevision] = useState(0);
   const [crop, setCrop] = useState<{ path: string; target: CropTarget } | null>(null);
 
-  const [googleVoices, setGoogleVoices] = useState<string[]>([]);
-  const [minimaxPresets, setMinimaxPresets] = useState<{ id: string; label: string }[]>([]);
-  const [minimaxCloned, setMinimaxCloned] = useState<{ id: string; label: string }[]>([]);
-  const [voiceboxProfiles, setVoiceboxProfiles] = useState<{ id: string; label: string }[]>([]);
+  const [googleVoices, setGoogleVoices] = useState<string[]>(initialGoogleVoices ?? []);
+  const [minimaxPresets, setMinimaxPresets] = useState<VoiceOption[]>([]);
+  const [minimaxCloned, setMinimaxCloned] = useState<VoiceOption[]>([]);
+  const [voiceboxProfiles, setVoiceboxProfiles] = useState<VoiceOption[]>([]);
+  const [voiceboxLoadError, setVoiceboxLoadError] = useState<string | null>(null);
+  const [loadingVoices, setLoadingVoices] = useState(false);
 
   const [voiceProvider, setVoiceProvider] = useState<TtsProvider>("google");
   const [voiceId, setVoiceId] = useState("");
   const [voiceAvatarPath, setVoiceAvatarPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialGoogleVoices?.length) {
+      setGoogleVoices(initialGoogleVoices);
+    }
+  }, [initialGoogleVoices]);
 
   const bump = () => {
     setRevision((r) => r + 1);
@@ -49,34 +72,55 @@ export default function AvatarsSettingsPanel({ onError }: Props) {
   };
 
   const loadVoiceLists = useCallback(async () => {
-    try {
-      const [gv, mp, mc, vb] = await Promise.all([
-        listVoices(),
-        listMinimaxPresetVoices(),
-        listMinimaxClonedVoices(),
-        listVoiceboxProfiles(),
-      ]);
-      setGoogleVoices(gv);
+    setLoadingVoices(true);
+    const [gv, mp, mc, vb] = await Promise.allSettled([
+      listVoices(),
+      listMinimaxPresetVoices(),
+      listMinimaxClonedVoices(),
+      listVoiceboxProfiles(),
+    ]);
+    setLoadingVoices(false);
+
+    if (gv.status === "fulfilled") {
+      setGoogleVoices(gv.value);
+    } else {
+      setGoogleVoices([]);
+      onError(`Nie udało się załadować głosów Google: ${gv.reason}`);
+    }
+
+    if (mp.status === "fulfilled") {
       setMinimaxPresets(
-        mp.map((v) => ({
+        mp.value.map((v) => ({
           id: v.voice_id,
           label: v.display_name?.trim() || v.voice_id,
         })),
       );
+    } else {
+      setMinimaxPresets([]);
+    }
+
+    if (mc.status === "fulfilled") {
       setMinimaxCloned(
-        mc.map((v) => ({
+        mc.value.map((v) => ({
           id: v.voice_id,
           label: v.name?.trim() || v.voice_id,
         })),
       );
+    } else {
+      setMinimaxCloned([]);
+    }
+
+    if (vb.status === "fulfilled") {
       setVoiceboxProfiles(
-        vb.map((p) => ({
+        vb.value.map((p) => ({
           id: p.id,
           label: p.name?.trim() || p.id,
         })),
       );
-    } catch (e) {
-      onError(String(e));
+      setVoiceboxLoadError(null);
+    } else {
+      setVoiceboxProfiles([]);
+      setVoiceboxLoadError(String(vb.reason));
     }
   }, [onError]);
 
@@ -84,22 +128,25 @@ export default function AvatarsSettingsPanel({ onError }: Props) {
     void loadVoiceLists();
   }, [loadVoiceLists]);
 
-  const voiceOptions =
-    voiceProvider === "google"
-      ? googleVoices.map((v) => ({ id: v, label: v }))
-      : voiceProvider === "minimax"
-        ? [...minimaxPresets, ...minimaxCloned]
-        : voiceboxProfiles;
+  const voiceOptions = useMemo((): VoiceOption[] => {
+    if (voiceProvider === "google") {
+      return googleVoices.map((v) => ({ id: v, label: v }));
+    }
+    if (voiceProvider === "minimax") {
+      return [...minimaxPresets, ...minimaxCloned];
+    }
+    return voiceboxProfiles;
+  }, [voiceProvider, googleVoices, minimaxPresets, minimaxCloned, voiceboxProfiles]);
 
   useEffect(() => {
     if (voiceOptions.length === 0) {
       setVoiceId("");
       return;
     }
-    if (!voiceOptions.some((o) => o.id === voiceId)) {
-      setVoiceId(voiceOptions[0].id);
-    }
-  }, [voiceProvider, voiceOptions, voiceId]);
+    setVoiceId((current) =>
+      voiceOptions.some((o) => o.id === current) ? current : voiceOptions[0].id,
+    );
+  }, [voiceProvider, voiceOptions]);
 
   useEffect(() => {
     if (!voiceId.trim() || !isTauriApp()) {
@@ -233,7 +280,17 @@ export default function AvatarsSettingsPanel({ onError }: Props) {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs uppercase tracking-wide text-muted">Głosy TTS</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-xs uppercase tracking-wide text-muted">Głosy TTS</h3>
+          <button
+            type="button"
+            className="btn text-[10px] px-2 py-1 shrink-0"
+            onClick={() => void loadVoiceLists()}
+            disabled={loadingVoices}
+          >
+            {loadingVoices ? "Ładowanie…" : "Odśwież listę"}
+          </button>
+        </div>
         <p className="text-[11px] text-muted">
           Awatar przypisany do providera i identyfikatora głosu (np. w siatce próbek Google).
         </p>
@@ -258,14 +315,23 @@ export default function AvatarsSettingsPanel({ onError }: Props) {
               onChange={(e) => setVoiceId(e.target.value)}
               disabled={voiceOptions.length === 0}
             >
-              {voiceOptions.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
+              {voiceOptions.length === 0 ? (
+                <option value="">{emptyVoicePlaceholder(voiceProvider)}</option>
+              ) : (
+                voiceOptions.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))
+              )}
             </select>
           </label>
         </div>
+        {voiceProvider === "voicebox" && voiceboxLoadError && voiceOptions.length === 0 ? (
+          <p className="text-[10px] text-amber-400/90" title={voiceboxLoadError}>
+            Voice Box niedostępny — uruchom serwer i kliknij „Odśwież listę”.
+          </p>
+        ) : null}
         <div className="flex items-center gap-3 rounded-md border border-border bg-panel2/50 px-3 py-2">
           <AvatarImage
             filePath={voiceAvatarPath}

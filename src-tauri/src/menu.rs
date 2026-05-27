@@ -49,7 +49,13 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         MenuItem::with_id(app, "quick_setup", "Szybka konfiguracja…", true, None::<&str>)?;
     let quick_hotkeys =
         MenuItem::with_id(app, "quick_hotkeys", "Szybkie skróty…", true, None::<&str>)?;
-    let edit = Submenu::with_items(app, "Edycja", true, &[&settings, &quick_setup, &quick_hotkeys])?;
+    let soundboard = MenuItem::with_id(app, "soundboard", "Soundboard…", true, None::<&str>)?;
+    let edit = Submenu::with_items(
+        app,
+        "Edycja",
+        true,
+        &[&settings, &quick_setup, &quick_hotkeys, &soundboard],
+    )?;
 
     let about = MenuItem::with_id(app, "about", "O TTS Hub", true, None::<&str>)?;
     let help = Submenu::with_items(app, "Pomoc", true, &[&about])?;

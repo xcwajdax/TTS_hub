@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::app_settings::{AppSettings, CursorIntegration};
+use crate::app_settings::{AppSettings, CursorIntegration, PROVIDER_MINIMAX};
 use crate::quick_hotkeys;
 use crate::quick_setup_window;
 use crate::playback_toast_window;
@@ -1200,25 +1200,66 @@ pub fn list_minimax_cloned_voices(state: State<'_, AppArc>) -> Result<Vec<Minima
         .clone())
 }
 
+/// API is source of truth; local cache only enriches display names.
 fn merge_minimax_cloned_voices(
     local: &[MinimaxClonedVoice],
     api: &[MinimaxClonedVoice],
 ) -> Vec<MinimaxClonedVoice> {
-    let mut by_id: std::collections::HashMap<String, MinimaxClonedVoice> =
-        std::collections::HashMap::new();
-    for v in api {
-        by_id.insert(v.voice_id.clone(), v.clone());
-    }
-    for v in local {
-        by_id.insert(v.voice_id.clone(), v.clone());
-    }
-    let mut out: Vec<MinimaxClonedVoice> = by_id.into_values().collect();
+    let local_names: std::collections::HashMap<&str, &str> = local
+        .iter()
+        .map(|v| (v.voice_id.as_str(), v.name.as_str()))
+        .collect();
+    let mut out: Vec<MinimaxClonedVoice> = api
+        .iter()
+        .map(|v| {
+            let name = local_names
+                .get(v.voice_id.as_str())
+                .filter(|n| !n.trim().is_empty())
+                .map(|n| (*n).to_string())
+                .unwrap_or_else(|| v.name.clone());
+            MinimaxClonedVoice {
+                voice_id: v.voice_id.clone(),
+                name,
+                created_at: v.created_at,
+            }
+        })
+        .collect();
     out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     out
 }
 
-#[tauri::command]
-pub async fn sync_minimax_voices(state: State<'_, AppArc>) -> Result<MinimaxSyncVoicesResult, String> {
+fn sanitize_minimax_voice_refs(settings: &mut AppSettings, api_cloned: &[MinimaxClonedVoice]) {
+    if settings.cursor_integration.provider != PROVIDER_MINIMAX {
+        return;
+    }
+    let enabled = settings.effective_minimax_enabled_languages();
+    let presets = crate::minimax::MinimaxClient::effective_preset_voices(
+        &settings.minimax_synced_voices,
+        &enabled,
+    );
+    let valid: std::collections::HashSet<String> = presets
+        .into_iter()
+        .map(|v| v.voice_id)
+        .chain(api_cloned.iter().map(|v| v.voice_id.clone()))
+        .collect();
+    let voice = settings.cursor_integration.voice.trim().to_string();
+    if valid.contains(&voice) {
+        return;
+    }
+    let fallback = api_cloned
+        .first()
+        .map(|v| v.voice_id.clone())
+        .or_else(|| {
+            valid
+                .iter()
+                .find(|id| id.starts_with("Polish_"))
+                .cloned()
+        })
+        .unwrap_or_else(|| crate::minimax::DEFAULT_MINIMAX_VOICE_ID.to_string());
+    settings.cursor_integration.voice = fallback;
+}
+
+pub async fn sync_minimax_voices_impl(state: &AppArc) -> Result<MinimaxSyncVoicesResult, String> {
     let (presets, api_cloned, result) = state
         .minimax
         .sync_voices_from_api()
@@ -1231,16 +1272,23 @@ pub async fn sync_minimax_voices(state: State<'_, AppArc>) -> Result<MinimaxSync
     {
         let mut settings = state.settings.write().map_err(err)?;
         settings.minimax_synced_voices = presets;
-        settings.minimax_cloned_voices = merged_cloned;
+        settings.minimax_cloned_voices = merged_cloned.clone();
         settings.minimax_voices_synced_at = Some(result.synced_at);
+        sanitize_minimax_voice_refs(&mut settings, &merged_cloned);
     }
     state.persist_settings().map_err(err)?;
+    let settings = state.settings.read().map_err(err)?;
+    let _ = cursor_integration::export_config(&settings);
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn minimax_clone_voice(
-    state: State<'_, AppArc>,
+pub async fn sync_minimax_voices(state: State<'_, AppArc>) -> Result<MinimaxSyncVoicesResult, String> {
+    sync_minimax_voices_impl(state.inner()).await
+}
+
+pub async fn minimax_clone_voice_impl(
+    state: &AppArc,
     source_path: String,
     voice_id: String,
     name: String,
@@ -1304,7 +1352,50 @@ pub async fn minimax_clone_voice(
         settings.minimax_cloned_voices.push(entry.clone());
     }
     state.persist_settings().map_err(err)?;
+    if let Ok((presets, api_cloned, sync_result)) = state.minimax.sync_voices_from_api().await {
+        let merged_cloned = {
+            let settings = state.settings.read().map_err(err)?;
+            merge_minimax_cloned_voices(&settings.minimax_cloned_voices, &api_cloned)
+        };
+        {
+            let mut settings = state.settings.write().map_err(err)?;
+            settings.minimax_synced_voices = presets;
+            settings.minimax_cloned_voices = merged_cloned.clone();
+            settings.minimax_voices_synced_at = Some(sync_result.synced_at);
+            if merged_cloned.iter().any(|v| v.voice_id == entry.voice_id) {
+                settings.cursor_integration.voice = entry.voice_id.clone();
+            }
+            sanitize_minimax_voice_refs(&mut settings, &merged_cloned);
+        }
+        state.persist_settings().map_err(err)?;
+        let settings = state.settings.read().map_err(err)?;
+        let _ = cursor_integration::export_config(&settings);
+    }
     Ok(entry)
+}
+
+#[tauri::command]
+pub async fn minimax_clone_voice(
+    state: State<'_, AppArc>,
+    source_path: String,
+    voice_id: String,
+    name: String,
+    model: String,
+    preview_text: String,
+    prompt_path: Option<String>,
+    prompt_text: Option<String>,
+) -> Result<MinimaxClonedVoice, String> {
+    minimax_clone_voice_impl(
+        state.inner(),
+        source_path,
+        voice_id,
+        name,
+        model,
+        preview_text,
+        prompt_path,
+        prompt_text,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1732,6 +1823,18 @@ pub fn app_exit(app: AppHandle) {
     app.exit(0);
 }
 
+/// Pre-grant WebView2 microphone permission so Chromium exposes audio output device IDs.
+#[tauri::command]
+pub fn prepare_audio_device_enumeration(app: AppHandle) {
+    crate::webview_media_permissions::grant_microphone_for_playback_webviews(&app);
+}
+
+#[tauri::command]
+pub fn list_native_audio_output_devices(
+) -> Result<Vec<crate::audio_output_devices::NativeAudioOutputDevice>, String> {
+    crate::audio_output_devices::list_native_audio_outputs()
+}
+
 #[cfg(windows)]
 fn open_folder(path: &str) -> Result<(), String> {
     std::process::Command::new("explorer.exe")
@@ -1757,4 +1860,125 @@ fn open_folder(path: &str) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+fn reload_global_shortcuts(app: &AppHandle, state: &AppArc) -> Result<(), String> {
+    crate::global_shortcuts::reload_all(app, state)
+}
+
+#[tauri::command]
+pub fn get_plugins(state: State<'_, AppArc>) -> Result<Vec<crate::plugins::PluginInfo>, String> {
+    crate::plugins::get_plugins_list(state.inner())
+}
+
+#[tauri::command]
+pub fn install_plugin(
+    id: String,
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<Vec<crate::plugins::PluginInfo>, String> {
+    let plugins = crate::plugins::install_plugin_impl(state.inner(), &id)?;
+    crate::plugins::reload_after_plugin_change(&app, state.inner())?;
+    Ok(plugins)
+}
+
+#[tauri::command]
+pub fn uninstall_plugin(
+    id: String,
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<Vec<crate::plugins::PluginInfo>, String> {
+    let plugins = crate::plugins::uninstall_plugin_impl(state.inner(), &id)?;
+    crate::plugins::reload_after_plugin_change(&app, state.inner())?;
+    Ok(plugins)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPluginEnabledReq {
+    pub enabled: bool,
+}
+
+#[tauri::command]
+pub fn set_plugin_enabled(
+    id: String,
+    req: SetPluginEnabledReq,
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<Vec<crate::plugins::PluginInfo>, String> {
+    let plugins = crate::plugins::set_plugin_enabled_impl(state.inner(), &id, req.enabled)?;
+    crate::plugins::reload_after_plugin_change(&app, state.inner())?;
+    Ok(plugins)
+}
+
+#[tauri::command]
+pub fn get_soundboard(
+    state: State<'_, AppArc>,
+) -> Result<crate::plugins::soundboard::SoundboardPublicView, String> {
+    crate::plugins::get_soundboard_public(state.inner())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSoundboardEnabledReq {
+    pub enabled: bool,
+}
+
+#[tauri::command]
+pub fn set_soundboard_enabled(
+    req: SetSoundboardEnabledReq,
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<crate::plugins::soundboard::SoundboardPublicView, String> {
+    crate::plugins::set_plugin_enabled_impl(
+        state.inner(),
+        crate::plugins::SOUNDBOARD_PLUGIN_ID,
+        req.enabled,
+    )?;
+    reload_global_shortcuts(&app, state.inner())?;
+    crate::plugins::get_soundboard_public(state.inner())
+}
+
+#[tauri::command]
+pub fn set_soundboard_slot(
+    index: usize,
+    req: crate::plugins::soundboard::AssignSoundboardSlotReq,
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<crate::plugins::soundboard::SoundboardPublicView, String> {
+    crate::plugins::set_soundboard_slot_impl(state.inner(), index, req)?;
+    reload_global_shortcuts(&app, state.inner())?;
+    crate::plugins::get_soundboard_public(state.inner())
+}
+
+#[tauri::command]
+pub fn update_soundboard_slot(
+    index: usize,
+    req: crate::plugins::soundboard::PatchSoundboardSlotReq,
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<crate::plugins::soundboard::SoundboardPublicView, String> {
+    crate::plugins::update_soundboard_slot_impl(state.inner(), index, req)?;
+    reload_global_shortcuts(&app, state.inner())?;
+    crate::plugins::get_soundboard_public(state.inner())
+}
+
+#[tauri::command]
+pub fn clear_soundboard_slot(
+    index: usize,
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<crate::plugins::soundboard::SoundboardPublicView, String> {
+    crate::plugins::clear_soundboard_slot_impl(state.inner(), index)?;
+    reload_global_shortcuts(&app, state.inner())?;
+    crate::plugins::get_soundboard_public(state.inner())
+}
+
+#[tauri::command]
+pub fn play_soundboard_slot(
+    index: usize,
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<(), String> {
+    crate::plugins::play_soundboard_slot_impl(&app, state.inner(), index)
 }

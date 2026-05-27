@@ -15,7 +15,9 @@ Skill zastępuje (na próbę) automatyczne hooki: TTS uruchamia się **po każde
 
 4. Klucze providerów w `studios.env` / ustawieniach aplikacji (`MINIMAX_API_KEY`, `GOOGLE_API_KEY`, Voice Box lokalnie).
 
-Domyślny preset **minimax** w `config.json` używa polskiego głosu `Polish_female_1_sample1` i `language: "pl"` (jak w aplikacji TTS Hub). Inne polskie presety MiniMax: `Polish_male_1_sample4`, `Polish_female_2_sample3` itd.
+**Voice ID (np. Makłowicz):** ustaw w aplikacji — **Ustawienia zaawansowane → Integracja Cursor** (głos MiniMax, model, tempo, pitch). Przy `prefer_app_config: true` skill i hooki biorą **`voice` / `model` z `GET /cursor/config`**, nie z osobnego ID w `config.json` (unikasz błędnego lub nieaktualnego `voice_id`).
+
+W `config.json.example` preset `minimax` ma `robert_maklowicz` tylko jako **fallback**, gdy integracja jest wyłączona lub API nie odpowiada. Sugerowane strojenie w panelu: wolniejsze tempo (~0.9), pitch ~-2.
 
 ## Aktywacja w Cursorze
 

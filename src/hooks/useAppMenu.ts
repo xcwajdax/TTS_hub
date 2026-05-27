@@ -20,6 +20,7 @@ export type MenuActionId =
   | "settings"
   | "quick_setup"
   | "quick_hotkeys"
+  | "soundboard"
   | "about";
 
 interface Options {
@@ -30,6 +31,7 @@ interface Options {
   onOpenSettings: () => void;
   onOpenQuickSetup?: () => void;
   onOpenQuickHotkeys?: () => void;
+  onOpenSoundboard?: () => void;
 }
 
 export function useAppMenu({
@@ -40,6 +42,7 @@ export function useAppMenu({
   onOpenSettings,
   onOpenQuickSetup,
   onOpenQuickHotkeys,
+  onOpenSoundboard,
 }: Options) {
   useEffect(() => {
     if (!isTauriApp()) return;
@@ -69,6 +72,9 @@ export function useAppMenu({
             case "quick_hotkeys":
               onOpenQuickHotkeys?.();
               break;
+            case "soundboard":
+              onOpenSoundboard?.();
+              break;
             case "about":
               await message(
                 "TTS Hub — synteza mowy przez Google Gemini i Voice Box.\nLokalne API: http://127.0.0.1:8765",
@@ -86,7 +92,16 @@ export function useAppMenu({
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [current, setEditorText, onRefresh, onError, onOpenSettings, onOpenQuickSetup, onOpenQuickHotkeys]);
+  }, [
+    current,
+    setEditorText,
+    onRefresh,
+    onError,
+    onOpenSettings,
+    onOpenQuickSetup,
+    onOpenQuickHotkeys,
+    onOpenSoundboard,
+  ]);
 }
 
 async function handleOpenText(setEditorText: (text: string) => void) {

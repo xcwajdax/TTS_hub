@@ -429,6 +429,24 @@ impl MinimaxClient {
         Ok(body)
     }
 
+    /// Preset catalog entry or cloned voice present on the MiniMax account.
+    pub async fn voice_exists_on_account(
+        &self,
+        voice_id: &str,
+        preset_voices: &[MinimaxPresetVoice],
+    ) -> Result<bool> {
+        let id = voice_id.trim();
+        if id.is_empty() {
+            return Ok(false);
+        }
+        if preset_voices.iter().any(|v| v.voice_id == id) {
+            return Ok(true);
+        }
+        let resp = self.fetch_voices("all").await?;
+        let (_, cloned) = Self::map_api_voices(resp);
+        Ok(cloned.iter().any(|v| v.voice_id == id))
+    }
+
     pub async fn sync_voices_from_api(&self) -> Result<(Vec<MinimaxPresetVoice>, Vec<MinimaxClonedVoice>, MinimaxSyncVoicesResult)> {
         let resp = self.fetch_voices("all").await?;
         let system_count = resp.system_voice.len();
@@ -731,12 +749,19 @@ fn normalize_format(fmt: &str) -> &'static str {
 }
 
 fn minimax_error_message(response: &serde_json::Value) -> String {
-    response
+    let raw = response
         .pointer("/base_resp/status_msg")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| response.to_string())
+        .unwrap_or_else(|| response.to_string());
+    if raw.to_ascii_lowercase().contains("voice id not exist") {
+        return format!(
+            "{raw} — ten voice_id nie ma na koncie MiniMax. \
+             Użyj „Synchronizuj głosy z API” lub sklonuj głos ponownie („Stwórz głos”)."
+        );
+    }
+    raw
 }
 
 async fn recv_json(

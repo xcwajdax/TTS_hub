@@ -1,5 +1,8 @@
+import type { HistoryScopeTab } from "./historyToolbar";
+
 const CLICK_TO_PLAY_KEY = "tts-hub.history.clickToPlay";
 const COMPACT_VIEW_KEY = "tts-hub.history.compactView";
+const SCOPE_TAB_KEY = "tts-hub.history.scopeTab";
 
 export const HISTORY_PREFS_CHANGED = "tts-hub-history-prefs-changed";
 
@@ -32,6 +35,26 @@ export function loadHistoryCompactView(): boolean {
     return localStorage.getItem(COMPACT_VIEW_KEY) === "true";
   } catch {
     return false;
+  }
+}
+
+export function loadHistoryScopeTab(): HistoryScopeTab | null {
+  try {
+    const s = localStorage.getItem(SCOPE_TAB_KEY);
+    if (s === "session" || s === "archive" || s === "cursor" || s === "soundboard") {
+      return s;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export function saveHistoryScopeTab(tab: HistoryScopeTab): void {
+  try {
+    localStorage.setItem(SCOPE_TAB_KEY, tab);
+  } catch {
+    /* ignore */
   }
 }
 

@@ -40,6 +40,8 @@ pub struct QuickHotkeyPreset {
     pub filter_preset_id: Option<String>,
     #[serde(default)]
     pub format: Option<String>,
+    #[serde(default)]
+    pub voice_profile_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -82,6 +84,7 @@ impl Default for QuickHotkeyPreset {
             autoplay: true,
             filter_preset_id: None,
             format: None,
+            voice_profile_id: None,
         }
     }
 }
@@ -176,6 +179,7 @@ impl QuickHotkeyPreset {
             self.minimax_pitch = Some(pitch.clamp(-12, 12));
         }
         self.filter_preset_id = trim_opt(self.filter_preset_id.take());
+        self.voice_profile_id = trim_opt(self.voice_profile_id.take());
         if let Some(fmt) = self.format.take() {
             let f = fmt.trim().to_lowercase();
             self.format = if matches!(f.as_str(), "wav" | "mp3" | "ogg") {
@@ -252,6 +256,8 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::app_settings::AppSettings;
 use crate::commands::{enqueue_request, GenerateReq};
+use crate::google::SpeakerConfig;
+use crate::voice_profiles::find_voice_profile;
 use crate::db::Generation;
 use crate::selection_capture;
 use crate::state::AppState;
@@ -291,17 +297,65 @@ pub fn build_generate_req(
         .clone()
         .unwrap_or_else(|| settings.save_format.clone());
     let filter_config = resolve_filter_preset(settings, preset);
+
+    let saved = find_voice_profile(&settings.voice_profiles, preset.voice_profile_id.as_deref());
+
+    let provider = saved
+        .map(|p| p.provider.clone())
+        .unwrap_or_else(|| preset.provider.clone());
+    let model = saved
+        .map(|p| p.model.clone())
+        .unwrap_or_else(|| preset.model.clone());
+    let voice = saved
+        .map(|p| p.voice.clone())
+        .unwrap_or_else(|| preset.voice.clone());
+    let style = saved
+        .and_then(|p| p.style.clone())
+        .or_else(|| preset.style.clone());
+    let profile_id = saved
+        .and_then(|p| p.profile_id.clone())
+        .or_else(|| preset.profile_id.clone());
+    let language = saved
+        .and_then(|p| p.language.clone())
+        .or_else(|| preset.language.clone());
+    let engine = saved
+        .and_then(|p| p.engine.clone())
+        .or_else(|| preset.engine.clone());
+    let minimax_speed = saved
+        .and_then(|p| p.minimax_speed)
+        .or(preset.minimax_speed);
+    let minimax_vol = saved.and_then(|p| p.minimax_vol).or(preset.minimax_vol);
+    let minimax_pitch = saved
+        .and_then(|p| p.minimax_pitch)
+        .or(preset.minimax_pitch);
+
+    let multi_speaker = saved.and_then(|p| {
+        if p.multi_speaker && !p.speakers.is_empty() {
+            Some(
+                p.speakers
+                    .iter()
+                    .map(|s| SpeakerConfig {
+                        speaker: s.speaker.clone(),
+                        voice: s.voice.clone(),
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        }
+    });
+
     GenerateReq {
         text,
-        model: preset.model.clone(),
-        voice: preset.voice.clone(),
-        style: preset.style.clone(),
+        model,
+        voice,
+        style,
         format,
-        multi_speaker: None,
-        provider: Some(preset.provider.clone()),
-        profile_id: preset.profile_id.clone(),
-        language: preset.language.clone(),
-        engine: preset.engine.clone(),
+        multi_speaker,
+        provider: Some(provider),
+        profile_id,
+        language,
+        engine,
         personality: None,
         autoplay: preset.autoplay,
         source: Some("quick_hotkey".to_string()),
@@ -309,9 +363,9 @@ pub fn build_generate_req(
         summary_text: None,
         filtered_text: None,
         filter_config,
-        minimax_speed: preset.minimax_speed,
-        minimax_vol: preset.minimax_vol,
-        minimax_pitch: preset.minimax_pitch,
+        minimax_speed,
+        minimax_vol,
+        minimax_pitch,
     }
 }
 
@@ -377,43 +431,7 @@ pub fn run_preset(app: &AppHandle, state: &AppArc, preset_id: &str) -> Result<Ge
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn reload_from_settings(app: &AppHandle, state: &AppArc) -> Result<(), String> {
-    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-
-    let gs = app.global_shortcut();
-    gs.unregister_all()
-        .map_err(|e| format!("unregister shortcuts: {e}"))?;
-
-    let settings = state.settings.read().map_err(|e| format!("{e}"))?;
-    if !settings.quick_hotkeys.enabled {
-        return Ok(());
-    }
-
-    selection_capture::ensure_foreground_tracker(app.clone());
-
-    for preset in settings.quick_hotkeys.presets.iter().filter(|p| p.enabled) {
-        let preset_id = preset.id.clone();
-        let shortcut = preset.shortcut.clone();
-        gs.on_shortcut(shortcut.as_str(), move |app, _shortcut, event| {
-            if event.state != ShortcutState::Pressed {
-                return;
-            }
-            let Some(state) = app.try_state::<AppArc>() else {
-                return;
-            };
-            if let Err(message) = run_preset(app, &state, &preset_id) {
-                let _ = app.emit(
-                    "quick-hotkey:error",
-                    QuickHotkeyErrorEvent {
-                        message,
-                        preset_id: preset_id.clone(),
-                    },
-                );
-            }
-        })
-        .map_err(|e| format!("register {}: {e}", shortcut))?;
-    }
-
-    Ok(())
+    crate::global_shortcuts::reload_all(app, state)
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]

@@ -52,15 +52,39 @@ Optional: `-ConversationId "<id>"` if known.
 
 | Source | Role |
 |--------|------|
-| `config.json` | `active_preset` (`minimax` / `google` / `voicebox`), `prefer_app_config` |
-| `GET /cursor/config` | When `prefer_app_config: true` and integration enabled — overrides provider/model/voice from TTS Hub app |
+| `config.json` | `active_preset` (`minimax` / `google` / `voicebox`), głos i model w `presets.{provider}` |
+| `GET /cursor/config` | Gdy `prefer_app_config: true` i integracja włączona — **provider, model, voice_id, format** oraz strojenie MiniMax z aplikacji (jak hooki). `presets.*` w `config.json` to tylko zapas, gdy API jest wyłączone. |
+
+### Głos Makłowicza (MiniMax)
+
+**Źródło `voice_id`:** panel **Ustawienia zaawansowane → Integracja Cursor** w TTS Hub (np. klon `robert_maklowicz`). Skill nie trzyma własnego ID — bierze to z aplikacji, żeby uniknąć rozjazdu z klonem w MiniMax.
+
+W `config.json.example` preset `minimax` ma ten sam głos jako **fallback** (gdy integracja wyłączona lub brak API). Strojenie (tempo, pitch) ustaw w panelu Integracja Cursor:
+
+| Pole | Domyślnie | Efekt |
+|------|-----------|--------|
+| `minimax_speed` | `0.9` | Wolniejsza, bardziej wyważona wymowa |
+| `minimax_pitch` | `-2` | Nieco niżej, cieplej |
+| `minimax_vol` | `1.0` | Standardowa głośność |
+
+Inny klon lub preset systemowy: zmień `voice` w `config.json` (np. `Polish_female_1_sample1`).
 
 Switch preset without the app: edit `active_preset` in `config.json`.  
-Switch with the app: Cursor integration panel in TTS Hub (Ustawienia zaawansowane).
+Switch provider with the app: Cursor integration panel in TTS Hub (Ustawienia zaawansowane).
 
 ## Do not use hooks for TTS in this mode
 
 If Cursor hooks (`cursor-tts.ps1`) are installed, disable them or uninstall to avoid double playback. This skill replaces hook timing (per-turn vs end-of-session).
+
+## Soundboard (plugin API)
+
+Assign clips and trigger playback without the UI:
+
+- `GET /plugins/soundboard` — slot state (indices `0`–`7`)
+- `PUT /plugins/soundboard/slots/{index}` — body: `{ "generation_id": "…" }` or `{ "file_path": "…" }`
+- `POST /plugins/soundboard/slots/{index}/play` — play clip (app must be running)
+
+See [docs/API.md](../../../docs/API.md) (section Soundboard).
 
 ## Reference
 

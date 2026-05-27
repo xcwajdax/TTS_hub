@@ -1,5 +1,6 @@
-import type { EditorQuickGenSlot } from "../appSettings";
+import type { EditorQuickGenSlot, TtsVoiceProfile } from "../appSettings";
 import type { SettingsState } from "../components/Settings";
+import { resolveTtsFromVoiceProfileId, voiceProfileToSettingsState } from "./voiceProfiles";
 import type { TtsProvider } from "../types";
 
 const DEFAULT_SPEAKERS = [
@@ -7,7 +8,7 @@ const DEFAULT_SPEAKERS = [
   { speaker: "Mowca2", voice: "Puck" },
 ];
 
-export function editorSlotToSettingsState(slot: EditorQuickGenSlot): SettingsState {
+function slotInlineSettingsState(slot: EditorQuickGenSlot): SettingsState {
   return {
     provider: (slot.provider as TtsProvider) || "google",
     model: slot.model,
@@ -20,5 +21,37 @@ export function editorSlotToSettingsState(slot: EditorQuickGenSlot): SettingsSta
     minimaxSpeed: slot.minimax_speed ?? 1,
     minimaxVol: slot.minimax_vol ?? 1,
     minimaxPitch: slot.minimax_pitch ?? 0,
+  };
+}
+
+export function editorSlotToSettingsState(
+  slot: EditorQuickGenSlot,
+  voiceProfiles: TtsVoiceProfile[] = [],
+): SettingsState {
+  return resolveTtsFromVoiceProfileId(
+    voiceProfiles,
+    slot.voice_profile_id,
+    slotInlineSettingsState(slot),
+  );
+}
+
+export function applyVoiceProfileToSlot(
+  slot: EditorQuickGenSlot,
+  profile: TtsVoiceProfile,
+): EditorQuickGenSlot {
+  const tts = voiceProfileToSettingsState(profile);
+  return {
+    ...slot,
+    voice_profile_id: profile.id,
+    provider: tts.provider,
+    model: tts.model,
+    voice: tts.voice,
+    style: tts.style.trim() ? tts.style : null,
+    profile_id: tts.provider === "voicebox" ? tts.voiceboxProfileId || null : null,
+    language:
+      tts.provider === "voicebox" || tts.provider === "minimax" ? tts.language || null : null,
+    minimax_speed: tts.provider === "minimax" ? tts.minimaxSpeed : null,
+    minimax_vol: tts.provider === "minimax" ? tts.minimaxVol : null,
+    minimax_pitch: tts.provider === "minimax" ? tts.minimaxPitch : null,
   };
 }

@@ -9,6 +9,7 @@ use crate::minimax::{
 use crate::editor_quick_gen::EditorQuickGenSettings;
 use crate::quick_hotkeys::QuickHotkeysSettings;
 use crate::text_filters::TextFiltersSettings;
+use crate::voice_profiles::{normalize_voice_profiles, TtsVoiceProfile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -223,6 +224,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub editor_quick_gen: EditorQuickGenSettings,
     #[serde(default)]
+    pub voice_profiles: Vec<TtsVoiceProfile>,
+    #[serde(default)]
     pub quick_setup_completed: bool,
     #[serde(default)]
     pub enabled_providers: Vec<String>,
@@ -295,6 +298,7 @@ impl Default for AppSettings {
             minimax_voices_synced_at: None,
             quick_hotkeys: QuickHotkeysSettings::default(),
             editor_quick_gen: EditorQuickGenSettings::default(),
+            voice_profiles: Vec::new(),
             quick_setup_completed: false,
             enabled_providers: Vec::new(),
             minimax_enabled_languages: default_minimax_enabled_languages(),
@@ -306,6 +310,11 @@ impl Default for AppSettings {
     }
 }
 
+/// Strips UTF-8 BOM and surrounding whitespace (PowerShell / some editors add BOM).
+fn prepare_settings_json(raw: &str) -> &str {
+    raw.strip_prefix('\u{feff}').unwrap_or(raw).trim()
+}
+
 impl AppSettings {
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
@@ -313,9 +322,29 @@ impl AppSettings {
         }
         let raw =
             std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-        let mut settings: Self = serde_json::from_str(&raw).context("parse settings.json")?;
-        settings.normalize();
-        Ok(settings)
+        let json = prepare_settings_json(&raw);
+        if json.is_empty() {
+            return Ok(Self::default());
+        }
+
+        match serde_json::from_str::<Self>(json) {
+            Ok(mut settings) => {
+                settings.normalize();
+                Ok(settings)
+            }
+            Err(e) => {
+                let backup = path.with_extension("json.bak");
+                if std::fs::copy(path, &backup).is_ok() {
+                    eprintln!(
+                        "settings.json: parse failed ({e}); backup at {}",
+                        backup.display()
+                    );
+                } else {
+                    eprintln!("settings.json: parse failed ({e})");
+                }
+                Ok(Self::default())
+            }
+        }
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -418,6 +447,7 @@ impl AppSettings {
         self.cursor_integration.normalize();
         self.quick_hotkeys.normalize();
         self.editor_quick_gen.normalize();
+        normalize_voice_profiles(&mut self.voice_profiles);
         self.voicebox_base_url = normalize_optional_path(self.voicebox_base_url.take());
         self.minimax_api_key = self
             .minimax_api_key

@@ -89,6 +89,36 @@ export interface MinimaxClonedVoice {
   created_at: number;
 }
 
+export interface VoiceProfileSpeaker {
+  speaker: string;
+  voice: string;
+}
+
+/** Zapisany zestaw parametrów TTS (provider, model, głos, styl itd.). */
+export interface TtsVoiceProfile {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  voice: string;
+  style: string | null;
+  /** Voice Box — id profilu serwera. */
+  profile_id: string | null;
+  language: string | null;
+  engine: string | null;
+  minimax_speed: number | null;
+  minimax_vol: number | null;
+  minimax_pitch: number | null;
+  multi_speaker: boolean;
+  speakers: VoiceProfileSpeaker[];
+  /** Jedna linia ostatniego tekstu wygenerowanego tym profilem. */
+  last_preview?: string | null;
+  last_preview_at?: number | null;
+  /** Skrót szybkiej generacji (synchronizowany z quick_hotkeys). */
+  shortcut?: string | null;
+  shortcut_enabled?: boolean;
+}
+
 export interface QuickHotkeyPreset {
   id: string;
   enabled: boolean;
@@ -108,6 +138,8 @@ export interface QuickHotkeyPreset {
   autoplay: boolean;
   filter_preset_id: string | null;
   format: string | null;
+  /** Odwołanie do zapisanego profilu głosu (`voice_profiles`). */
+  voice_profile_id?: string | null;
 }
 
 export interface QuickHotkeysSettings {
@@ -135,6 +167,7 @@ export function defaultQuickHotkeyPreset(name = "Szybki TTS"): QuickHotkeyPreset
     autoplay: true,
     filter_preset_id: null,
     format: null,
+    voice_profile_id: null,
   };
 }
 
@@ -160,6 +193,7 @@ export interface EditorQuickGenSlot {
   minimax_pitch: number | null;
   filter_preset_id: string | null;
   format: string | null;
+  voice_profile_id?: string | null;
 }
 
 export interface EditorQuickGenSettings {
@@ -182,6 +216,7 @@ export function defaultEditorQuickGenSlot(label: string): EditorQuickGenSlot {
     minimax_pitch: 0,
     filter_preset_id: null,
     format: null,
+    voice_profile_id: null,
   };
 }
 
@@ -211,6 +246,7 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     minimax_voices_synced_at: view.minimax_voices_synced_at ?? null,
     quick_hotkeys: view.quick_hotkeys,
     editor_quick_gen: view.editor_quick_gen ?? defaultEditorQuickGenSettings(),
+    voice_profiles: view.voice_profiles ?? [],
     quick_setup_completed: view.quick_setup_completed,
     enabled_providers: view.enabled_providers,
     minimax_enabled_languages: view.minimax_enabled_languages,
@@ -238,6 +274,7 @@ export interface AppSettings {
   minimax_voices_synced_at?: number | null;
   quick_hotkeys?: QuickHotkeysSettings;
   editor_quick_gen?: EditorQuickGenSettings;
+  voice_profiles?: TtsVoiceProfile[];
   quick_setup_completed?: boolean;
   enabled_providers?: TtsProviderId[];
   /** Hub codes (`pl`, `en`). Empty = all catalog languages. */
