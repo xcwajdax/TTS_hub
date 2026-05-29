@@ -96,8 +96,10 @@ impl Default for EditorQuickGenSettings {
 
 impl EditorQuickGenSettings {
     pub fn normalize(&mut self) {
-        self.slot1.normalize_with_default_label(default_slot1_label());
-        self.slot2.normalize_with_default_label(default_slot2_label());
+        self.slot1
+            .normalize_with_default_label(default_slot1_label());
+        self.slot2
+            .normalize_with_default_label(default_slot2_label());
     }
 }
 

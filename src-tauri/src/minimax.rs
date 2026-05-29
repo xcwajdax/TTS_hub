@@ -57,6 +57,29 @@ pub struct MinimaxClonedVoice {
     pub voice_id: String,
     pub name: String,
     pub created_at: i64,
+    /// Mnożnik głośności klonu (0–10), stosowany do presetowego `minimax_vol` przy syntezie.
+    #[serde(default)]
+    pub output_vol: Option<f32>,
+}
+
+impl MinimaxClonedVoice {
+    /// `preset_vol` × mnożnik klonu (domyślnie 1.0), wynik w zakresie 0–10.
+    pub fn effective_minimax_vol(cloned: &[Self], voice_id: &str, preset_vol: f32) -> f32 {
+        let base = preset_vol.clamp(0.0, 10.0);
+        let mult = cloned
+            .iter()
+            .find(|v| v.voice_id == voice_id)
+            .and_then(|v| v.output_vol)
+            .unwrap_or(1.0)
+            .clamp(0.0, 10.0);
+        (base * mult).clamp(0.0, 10.0)
+    }
+
+    pub fn normalize_output_vol(&mut self) {
+        if let Some(v) = self.output_vol {
+            self.output_vol = Some(v.clamp(0.0, 10.0));
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -382,6 +405,7 @@ impl MinimaxClient {
                 voice_id: v.voice_id,
                 name,
                 created_at: Self::parse_created_timestamp(v.created_time.as_deref()),
+                output_vol: None,
             });
         }
         for v in resp.voice_generation {
@@ -391,6 +415,7 @@ impl MinimaxClient {
                 voice_id: v.voice_id,
                 name,
                 created_at: Self::parse_created_timestamp(v.created_time.as_deref()),
+                output_vol: None,
             });
         }
         cloned.sort_by(|a, b| b.created_at.cmp(&a.created_at));

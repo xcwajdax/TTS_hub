@@ -103,11 +103,16 @@ fn load_optional_css(dir: &Path, css_rel: Option<&str>) -> Result<Option<String>
         return Ok(None);
     }
     validate_safe_relative(rel)?;
-    let text = std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let text =
+        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     Ok(Some(text))
 }
 
-pub fn install_skin_archive(skins_dir: &Path, archive_path: &Path, overwrite: bool) -> Result<String> {
+pub fn install_skin_archive(
+    skins_dir: &Path,
+    archive_path: &Path,
+    overwrite: bool,
+) -> Result<String> {
     let meta = std::fs::metadata(archive_path)?;
     if meta.len() > MAX_ARCHIVE_BYTES {
         return Err(anyhow!("archiwum przekracza limit 2 MB"));
@@ -179,8 +184,7 @@ pub fn export_skin(skins_dir: &Path, skin_id: &str, dest_path: &Path) -> Result<
     }
     let file = File::create(dest_path)?;
     let mut zip = ZipWriter::new(file);
-    let options =
-        SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     for entry in walkdir_files(&dir)? {
         let rel = entry
@@ -225,7 +229,9 @@ fn validate_manifest(m: &SkinManifest) -> Result<()> {
         || m.version.trim().is_empty()
         || m.author.trim().is_empty()
     {
-        return Err(anyhow!("skin.json: wymagane pola id, name, version, author"));
+        return Err(anyhow!(
+            "skin.json: wymagane pola id, name, version, author"
+        ));
     }
     if !m
         .id

@@ -123,11 +123,9 @@ fn clear_directory_contents(path: &Path) -> Result<u64> {
         let p = entry.path();
         total = total.saturating_add(path_bytes(&p));
         if p.is_dir() {
-            std::fs::remove_dir_all(&p)
-                .with_context(|| format!("remove_dir {}", p.display()))?;
+            std::fs::remove_dir_all(&p).with_context(|| format!("remove_dir {}", p.display()))?;
         } else {
-            std::fs::remove_file(&p)
-                .with_context(|| format!("remove_file {}", p.display()))?;
+            std::fs::remove_file(&p).with_context(|| format!("remove_file {}", p.display()))?;
         }
     }
     Ok(total)

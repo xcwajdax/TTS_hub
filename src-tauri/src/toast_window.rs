@@ -35,7 +35,9 @@ fn position_bottom_right(window: &WebviewWindow) -> Result<(), String> {
         .ok_or_else(|| "nie wykryto monitora".to_string())?;
     let screen = monitor.size();
     let scale = monitor.scale_factor();
-    let win = window.outer_size().map_err(|e| format!("outer size: {e}"))?;
+    let win = window
+        .outer_size()
+        .map_err(|e| format!("outer size: {e}"))?;
     let x = screen.width as f64 - win.width as f64 - MARGIN_X * scale;
     let y = screen.height as f64 - win.height as f64 - MARGIN_Y * scale;
     window

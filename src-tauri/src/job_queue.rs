@@ -13,11 +13,11 @@ use crate::audio::{write_audio, write_downloaded_audio, AudioFormat};
 use crate::commands::{derive_title, GenerateReq};
 use crate::db::{Generation, GenerationUsage, STATUS_CANCELLED, STATUS_DONE, STATUS_FAILED};
 use crate::google::TtsRequest;
-use crate::state::AppState;
 use crate::minimax::{
-    hub_language_to_boost, model_from_id, MinimaxClient, MinimaxGenerateParams, MinimaxVoiceSetting,
-    DEFAULT_MINIMAX_LANGUAGE,
+    hub_language_to_boost, model_from_id, MinimaxClonedVoice, MinimaxClient, MinimaxGenerateParams,
+    MinimaxVoiceSetting, DEFAULT_MINIMAX_LANGUAGE,
 };
+use crate::state::AppState;
 use crate::voicebox::engine_from_model;
 
 #[derive(Clone, Serialize)]
@@ -306,15 +306,21 @@ impl JobQueue {
                 }
             }
             let model = model_from_id(&req.model).to_string();
-            let language_boost = hub_language_to_boost(
-                req.language
-                    .as_deref()
-                    .or(Some(DEFAULT_MINIMAX_LANGUAGE)),
-            );
+            let language_boost =
+                hub_language_to_boost(req.language.as_deref().or(Some(DEFAULT_MINIMAX_LANGUAGE)));
+            let preset_vol = req.minimax_vol.unwrap_or(1.0);
+            let vol = {
+                let settings = state.settings.read().map_err(|e| format!("{e}"))?;
+                MinimaxClonedVoice::effective_minimax_vol(
+                    &settings.minimax_cloned_voices,
+                    &voice_id,
+                    preset_vol,
+                )
+            };
             let voice = MinimaxVoiceSetting {
                 voice_id,
                 speed: req.minimax_speed.unwrap_or(1.0),
-                vol: req.minimax_vol.unwrap_or(1.0),
+                vol,
                 pitch: req.minimax_pitch.unwrap_or(0),
                 english_normalization: language_boost == "English",
             };

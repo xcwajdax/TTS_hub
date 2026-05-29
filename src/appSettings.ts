@@ -87,6 +87,7 @@ export interface MinimaxClonedVoice {
   voice_id: string;
   name: string;
   created_at: number;
+  output_vol?: number | null;
 }
 
 export interface VoiceProfileSpeaker {

@@ -296,6 +296,8 @@ export interface MinimaxClonedVoice {
   voice_id: string;
   name: string;
   created_at: number;
+  /** Mnożnik głośności klonu (0–10), stosowany do presetowego minimax_vol. */
+  output_vol?: number | null;
 }
 
 export interface MinimaxSyncVoicesResult {
@@ -323,6 +325,16 @@ export function listMinimaxPresetVoices(): Promise<MinimaxPresetVoice[]> {
 
 export async function listMinimaxClonedVoices(): Promise<MinimaxClonedVoice[]> {
   return invoke<MinimaxClonedVoice[]>("list_minimax_cloned_voices");
+}
+
+export async function setMinimaxClonedVoiceOutputVol(
+  voiceId: string,
+  outputVol: number,
+): Promise<MinimaxClonedVoice> {
+  return invoke<MinimaxClonedVoice>("set_minimax_cloned_voice_output_vol", {
+    voice_id: voiceId,
+    output_vol: outputVol,
+  });
 }
 
 export async function syncMinimaxVoices(): Promise<MinimaxSyncVoicesResult> {

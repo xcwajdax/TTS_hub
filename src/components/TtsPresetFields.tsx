@@ -54,6 +54,8 @@ import type { TtsProvider } from "../types";
 
 import type { SettingsState } from "./Settings";
 
+import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
+
 import VoiceSamples from "./VoiceSamples";
 
 
@@ -699,6 +701,21 @@ export default function TtsPresetFields({
             />
 
           </label>
+
+          {clonedVoiceIds.has(state.voice) && (
+            <MinimaxCloneVolumeControl
+              voiceId={state.voice}
+              presetVol={state.minimaxVol}
+              cloned={minimaxCloned}
+              className={compact ? "sm:col-span-2" : "col-span-full"}
+              onClonedUpdated={(v) =>
+                setMinimaxCloned((prev) =>
+                  prev.map((c) => (c.voice_id === v.voice_id ? v : c)),
+                )
+              }
+              onError={onError}
+            />
+          )}
 
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
 

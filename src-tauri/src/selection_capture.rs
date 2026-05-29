@@ -22,13 +22,11 @@ pub fn ensure_foreground_tracker(app: tauri::AppHandle) {
     }
     std::thread::Builder::new()
         .name("tts-hub-fg-tracker".into())
-        .spawn(move || {
-            loop {
-                if let Some(hwnd) = foreground_if_external(&app) {
-                    LAST_EXTERNAL_FG_HWND.store(hwnd, Ordering::Relaxed);
-                }
-                std::thread::sleep(std::time::Duration::from_millis(40));
+        .spawn(move || loop {
+            if let Some(hwnd) = foreground_if_external(&app) {
+                LAST_EXTERNAL_FG_HWND.store(hwnd, Ordering::Relaxed);
             }
+            std::thread::sleep(std::time::Duration::from_millis(40));
         })
         .ok();
 }
@@ -166,7 +164,12 @@ fn release_stuck_modifiers() {
     };
     for vk in [VK_LSHIFT, VK_RSHIFT, VK_CONTROL, VK_MENU] {
         let up = key_input(vk, KEYEVENTF_KEYUP);
-        let _ = unsafe { SendInput(&[up], std::mem::size_of::<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>() as i32) };
+        let _ = unsafe {
+            SendInput(
+                &[up],
+                std::mem::size_of::<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>() as i32,
+            )
+        };
     }
 }
 
@@ -211,9 +214,7 @@ fn key_input(
     vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY,
     flags: windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS,
 ) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
-    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT};
     INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: INPUT_0 {

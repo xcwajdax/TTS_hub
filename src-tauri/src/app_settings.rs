@@ -3,10 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use uuid::Uuid;
 
-use crate::minimax::{
-    self, MinimaxClonedVoice, MinimaxPresetVoice, DEFAULT_MINIMAX_LANGUAGE, DEFAULT_MINIMAX_VOICE_ID,
-};
 use crate::editor_quick_gen::EditorQuickGenSettings;
+use crate::minimax::{
+    self, MinimaxClonedVoice, MinimaxPresetVoice, DEFAULT_MINIMAX_LANGUAGE,
+    DEFAULT_MINIMAX_VOICE_ID,
+};
 use crate::quick_hotkeys::QuickHotkeysSettings;
 use crate::text_filters::TextFiltersSettings;
 use crate::voice_profiles::{normalize_voice_profiles, TtsVoiceProfile};
@@ -103,9 +104,7 @@ impl CursorIntegration {
         if self.voice.is_empty() {
             self.voice = match self.provider.as_str() {
                 PROVIDER_MINIMAX => minimax::MinimaxClient::default_voice_for_language(
-                    self.language
-                        .as_deref()
-                        .unwrap_or(DEFAULT_MINIMAX_LANGUAGE),
+                    self.language.as_deref().unwrap_or(DEFAULT_MINIMAX_LANGUAGE),
                 )
                 .to_string(),
                 PROVIDER_VOICEBOX => String::new(),
@@ -473,6 +472,12 @@ impl AppSettings {
         self.timeline_view = self.timeline_view.trim().to_ascii_lowercase();
         if !TIMELINE_VIEWS.contains(&self.timeline_view.as_str()) {
             self.timeline_view = default_timeline_view();
+        }
+        for v in &mut self.minimax_cloned_voices {
+            v.normalize_output_vol();
+            if v.voice_id.eq_ignore_ascii_case("robert_maklowicz") && v.output_vol.is_none() {
+                v.output_vol = Some(2.0);
+            }
         }
     }
 

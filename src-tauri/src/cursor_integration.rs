@@ -380,7 +380,10 @@ pub fn uninstall_hooks(remove_script: bool, remove_config: bool) -> Result<Unins
                 arr.retain(|item| !is_our_hook_entry(item));
             }
         }
-        atomic_write(&hooks_json, &serde_json::to_string_pretty(&wrap_hooks_json(hooks))?)?;
+        atomic_write(
+            &hooks_json,
+            &serde_json::to_string_pretty(&wrap_hooks_json(hooks))?,
+        )?;
     }
 
     let mut removed_ps1 = false;

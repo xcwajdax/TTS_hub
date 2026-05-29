@@ -140,10 +140,7 @@ fn resize_square_jpeg(img: &image::DynamicImage) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut out);
     resized
-        .write_to(
-            &mut cursor,
-            image::ImageFormat::Jpeg,
-        )
+        .write_to(&mut cursor, image::ImageFormat::Jpeg)
         .context("encode jpeg")?;
     Ok(out)
 }

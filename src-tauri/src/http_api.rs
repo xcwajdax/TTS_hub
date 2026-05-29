@@ -19,10 +19,10 @@ use crate::commands::{
     rename_folder_impl, sync_minimax_voices_impl, upsert_folder_rule_impl, GenerateReq,
 };
 use crate::cursor_integration::{self, TtsHubExportedConfig};
-use crate::text_filters::{self, TextFilterPreset};
 use crate::db::{Folder, FolderRule, FolderRuleInput, Generation};
 use crate::google::VOICES;
 use crate::state::AppState;
+use crate::text_filters::{self, TextFilterPreset};
 use crate::voice_samples;
 
 type AppArc = Arc<AppState>;
@@ -81,7 +81,10 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         .route("/history/:id", delete(delete_one))
         .route("/folders", get(folders_list).post(folders_create))
         .route("/folders/:id", patch(folders_rename).delete(folders_delete))
-        .route("/folder-rules", get(folder_rules_list_http).post(folder_rules_upsert_http))
+        .route(
+            "/folder-rules",
+            get(folder_rules_list_http).post(folder_rules_upsert_http),
+        )
         .route("/folder-rules/:id", delete(folder_rules_delete_http))
         .route("/audio/:id", get(audio))
         .route("/jobs", get(jobs_list))
@@ -192,9 +195,7 @@ async fn voice_sample_audio(
             )
         }
     };
-    let range = headers
-        .get(header::RANGE)
-        .and_then(|v| v.to_str().ok());
+    let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     audio_bytes_response(bytes, "audio/wav", range)
 }
 
@@ -504,7 +505,10 @@ async fn folders_list(State(state): State<AppArc>) -> Response {
     }
 }
 
-async fn folders_create(State(state): State<AppArc>, Json(body): Json<CreateFolderBody>) -> Response {
+async fn folders_create(
+    State(state): State<AppArc>,
+    Json(body): Json<CreateFolderBody>,
+) -> Response {
     match create_folder_impl(&state, body.name, body.color) {
         Ok(f) => Json(f).into_response(),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
@@ -606,7 +610,11 @@ fn parse_byte_range(range: &str, total: u64) -> Option<(u64, u64)> {
 }
 
 /// Serve audio bytes with `Accept-Ranges` / `206 Partial Content` so `<audio>` can seek.
-fn audio_bytes_response(bytes: Vec<u8>, mime: &'static str, range_header: Option<&str>) -> Response {
+fn audio_bytes_response(
+    bytes: Vec<u8>,
+    mime: &'static str,
+    range_header: Option<&str>,
+) -> Response {
     let total = bytes.len() as u64;
     if total == 0 {
         return (
@@ -856,8 +864,6 @@ async fn audio(
         "ogg" => "audio/ogg",
         _ => "application/octet-stream",
     };
-    let range = headers
-        .get(header::RANGE)
-        .and_then(|v| v.to_str().ok());
+    let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     audio_bytes_response(bytes, mime, range)
 }

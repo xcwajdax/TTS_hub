@@ -19,6 +19,7 @@
     "core:tray:default",
     "dialog:default",
     "shell:default",
+    "window-state:default",
     {
       "identifier": "shell:allow-open",
       "allow": [{ "name": "open", "cmd": "" }]

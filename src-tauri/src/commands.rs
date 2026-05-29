@@ -12,21 +12,21 @@ use crate::playback_toast_window;
 use crate::toast_window;
 use crate::text_filters::{self, TextFilterPreset};
 use crate::audio::{convert_audio_file, AudioFormat};
+use crate::avatars::{self, AvatarInfo};
 use crate::cursor_integration::{self, InstallReport, IntegrationStatus, UninstallReport};
 use crate::db::{
     Folder, FolderRule, FolderRuleInput, Generation, Tag, UsageSummary, STATUS_CANCELLED,
     STATUS_DONE, STATUS_INTERRUPTED, STATUS_QUEUED,
 };
-use crate::paths::{rename_dir, slugify_name, unique_slug};
 use crate::google::{GoogleTts, SpeakerConfig, TtsModelInfo, VOICES};
-use crate::paths::AppPaths;
-use crate::state::AppState;
-use crate::avatars::{self, AvatarInfo};
-use crate::voice_samples::{self, VoiceSampleInfo};
 use crate::minimax::{
     MinimaxClonedVoice, MinimaxHealth, MinimaxLanguageInfo, MinimaxModelInfo, MinimaxPresetVoice,
     MinimaxSyncVoicesResult,
 };
+use crate::paths::AppPaths;
+use crate::paths::{rename_dir, slugify_name, unique_slug};
+use crate::state::AppState;
+use crate::voice_samples::{self, VoiceSampleInfo};
 use crate::voicebox::{VoiceBoxHealth, VoiceBoxProfile};
 
 type AppArc = Arc<AppState>;
@@ -233,7 +233,10 @@ pub fn list_history(
             let mut gens = match folder_id.as_deref() {
                 Some("__all__") | None => state.db.list_archive().map_err(err)?,
                 Some("__none__") => state.db.list_generations_in_folder(None).map_err(err)?,
-                Some(fid) => state.db.list_generations_in_folder(Some(fid)).map_err(err)?,
+                Some(fid) => state
+                    .db
+                    .list_generations_in_folder(Some(fid))
+                    .map_err(err)?,
             };
             attach_tag_ids(&state.db, &mut gens)?;
             Ok(gens)
@@ -461,7 +464,13 @@ pub fn do_archive(
     if g.is_archived && src == dst {
         state
             .db
-            .update_archived(id, true, &dst.to_string_lossy(), &target.ext().to_string(), folder_id.as_deref())
+            .update_archived(
+                id,
+                true,
+                &dst.to_string_lossy(),
+                &target.ext().to_string(),
+                folder_id.as_deref(),
+            )
             .map_err(err)?;
         g.folder_id = folder_id;
         return Ok(g);
@@ -640,7 +649,8 @@ pub fn delete_folder_impl(state: &AppArc, id: String, mode: String) -> Result<()
                     let src = PathBuf::from(&file_path);
                     if src.is_file() {
                         let dst = paths.archive.join(
-                            src.file_name().unwrap_or_else(|| std::ffi::OsStr::new("audio.wav")),
+                            src.file_name()
+                                .unwrap_or_else(|| std::ffi::OsStr::new("audio.wav")),
                         );
                         let _ = std::fs::rename(&src, &dst);
                     }
@@ -679,11 +689,7 @@ pub fn list_tags(state: State<'_, AppArc>) -> Result<Vec<Tag>, String> {
     list_tags_impl(state.inner())
 }
 
-pub fn create_tag_impl(
-    state: &AppArc,
-    name: String,
-    color: Option<String>,
-) -> Result<Tag, String> {
+pub fn create_tag_impl(state: &AppArc, name: String, color: Option<String>) -> Result<Tag, String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return Err("tag name is empty".into());
@@ -836,8 +842,16 @@ pub fn list_folder_rules(state: State<'_, AppArc>) -> Result<Vec<FolderRule>, St
     list_folder_rules_impl(state.inner())
 }
 
-pub fn upsert_folder_rule_impl(state: &AppArc, rule: FolderRuleInput) -> Result<FolderRule, String> {
-    if state.db.folder_by_id(&rule.folder_id).map_err(err)?.is_none() {
+pub fn upsert_folder_rule_impl(
+    state: &AppArc,
+    rule: FolderRuleInput,
+) -> Result<FolderRule, String> {
+    if state
+        .db
+        .folder_by_id(&rule.folder_id)
+        .map_err(err)?
+        .is_none()
+    {
         return Err("folder not found".into());
     }
     let match_source = rule.match_source.trim().to_lowercase();
@@ -892,7 +906,11 @@ pub fn read_text_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn export_generation_to_path(id: String, dest_path: String, state: State<'_, AppArc>) -> Result<(), String> {
+pub fn export_generation_to_path(
+    id: String,
+    dest_path: String,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
     let g = state
         .db
         .get(&id)
@@ -914,7 +932,10 @@ pub fn export_generation_to_path(id: String, dest_path: String, state: State<'_,
 }
 
 #[tauri::command]
-pub fn copy_generation_audio_to_clipboard(id: String, state: State<'_, AppArc>) -> Result<(), String> {
+pub fn copy_generation_audio_to_clipboard(
+    id: String,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
     let g = state
         .db
         .get(&id)
@@ -1181,7 +1202,9 @@ pub fn list_minimax_languages() -> Vec<MinimaxLanguageInfo> {
 }
 
 #[tauri::command]
-pub fn list_minimax_preset_voices(state: State<'_, AppArc>) -> Result<Vec<MinimaxPresetVoice>, String> {
+pub fn list_minimax_preset_voices(
+    state: State<'_, AppArc>,
+) -> Result<Vec<MinimaxPresetVoice>, String> {
     let settings = state.settings.read().map_err(err)?;
     let enabled = settings.effective_minimax_enabled_languages();
     Ok(crate::minimax::MinimaxClient::effective_preset_voices(
@@ -1191,7 +1214,9 @@ pub fn list_minimax_preset_voices(state: State<'_, AppArc>) -> Result<Vec<Minima
 }
 
 #[tauri::command]
-pub fn list_minimax_cloned_voices(state: State<'_, AppArc>) -> Result<Vec<MinimaxClonedVoice>, String> {
+pub fn list_minimax_cloned_voices(
+    state: State<'_, AppArc>,
+) -> Result<Vec<MinimaxClonedVoice>, String> {
     Ok(state
         .settings
         .read()
@@ -1201,26 +1226,53 @@ pub fn list_minimax_cloned_voices(state: State<'_, AppArc>) -> Result<Vec<Minima
 }
 
 /// API is source of truth; local cache only enriches display names.
+#[tauri::command]
+pub fn set_minimax_cloned_voice_output_vol(
+    state: State<'_, AppArc>,
+    voice_id: String,
+    output_vol: f32,
+) -> Result<MinimaxClonedVoice, String> {
+    let vid = voice_id.trim().to_string();
+    if vid.is_empty() {
+        return Err("voice_id is empty".into());
+    }
+    let clamped = output_vol.clamp(0.0, 10.0);
+    let out = {
+        let mut settings = state.settings.write().map_err(err)?;
+        let entry = settings
+            .minimax_cloned_voices
+            .iter_mut()
+            .find(|v| v.voice_id == vid)
+            .ok_or_else(|| format!("cloned voice not found: {vid}"))?;
+        entry.output_vol = Some(clamped);
+        entry.clone()
+    };
+    state.persist_settings().map_err(err)?;
+    Ok(out)
+}
+
 fn merge_minimax_cloned_voices(
     local: &[MinimaxClonedVoice],
     api: &[MinimaxClonedVoice],
 ) -> Vec<MinimaxClonedVoice> {
-    let local_names: std::collections::HashMap<&str, &str> = local
+    let local_by_id: std::collections::HashMap<&str, &MinimaxClonedVoice> = local
         .iter()
-        .map(|v| (v.voice_id.as_str(), v.name.as_str()))
+        .map(|v| (v.voice_id.as_str(), v))
         .collect();
     let mut out: Vec<MinimaxClonedVoice> = api
         .iter()
         .map(|v| {
-            let name = local_names
-                .get(v.voice_id.as_str())
+            let local_entry = local_by_id.get(v.voice_id.as_str());
+            let name = local_entry
+                .map(|l| l.name.as_str())
                 .filter(|n| !n.trim().is_empty())
-                .map(|n| (*n).to_string())
+                .map(|n| n.to_string())
                 .unwrap_or_else(|| v.name.clone());
             MinimaxClonedVoice {
                 voice_id: v.voice_id.clone(),
                 name,
                 created_at: v.created_at,
+                output_vol: local_entry.and_then(|l| l.output_vol).or(v.output_vol),
             }
         })
         .collect();
@@ -1343,6 +1395,7 @@ pub async fn minimax_clone_voice_impl(
         voice_id: voice_id.trim().to_string(),
         name: name.trim().to_string(),
         created_at: chrono::Utc::now().timestamp(),
+        output_vol: None,
     };
     {
         let mut settings = state.settings.write().map_err(err)?;
@@ -1566,7 +1619,9 @@ fn reveal_path(path: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn list_custom_skins(state: State<'_, AppArc>) -> Result<Vec<crate::skins::SkinListEntry>, String> {
+pub fn list_custom_skins(
+    state: State<'_, AppArc>,
+) -> Result<Vec<crate::skins::SkinListEntry>, String> {
     let paths = read_paths(&state)?;
     crate::skins::list_custom_skins(&paths.skins).map_err(err)
 }
@@ -1602,8 +1657,12 @@ pub fn export_skin(
     state: State<'_, AppArc>,
 ) -> Result<(), String> {
     let paths = read_paths(&state)?;
-    crate::skins::export_skin(&paths.skins, skin_id.trim(), PathBuf::from(dest_path).as_path())
-        .map_err(err)
+    crate::skins::export_skin(
+        &paths.skins,
+        skin_id.trim(),
+        PathBuf::from(dest_path).as_path(),
+    )
+    .map_err(err)
 }
 
 #[tauri::command]
@@ -1712,7 +1771,9 @@ pub fn read_image_file_base64(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn list_source_avatars(state: State<'_, AppArc>) -> Result<std::collections::HashMap<String, String>, String> {
+pub fn list_source_avatars(
+    state: State<'_, AppArc>,
+) -> Result<std::collections::HashMap<String, String>, String> {
     let paths = read_paths(&state)?;
     Ok(avatars::list_source_avatars(&paths))
 }

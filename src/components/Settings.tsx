@@ -25,6 +25,7 @@ import {
 import { DEFAULT_TTS_MODEL, FALLBACK_TTS_MODELS, type TtsModelInfo } from "../ttsModels";
 import { isProviderEnabled, type TtsProviderId } from "../appSettings";
 import type { SpeakerConfig, TtsModel, TtsProvider } from "../types";
+import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
 import VoiceSamplePlayButton from "./VoiceSamplePlayButton";
 import VoiceSamples from "./VoiceSamples";
 
@@ -168,16 +169,7 @@ export default function Settings({
     if (nextVoice !== state.voice) {
       onChange({ ...state, voice: nextVoice });
     }
-  }, [
-    state.provider,
-    minimaxPresets,
-    minimaxCloned,
-    state.language,
-    state.voice,
-    clonedVoiceIds,
-    state,
-    onChange,
-  ]);
+  }, [state.provider, minimaxPresets, minimaxCloned, state.language, state.voice, clonedVoiceIds, onChange]);
 
   const update = <K extends keyof SettingsState>(k: K, v: SettingsState[K]) =>
     onChange({ ...state, [k]: v });
@@ -448,7 +440,7 @@ export default function Settings({
               className="field"
               type="number"
               min={0}
-              max={2}
+              max={10}
               step={0.1}
               value={state.minimaxVol}
               onChange={(e) => update("minimaxVol", Number(e.target.value) || 1)}
@@ -466,6 +458,19 @@ export default function Settings({
               onChange={(e) => update("minimaxPitch", Number(e.target.value) || 0)}
             />
           </label>
+          {clonedVoiceIds.has(state.voice) && (
+            <MinimaxCloneVolumeControl
+              voiceId={state.voice}
+              presetVol={state.minimaxVol}
+              cloned={minimaxCloned}
+              onClonedUpdated={(v) =>
+                setMinimaxCloned((prev) =>
+                  prev.map((c) => (c.voice_id === v.voice_id ? v : c)),
+                )
+              }
+              onError={onError}
+            />
+          )}
         </>
       )}
 

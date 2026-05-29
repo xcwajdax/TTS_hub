@@ -828,9 +828,7 @@ impl Db {
              ORDER BY created_at ASC",
         )?;
         let rows: Vec<(String, String, String)> = stmt
-            .query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })?
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -1040,7 +1038,8 @@ mod tests {
             db.insert(&test_gen(&format!("o{i}"), old, i)).unwrap();
         }
         for i in 0..2 {
-            db.insert(&test_gen(&format!("c{i}"), current, 100 + i)).unwrap();
+            db.insert(&test_gen(&format!("c{i}"), current, 100 + i))
+                .unwrap();
         }
         let removed = db.enforce_temp_retention(5, current).unwrap();
         assert_eq!(removed.len(), 1);
