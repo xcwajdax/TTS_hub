@@ -1,4 +1,4 @@
-export type AppView = "tts" | "extensions" | "roleplay";
+export type AppView = "tts" | "extensions" | "roleplay" | "chat";
 
 interface Props {
   view: AppView;
@@ -50,6 +50,19 @@ export default function AppViewTabs({ view, onViewChange }: Props) {
         onClick={() => onViewChange("roleplay")}
       >
         Roleplay
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === "chat"}
+        className={`flex-1 py-2 text-sm ${
+          view === "chat"
+            ? "bg-panel2 text-heading border-b-2 border-accent"
+            : "text-muted hover:text-heading"
+        }`}
+        onClick={() => onViewChange("chat")}
+      >
+        Czat
       </button>
     </div>
   );

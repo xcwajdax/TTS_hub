@@ -43,6 +43,7 @@ import { usePlaybackQueue } from "./hooks/usePlaybackQueue";
 import { TimelineViewProvider } from "./context/TimelineViewContext";
 import { SkinProvider } from "./skins/SkinProvider";
 import RoleplayView from "./roleplay/RoleplayView";
+import ChatView from "./chat/ChatView";
 
 interface AppInnerProps {
   appView: AppView;
@@ -333,6 +334,33 @@ function AppInner({
             className="fixed bottom-4 left-4 max-w-md bg-emerald-900/80 border border-emerald-700 text-emerald-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
             onClick={() => setToast(null)}
           >
+            {toast}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (appView === "chat") {
+    return (
+      <div className="h-full w-full flex flex-col min-h-0 relative">
+        <ChatView
+          onError={setError}
+          onToast={(msg) => {
+            setToast(msg);
+            window.setTimeout(() => setToast(null), 2500);
+          }}
+        />
+        {error && (
+          <div
+            className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setError(null)}
+          >
+            {error}
+          </div>
+        )}
+        {toast && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-panel2 border border-border text-heading px-3 py-2 rounded shadow-lg text-sm">
             {toast}
           </div>
         )}

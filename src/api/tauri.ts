@@ -732,3 +732,60 @@ export async function roleplayExportMix(
 ): Promise<string> {
   return invoke("roleplay_export_mix", { wavPath, destPath, format });
 }
+
+// === chat-window (2026-06-06) ===
+import type {
+  AddMessageReq,
+  ChatMessage,
+  ChatSession,
+} from "../chat/types";
+
+export async function chatCreateSession(
+  source: string,
+  title?: string,
+): Promise<ChatSession> {
+  return invoke<ChatSession>("chat_create_session", { source, title });
+}
+
+export async function chatListSessions(
+  source?: string,
+  savedOnly = false,
+): Promise<ChatSession[]> {
+  return invoke<ChatSession[]>("chat_list_sessions", { source, savedOnly });
+}
+
+export async function chatGetSession(id: string): Promise<ChatSession | null> {
+  return invoke<ChatSession | null>("chat_get_session", { id });
+}
+
+export async function chatUpdateSession(
+  id: string,
+  title?: string | null,
+  isSaved?: boolean,
+): Promise<void> {
+  return invoke<void>("chat_update_session", { id, title, isSaved });
+}
+
+export async function chatDeleteSession(id: string): Promise<void> {
+  return invoke<void>("chat_delete_session", { id });
+}
+
+export async function chatListMessages(sessionId: string): Promise<ChatMessage[]> {
+  return invoke<ChatMessage[]>("chat_list_messages", { sessionId });
+}
+
+export async function chatAddMessage(
+  sessionId: string,
+  req: AddMessageReq,
+): Promise<ChatMessage> {
+  return invoke<ChatMessage>("chat_add_message", { sessionId, ...req });
+}
+
+/** Returns the generation_id (audio file pointer) for a chat message. */
+export async function chatReplayMessage(messageId: string): Promise<string> {
+  return invoke<string>("chat_replay_message", { messageId });
+}
+
+export async function chatListRecentSources(): Promise<[string, number][]> {
+  return invoke<[string, number][]>("chat_list_recent_sources");
+}
