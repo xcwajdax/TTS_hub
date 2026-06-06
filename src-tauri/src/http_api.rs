@@ -115,6 +115,20 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
             "/plugins/soundboard/slots/:index/audio",
             get(soundboard_slot_audio),
         )
+        // === chat-window extension (2026-06-06) ===
+        .route("/chat/sessions", get(chat_list_sessions_http).post(chat_create_session_http))
+        .route(
+            "/chat/sessions/:id",
+            get(chat_get_session_http)
+                .patch(chat_update_session_http)
+                .delete(chat_delete_session_http),
+        )
+        .route(
+            "/chat/sessions/:id/messages",
+            get(chat_list_messages_http).post(chat_add_message_http),
+        )
+        .route("/chat/sessions/:id/replay/:message_id", post(chat_replay_message_http))
+        .route("/chat/sources", get(chat_list_sources_http))
         .with_state(state)
         .layer(Extension(app_handle))
         .layer(cors);
@@ -866,4 +880,135 @@ async fn audio(
     };
     let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     audio_bytes_response(bytes, mime, range)
+}
+
+// ============================================================================
+// chat-window HTTP handlers (2026-06-06)
+// ============================================================================
+
+use crate::chat::types::{AddMessageReq, CreateSessionReq, UpdateSessionReq};
+
+fn chat_err(e: impl std::fmt::Display) -> Response {
+    json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+}
+
+async fn chat_create_session_http(
+    State(state): State<AppArc>,
+    Json(req): Json<CreateSessionReq>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::create_session(&conn, &req.source, req.title.as_deref()) {
+        Ok(s) => Json(s).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_list_sessions_http(
+    State(state): State<AppArc>,
+    Query(q): Query<ChatListQuery>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::list_sessions(
+        &conn,
+        q.source.as_deref(),
+        q.saved_only.unwrap_or(false),
+    ) {
+        Ok(s) => Json(s).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_get_session_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::get_session(&conn, &id) {
+        Ok(Some(s)) => Json(s).into_response(),
+        Ok(None) => json_err(StatusCode::NOT_FOUND, "session not found"),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_update_session_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateSessionReq>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::update_session(&conn, &id, req.title.as_deref(), req.is_saved) {
+        Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_delete_session_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::delete_session(&conn, &id) {
+        Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_list_messages_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::list_messages(&conn, &id) {
+        Ok(m) => Json(m).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_add_message_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+    Json(req): Json<AddMessageReq>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::add_message(
+        &conn,
+        &id,
+        &req.role,
+        &req.content,
+        req.generation_id.as_deref(),
+    ) {
+        Ok(m) => Json(m).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_replay_message_http(
+    State(state): State<AppArc>,
+    Path((session_id, message_id)): Path<(String, String)>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::message_generation_id(&conn, &message_id) {
+        Ok(Some(gid)) => Json(serde_json::json!({
+            "session_id": session_id,
+            "message_id": message_id,
+            "generation_id": gid,
+        }))
+        .into_response(),
+        Ok(None) => json_err(StatusCode::NOT_FOUND, "message has no audio"),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_list_sources_http(State(state): State<AppArc>) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::list_recent_sources(&conn, 30 * 24 * 3600 * 1000) {
+        Ok(s) => Json(s).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatListQuery {
+    source: Option<String>,
+    saved_only: Option<bool>,
 }

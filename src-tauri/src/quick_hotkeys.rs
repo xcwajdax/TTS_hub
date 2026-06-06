@@ -366,6 +366,9 @@ pub fn build_generate_req(
         minimax_speed,
         minimax_vol,
         minimax_pitch,
+        original_prompt: None,
+        chat_session_id: None,
+        chat_role: None,
     }
 }
 

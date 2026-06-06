@@ -256,6 +256,9 @@ pub fn build_generate_req_from_profile(
         minimax_speed: profile.minimax_speed,
         minimax_vol: profile.minimax_vol,
         minimax_pitch: profile.minimax_pitch,
+        original_prompt: None,
+        chat_session_id: None,
+        chat_role: None,
     }
 }
 

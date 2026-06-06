@@ -96,6 +96,19 @@ pub struct GenerateReq {
     pub minimax_vol: Option<f32>,
     #[serde(default)]
     pub minimax_pitch: Option<i32>,
+    // === chat-window extension (2026-06-06) — additive, optional ===
+    /// Original user prompt that produced this assistant reply. Stored on
+    /// the generation for context/replay. Does NOT affect TTS output.
+    #[serde(default)]
+    pub original_prompt: Option<String>,
+    /// If set, the generation is also recorded in this chat session. The
+    /// session is auto-created if it doesn't exist.
+    #[serde(default)]
+    pub chat_session_id: Option<String>,
+    /// "assistant" (default) | "user" | "system". Used when adding a chat
+    /// message tied to this generation.
+    #[serde(default)]
+    pub chat_role: Option<String>,
 }
 
 fn resolve_filtered_text(mut req: GenerateReq) -> Result<GenerateReq, String> {
@@ -186,10 +199,60 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         folder_id: matched_folder_id,
         ui_color: None,
         tag_ids: None,
-        original_prompt: None,
-        chat_session_id: None,
+        original_prompt: req.original_prompt.clone(),
+        chat_session_id: None, // set after chat message is created below
         chat_message_id: None,
     };
+
+    // === chat-window extension (2026-06-06) ===
+    // If chat_session_id is provided, auto-create the session if it doesn't
+    // exist, then insert a user message (with original_prompt) and an
+    // assistant message (with `text`, generation_id=NULL for now). The
+    // assistant message will be back-linked to this generation after we
+    // enqueue, and the message's `generation_id` will be patched once the
+    // job completes (TODO: job done event hook).
+    if let Some(sid) = req.chat_session_id.as_deref() {
+        let conn = state.db.conn();
+        // Auto-create the session if it doesn't exist (silently — this is
+        // the "auto-detection" feature). Source defaults to "unknown" if
+        // not derivable from the request.
+        if crate::chat::db::get_session(&conn, sid).map_err(err)?.is_none() {
+            let source_name = req
+                .source
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            crate::chat::db::create_session(&conn, &source_name, None).map_err(err)?;
+        }
+        // User message: the original prompt that produced this reply.
+        if let Some(prompt) = req.original_prompt.as_deref() {
+            crate::chat::db::add_message(&conn, sid, "user", prompt, None).map_err(err)?;
+        }
+        // Assistant message: the text being synthesized. generation_id is
+        // back-filled when the job finishes; for now we link via the gen
+        // row's chat_message_id so the message knows its own ID.
+        let assistant_msg =
+            crate::chat::db::add_message(&conn, sid, "assistant", &req.text, None)
+                .map_err(err)?;
+        drop(conn);
+        // Stash the resolved session+message IDs on the generation row.
+        let mut gen = gen;
+        gen.chat_session_id = Some(sid.to_string());
+        gen.chat_message_id = Some(assistant_msg.id.clone());
+        state.db.insert(&gen).map_err(err)?;
+        // Back-link the assistant message to this generation id.
+        // We do this with a direct UPDATE because we already created the
+        // message with generation_id=NULL.
+        let conn2 = state.db.conn();
+        let _ = conn2.execute(
+            "UPDATE chat_messages SET generation_id = ?1 WHERE id = ?2",
+            rusqlite::params![gen.id, assistant_msg.id],
+        );
+        let queue = state
+            .job_queue()
+            .ok_or_else(|| "job queue not initialized".to_string())?;
+        queue.enqueue(gen.id.clone()).map_err(err)?;
+        return Ok(gen);
+    }
     state.db.insert(&gen).map_err(err)?;
 
     let queue = state
