@@ -145,6 +145,14 @@ pub struct Db {
 }
 
 impl Db {
+    /// Acquire a short-lived `MutexGuard` on the underlying `Connection` for
+    /// out-of-`Db` SQL helpers (e.g. `crate::chat::db`).
+    ///
+    /// The caller MUST drop the guard before awaiting or doing long work.
+    pub fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
+        self.conn.lock().unwrap()
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch(

@@ -26,6 +26,7 @@ mod minimax;
 mod voice_profiles;
 mod voicebox;
 mod roleplay;
+mod chat;
 mod local_storage;
 mod audio_output_devices;
 mod webview_media_permissions;
@@ -170,6 +171,15 @@ pub fn run() {
             roleplay::commands::roleplay_import_audio,
             roleplay::commands::roleplay_write_mix_wav,
             roleplay::commands::roleplay_export_mix,
+            chat::commands::chat_create_session,
+            chat::commands::chat_list_sessions,
+            chat::commands::chat_get_session,
+            chat::commands::chat_update_session,
+            chat::commands::chat_delete_session,
+            chat::commands::chat_list_messages,
+            chat::commands::chat_add_message,
+            chat::commands::chat_replay_message,
+            chat::commands::chat_list_recent_sources,
         ])
         .on_menu_event(|app, event| menu::handle_event(app, event))
         .setup(move |app| {
