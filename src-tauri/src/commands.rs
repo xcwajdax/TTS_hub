@@ -186,6 +186,9 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         folder_id: matched_folder_id,
         ui_color: None,
         tag_ids: None,
+        original_prompt: None,
+        chat_session_id: None,
+        chat_message_id: None,
     };
     state.db.insert(&gen).map_err(err)?;
 

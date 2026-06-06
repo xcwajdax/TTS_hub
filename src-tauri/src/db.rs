@@ -50,6 +50,13 @@ pub struct Generation {
     pub ui_color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag_ids: Option<Vec<String>>,
+    // === chat-window extension (2026-06-06) ===
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_message_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,7 +123,7 @@ pub struct UsageSummary {
     pub current_session: UsageTotals,
 }
 
-const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color";
+const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id";
 
 fn default_source() -> String {
     "manual".to_string()
@@ -207,6 +214,11 @@ impl Db {
         );
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN folder_id TEXT", []);
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN ui_color TEXT", []);
+
+        // === chat-window extension (2026-06-06) — additive, idempotent ===
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN original_prompt TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN chat_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN chat_message_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL", []);
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS folders (
@@ -264,6 +276,29 @@ impl Db {
                 error TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_roleplay_segments_project ON roleplay_segments(project_id, order_index);
+
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                title TEXT,
+                created_at INTEGER NOT NULL,
+                last_active_at INTEGER NOT NULL,
+                is_saved INTEGER NOT NULL DEFAULT 0,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                metadata_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_source ON chat_sessions(source, last_active_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_saved ON chat_sessions(is_saved, last_active_at DESC);
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+                content TEXT NOT NULL,
+                generation_id TEXT,
+                created_at INTEGER NOT NULL,
+                order_index INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, order_index ASC);
             "#,
         )?;
         Ok(Self {
@@ -274,7 +309,7 @@ impl Db {
     pub fn insert(&self, g: &Generation) -> Result<()> {
         let c = self.conn.lock().unwrap();
         c.execute(
-            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
+            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
             params![
                 g.id,
                 g.created_at,
@@ -298,6 +333,9 @@ impl Db {
                 g.request_json,
                 g.folder_id,
                 g.ui_color,
+                g.original_prompt,
+                g.chat_session_id,
+                g.chat_message_id,
             ],
         )?;
         Ok(())
@@ -911,6 +949,9 @@ fn row_to_gen(row: &rusqlite::Row) -> rusqlite::Result<Generation> {
         folder_id: row.get(25)?,
         ui_color: row.get(26)?,
         tag_ids: None,
+        original_prompt: row.get(27)?,
+        chat_session_id: row.get(28)?,
+        chat_message_id: row.get(29)?,
     })
 }
 
@@ -1273,6 +1314,9 @@ mod tests {
             folder_id: None,
             ui_color: None,
             tag_ids: None,
+            original_prompt: None,
+            chat_session_id: None,
+            chat_message_id: None,
         }
     }
 
