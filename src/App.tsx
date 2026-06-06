@@ -42,6 +42,7 @@ import { isTauriApp } from "./lib/tauriEnv";
 import { usePlaybackQueue } from "./hooks/usePlaybackQueue";
 import { TimelineViewProvider } from "./context/TimelineViewContext";
 import { SkinProvider } from "./skins/SkinProvider";
+import RoleplayView from "./roleplay/RoleplayView";
 
 interface AppInnerProps {
   appView: AppView;
@@ -311,6 +312,33 @@ function AppInner({
     },
     onOpenSoundboard: onFocusSoundboard,
   });
+
+  if (appView === "roleplay") {
+    return (
+      <div className="h-full w-full flex flex-col min-h-0 relative">
+        <RoleplayView onError={setError} onToast={(msg) => {
+          setToast(msg);
+          window.setTimeout(() => setToast(null), 3500);
+        }} />
+        {error && (
+          <div
+            className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setError(null)}
+          >
+            {error}
+          </div>
+        )}
+        {toast && (
+          <div
+            className="fixed bottom-4 left-4 max-w-md bg-emerald-900/80 border border-emerald-700 text-emerald-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setToast(null)}
+          >
+            {toast}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (appView === "extensions") {
     return (

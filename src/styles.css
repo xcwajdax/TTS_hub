@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+.roleplay-book-editor .ProseMirror mark {
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.roleplay-studio input[type="range"] {
+  accent-color: rgb(var(--color-accent));
+}
+
+.roleplay-studio input[type="range"]::-webkit-slider-thumb {
+  background: rgb(var(--color-accent));
+}
+
 :root,
 [data-skin="vibelife"] {
   --color-bg: 15 17 21;

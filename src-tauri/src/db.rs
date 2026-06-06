@@ -241,6 +241,29 @@ impl Db {
                 PRIMARY KEY (generation_id, tag_id)
             );
             CREATE INDEX IF NOT EXISTS idx_generation_tags_tag ON generation_tags(tag_id);
+            CREATE TABLE IF NOT EXISTS roleplay_projects (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                doc_json TEXT NOT NULL DEFAULT '{}',
+                palette_json TEXT NOT NULL DEFAULT '[]',
+                timeline_json TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'draft'
+            );
+            CREATE TABLE IF NOT EXISTS roleplay_segments (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES roleplay_projects(id) ON DELETE CASCADE,
+                order_index INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                voice_profile_id TEXT NOT NULL,
+                color TEXT NOT NULL,
+                generation_id TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                error TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_roleplay_segments_project ON roleplay_segments(project_id, order_index);
             "#,
         )?;
         Ok(Self {
@@ -922,6 +945,247 @@ fn row_to_folder_rule(row: &rusqlite::Row) -> rusqlite::Result<FolderRule> {
         enabled: row.get::<_, i32>(4)? != 0,
         created_at: row.get(5)?,
     })
+}
+
+fn row_to_roleplay_project(row: &rusqlite::Row) -> rusqlite::Result<crate::roleplay::RoleplayProject> {
+    Ok(crate::roleplay::RoleplayProject {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        created_at: row.get(2)?,
+        updated_at: row.get(3)?,
+        doc_json: row.get(4)?,
+        palette_json: row.get(5)?,
+        timeline_json: row.get(6)?,
+        status: row.get(7)?,
+        segments: Vec::new(),
+    })
+}
+
+fn row_to_roleplay_segment(row: &rusqlite::Row) -> rusqlite::Result<crate::roleplay::RoleplaySegment> {
+    Ok(crate::roleplay::RoleplaySegment {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        order_index: row.get(2)?,
+        text: row.get(3)?,
+        voice_profile_id: row.get(4)?,
+        color: row.get(5)?,
+        generation_id: row.get(6)?,
+        status: row.get(7)?,
+        retry_count: row.get::<_, Option<i64>>(8)?.unwrap_or(0),
+        error: row.get(9)?,
+    })
+}
+
+impl Db {
+    pub fn roleplay_list_projects(&self) -> Result<Vec<crate::roleplay::RoleplayProjectSummary>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT p.id, p.name, p.created_at, p.updated_at, p.status,
+                    (SELECT COUNT(*) FROM roleplay_segments s WHERE s.project_id = p.id) AS segment_count
+             FROM roleplay_projects p
+             ORDER BY p.updated_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(crate::roleplay::RoleplayProjectSummary {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                status: row.get(4)?,
+                segment_count: row.get(5)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn roleplay_create_project(&self, name: &str) -> Result<crate::roleplay::RoleplayProject> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp_millis();
+        let project = crate::roleplay::RoleplayProject {
+            id: id.clone(),
+            name: name.to_string(),
+            created_at: now,
+            updated_at: now,
+            doc_json: r#"{"type":"doc","content":[{"type":"paragraph"}]}"#.to_string(),
+            palette_json: "[]".to_string(),
+            timeline_json: r#"{"tracks":[],"clips":[]}"#.to_string(),
+            status: crate::roleplay::project::PROJECT_STATUS_DRAFT.to_string(),
+            segments: Vec::new(),
+        };
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "INSERT INTO roleplay_projects (id, name, created_at, updated_at, doc_json, palette_json, timeline_json, status)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            params![
+                project.id,
+                project.name,
+                project.created_at,
+                project.updated_at,
+                project.doc_json,
+                project.palette_json,
+                project.timeline_json,
+                project.status,
+            ],
+        )?;
+        Ok(project)
+    }
+
+    pub fn roleplay_get_project(&self, id: &str) -> Result<Option<crate::roleplay::RoleplayProject>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, name, created_at, updated_at, doc_json, palette_json, timeline_json, status
+             FROM roleplay_projects WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map([id], row_to_roleplay_project)?;
+        let mut project = match rows.next() {
+            Some(Ok(p)) => p,
+            Some(Err(e)) => return Err(e.into()),
+            None => return Ok(None),
+        };
+        project.segments = self.roleplay_list_segments_inner(&c, id)?;
+        Ok(Some(project))
+    }
+
+    fn roleplay_list_segments_inner(
+        &self,
+        c: &Connection,
+        project_id: &str,
+    ) -> Result<Vec<crate::roleplay::RoleplaySegment>> {
+        let mut stmt = c.prepare(
+            "SELECT id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error
+             FROM roleplay_segments WHERE project_id = ?1 ORDER BY order_index ASC",
+        )?;
+        let rows = stmt.query_map([project_id], row_to_roleplay_segment)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn roleplay_delete_project(&self, id: &str) -> Result<()> {
+        let c = self.conn.lock().unwrap();
+        c.execute("DELETE FROM roleplay_projects WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn roleplay_save_project(
+        &self,
+        req: &crate::roleplay::project::SaveRoleplayProjectReq,
+    ) -> Result<crate::roleplay::RoleplayProject> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_projects SET name = ?2, updated_at = ?3, doc_json = ?4, palette_json = ?5,
+             timeline_json = ?6, status = ?7 WHERE id = ?1",
+            params![
+                req.id,
+                req.name,
+                now,
+                req.doc_json,
+                req.palette_json,
+                req.timeline_json,
+                req.status,
+            ],
+        )?;
+        c.execute(
+            "DELETE FROM roleplay_segments WHERE project_id = ?1",
+            [&req.id],
+        )?;
+        for seg in &req.segments {
+            c.execute(
+                "INSERT INTO roleplay_segments (id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error)
+                 VALUES (?1,?2,?3,?4,?5,?6,NULL,'pending',0,NULL)",
+                params![
+                    seg.id,
+                    req.id,
+                    seg.order_index,
+                    seg.text,
+                    seg.voice_profile_id,
+                    seg.color,
+                ],
+            )?;
+        }
+        drop(c);
+        self.roleplay_get_project(&req.id)?
+            .ok_or_else(|| anyhow::anyhow!("project not found after save"))
+    }
+
+    pub fn roleplay_update_timeline(&self, project_id: &str, timeline_json: &str) -> Result<()> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_projects SET timeline_json = ?2, updated_at = ?3 WHERE id = ?1",
+            params![project_id, timeline_json, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn roleplay_update_project_status(&self, project_id: &str, status: &str) -> Result<()> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_projects SET status = ?2, updated_at = ?3 WHERE id = ?1",
+            params![project_id, status, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn roleplay_segment_by_generation(
+        &self,
+        generation_id: &str,
+    ) -> Result<Option<crate::roleplay::RoleplaySegment>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error
+             FROM roleplay_segments WHERE generation_id = ?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map([generation_id], row_to_roleplay_segment)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn roleplay_update_segment(
+        &self,
+        seg: &crate::roleplay::RoleplaySegment,
+    ) -> Result<()> {
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_segments SET order_index = ?2, text = ?3, voice_profile_id = ?4, color = ?5,
+             generation_id = ?6, status = ?7, retry_count = ?8, error = ?9 WHERE id = ?1",
+            params![
+                seg.id,
+                seg.order_index,
+                seg.text,
+                seg.voice_profile_id,
+                seg.color,
+                seg.generation_id,
+                seg.status,
+                seg.retry_count,
+                seg.error,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn roleplay_reset_generating_segments(&self) -> Result<()> {
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_segments SET status = 'pending', generation_id = NULL
+             WHERE status IN ('generating', 'queued')",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub fn roleplay_pending_segments(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<crate::roleplay::RoleplaySegment>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error
+             FROM roleplay_segments WHERE project_id = ?1 AND status = 'pending'
+             ORDER BY order_index ASC",
+        )?;
+        let rows = stmt.query_map([project_id], row_to_roleplay_segment)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
 }
 
 #[cfg(test)]

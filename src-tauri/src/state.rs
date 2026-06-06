@@ -7,6 +7,7 @@ use crate::config::Config;
 use crate::db::Db;
 use crate::google::GoogleTts;
 use crate::job_queue::JobQueue;
+use crate::roleplay::queue::RoleplayQueue;
 use crate::paths::AppPaths;
 use crate::plugins::soundboard::{soundboard_settings_path, SoundboardSettings};
 use crate::plugins::state::PluginsState;
@@ -26,6 +27,7 @@ pub struct AppState {
     pub minimax: MinimaxClient,
     pub session_id: String,
     pub job_queue: OnceLock<Arc<JobQueue>>,
+    pub roleplay_queue: OnceLock<Arc<RoleplayQueue>>,
     pub soundboard_path: std::path::PathBuf,
     pub soundboard: RwLock<SoundboardSettings>,
     pub plugins_state_path: std::path::PathBuf,
@@ -56,6 +58,7 @@ impl AppState {
 
         // Mark any leftover queued/running rows from prior crash as interrupted.
         let _ = db.mark_orphans_interrupted();
+        let _ = db.roleplay_reset_generating_segments();
 
         if let Ok(removed) = db.enforce_temp_retention(settings.temp_history_max, &session_id) {
             for p in removed {
@@ -78,6 +81,7 @@ impl AppState {
             minimax,
             session_id,
             job_queue: OnceLock::new(),
+            roleplay_queue: OnceLock::new(),
             soundboard_path,
             soundboard: RwLock::new(soundboard),
             plugins_state_path,

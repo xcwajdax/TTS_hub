@@ -607,3 +607,128 @@ export function audioSrc(filePath: string): string {
 export function playbackAudioSrc(generationId: string): string {
   return `${LOCAL_API_BASE}/audio/${encodeURIComponent(generationId)}`;
 }
+
+export interface RoleplayProjectSummary {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  status: string;
+  segment_count: number;
+}
+
+export interface RoleplaySegment {
+  id: string;
+  project_id: string;
+  order_index: number;
+  text: string;
+  voice_profile_id: string;
+  color: string;
+  generation_id?: string | null;
+  status: string;
+  retry_count?: number;
+  error?: string | null;
+}
+
+export interface RoleplayProject {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  doc_json: string;
+  palette_json: string;
+  timeline_json: string;
+  status: string;
+  segments: RoleplaySegment[];
+}
+
+export interface SaveRoleplayProjectReq {
+  id: string;
+  name: string;
+  doc_json: string;
+  palette_json: string;
+  timeline_json: string;
+  status: string;
+  segments: Array<{
+    id: string;
+    order_index: number;
+    text: string;
+    voice_profile_id: string;
+    color: string;
+  }>;
+}
+
+export interface RoleplayQueueProgress {
+  project_id: string;
+  total: number;
+  done: number;
+  current_segment_id: string | null;
+  paused: boolean;
+}
+
+export async function roleplayListProjects(): Promise<RoleplayProjectSummary[]> {
+  return invoke("roleplay_list_projects");
+}
+
+export async function roleplayCreateProject(name: string): Promise<RoleplayProject> {
+  return invoke("roleplay_create_project", { name });
+}
+
+export async function roleplayLoadProject(id: string): Promise<RoleplayProject> {
+  return invoke("roleplay_load_project", { id });
+}
+
+export async function roleplaySaveProject(req: SaveRoleplayProjectReq): Promise<RoleplayProject> {
+  return invoke("roleplay_save_project", { req });
+}
+
+export async function roleplayDeleteProject(id: string): Promise<void> {
+  return invoke("roleplay_delete_project", { id });
+}
+
+export async function roleplayUpdateTimeline(projectId: string, timelineJson: string): Promise<void> {
+  return invoke("roleplay_update_timeline", { projectId, timelineJson });
+}
+
+export async function roleplayStartQueue(projectId: string): Promise<RoleplayQueueProgress> {
+  return invoke("roleplay_start_queue", { projectId });
+}
+
+export async function roleplayPauseQueue(projectId: string): Promise<void> {
+  return invoke("roleplay_pause_queue", { projectId });
+}
+
+export async function roleplayResumeQueue(projectId: string): Promise<void> {
+  return invoke("roleplay_resume_queue", { projectId });
+}
+
+export async function roleplayCancelQueue(projectId: string): Promise<void> {
+  return invoke("roleplay_cancel_queue", { projectId });
+}
+
+export async function roleplayGetQueueProgress(projectId: string): Promise<RoleplayQueueProgress> {
+  return invoke("roleplay_get_queue_progress", { projectId });
+}
+
+export async function roleplayRegenerateSegment(
+  projectId: string,
+  segmentId: string,
+): Promise<void> {
+  return invoke("roleplay_regenerate_segment", { projectId, segmentId });
+}
+
+export async function roleplayImportAudio(projectId: string, sourcePath: string): Promise<string> {
+  return invoke("roleplay_import_audio", { projectId, sourcePath });
+}
+
+export async function roleplayWriteMixWav(projectId: string, wavBase64: string): Promise<string> {
+  return invoke("roleplay_write_mix_wav", { projectId, wavBase64 });
+}
+
+export async function roleplayExportMix(
+  wavPath: string,
+  destPath: string,
+  format: string,
+): Promise<string> {
+  return invoke("roleplay_export_mix", { wavPath, destPath, format });
+}

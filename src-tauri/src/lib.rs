@@ -25,6 +25,7 @@ mod voice_samples;
 mod minimax;
 mod voice_profiles;
 mod voicebox;
+mod roleplay;
 mod local_storage;
 mod audio_output_devices;
 mod webview_media_permissions;
@@ -154,6 +155,21 @@ pub fn run() {
             commands::update_soundboard_slot,
             commands::clear_soundboard_slot,
             commands::play_soundboard_slot,
+            roleplay::commands::roleplay_list_projects,
+            roleplay::commands::roleplay_create_project,
+            roleplay::commands::roleplay_load_project,
+            roleplay::commands::roleplay_save_project,
+            roleplay::commands::roleplay_delete_project,
+            roleplay::commands::roleplay_update_timeline,
+            roleplay::commands::roleplay_start_queue,
+            roleplay::commands::roleplay_pause_queue,
+            roleplay::commands::roleplay_resume_queue,
+            roleplay::commands::roleplay_cancel_queue,
+            roleplay::commands::roleplay_get_queue_progress,
+            roleplay::commands::roleplay_regenerate_segment,
+            roleplay::commands::roleplay_import_audio,
+            roleplay::commands::roleplay_write_mix_wav,
+            roleplay::commands::roleplay_export_mix,
         ])
         .on_menu_event(|app, event| menu::handle_event(app, event))
         .setup(move |app| {
@@ -167,6 +183,8 @@ pub fn run() {
             let queue =
                 job_queue::JobQueue::start(app_state.clone(), handle.clone(), max_concurrent);
             let _ = app_state.job_queue.set(queue);
+            let roleplay_q = roleplay::queue::RoleplayQueue::start(handle.clone());
+            let _ = app_state.roleplay_queue.set(roleplay_q);
             let http_state = app_state.clone();
             let http_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
@@ -180,6 +198,8 @@ pub fn run() {
             }
             webview_media_permissions::grant_microphone_for_playback_webviews(&handle);
             if let Some(main) = handle.get_webview_window("main") {
+                let _ = main.show();
+                let _ = main.set_focus();
                 let script = r#"
                   (() => {
                     if (window.__ttsHubAudioUnlockStarted) return;
