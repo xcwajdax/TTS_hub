@@ -202,6 +202,18 @@ pub fn run() {
                     eprintln!("HTTP API server error: {e:#}");
                 }
             });
+            // === chat-window: cleanup unsaved sessions older than 7 days on startup ===
+            // (Hourly cron is overkill for first version; cleanup-at-start covers
+            // the "user closed app and came back" case which is the main scenario.)
+            {
+                let conn = app_state.db.conn();
+                let max_age_ms = 7 * 24 * 3600 * 1000_i64;
+                match chat::db::cleanup_unsaved_older_than(&conn, max_age_ms) {
+                    Ok(n) if n > 0 => log::info!("chat cleanup on startup: deleted {n} unsaved sessions"),
+                    Ok(_) => {}
+                    Err(e) => log::warn!("chat cleanup on startup error: {e:#}"),
+                }
+            }
             selection_capture::ensure_foreground_tracker(handle.clone());
             if let Err(e) = global_shortcuts::reload_all(&handle, &app_state) {
                 eprintln!("global shortcuts registration: {e:#}");
