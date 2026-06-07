@@ -57,6 +57,13 @@ pub struct Generation {
     pub chat_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_message_id: Option<String>,
+    // === local per-provider usage counter (2026-06-07) ===
+    /// Effective synth text character count, populated at enqueue time.
+    #[serde(default)]
+    pub char_count: i64,
+    /// `(char_count + 2) / 3` — MiniMax rule of thumb for Polish (≈3 chars/token).
+    #[serde(default)]
+    pub estimated_tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +130,7 @@ pub struct UsageSummary {
     pub current_session: UsageTotals,
 }
 
-const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id";
+const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens";
 
 fn default_source() -> String {
     "manual".to_string()
@@ -227,6 +234,25 @@ impl Db {
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN original_prompt TEXT", []);
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN chat_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL", []);
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN chat_message_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL", []);
+
+        // === local per-provider usage counter (2026-06-07) — additive, idempotent ===
+        // `provider` column was already added (line above the chat-window block) as nullable.
+        // We keep the nullable form so we never have to rebuild the table.
+        // `char_count` and `estimated_tokens` are populated in enqueue_request (commands.rs):
+        //   char_count = req.text.chars().count()
+        //   estimated_tokens = (char_count + 2) / 3   (MiniMax rule of thumb for Polish)
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN char_count INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN estimated_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_generations_provider ON generations(provider, created_at DESC)",
+            [],
+        );
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS folders (
@@ -317,7 +343,7 @@ impl Db {
     pub fn insert(&self, g: &Generation) -> Result<()> {
         let c = self.conn.lock().unwrap();
         c.execute(
-            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
+            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27)",
             params![
                 g.id,
                 g.created_at,
@@ -344,6 +370,8 @@ impl Db {
                 g.original_prompt,
                 g.chat_session_id,
                 g.chat_message_id,
+                g.char_count,
+                g.estimated_tokens,
             ],
         )?;
         Ok(())
@@ -960,6 +988,8 @@ fn row_to_gen(row: &rusqlite::Row) -> rusqlite::Result<Generation> {
         original_prompt: row.get(27)?,
         chat_session_id: row.get(28)?,
         chat_message_id: row.get(29)?,
+        char_count: row.get::<_, Option<i64>>(30)?.unwrap_or(0),
+        estimated_tokens: row.get::<_, Option<i64>>(31)?.unwrap_or(0),
     })
 }
 

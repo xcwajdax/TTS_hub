@@ -13,6 +13,7 @@ use tauri::AppHandle;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::audio::AudioFormat;
+use crate::app_settings::{PROVIDER_GOOGLE, PROVIDER_MINIMAX, PROVIDER_VOICEBOX};
 use crate::commands::{
     create_folder_impl, delete_folder_impl, delete_folder_rule_impl, do_archive, enqueue_request,
     list_folder_rules_impl, list_folders_impl, minimax_clone_voice_impl, move_to_folder_impl,
@@ -58,6 +59,15 @@ struct GenerateQuery {
 #[derive(Debug, Deserialize)]
 struct JobsQuery {
     scope: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsageQuery {
+    /// If set, return only this provider. If absent, return all enabled providers.
+    provider: Option<String>,
+    /// Reserved for future use — only `24h` is implemented right now.
+    #[serde(default)]
+    window: Option<String>,
 }
 
 pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
@@ -129,6 +139,10 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         )
         .route("/chat/sessions/:id/replay/:message_id", post(chat_replay_message_http))
         .route("/chat/sources", get(chat_list_sources_http))
+        // === local per-provider usage counter (2026-06-07) ===
+        // NOTE: deliberately NO /usage/remaining endpoint — MiniMax API has no
+        // quota signal; see the IMPORTANT block in src-tauri/src/minimax.rs.
+        .route("/usage", get(usage_http))
         .with_state(state)
         .layer(Extension(app_handle))
         .layer(cors);
@@ -165,6 +179,59 @@ async fn voicebox_models(State(state): State<AppArc>) -> Response {
     match state.voicebox.list_tts_models().await {
         Ok(models) => Json(models).into_response(),
         Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+// === local per-provider usage counter (2026-06-07) ===
+//
+// GET /usage?provider=minimax&window=24h  → one ProviderUsage
+// GET /usage                              → list of every provider we have
+//                                           ever seen in the generations table,
+//                                           sorted alphabetically by name.
+//
+// We deliberately do NOT expose /usage/remaining — there is no real
+// upstream signal to read. See the IMPORTANT block in src-tauri/src/minimax.rs.
+async fn usage_http(
+    State(state): State<AppArc>,
+    Query(q): Query<UsageQuery>,
+) -> Response {
+    let now = chrono::Utc::now().timestamp();
+    // `window` is reserved for future use; the only window we have right now
+    // is 24h. We accept the param and validate it lightly so we can extend
+    // to "1h" / "7d" later without a breaking change.
+    if let Some(w) = q.window.as_deref() {
+        if !w.is_empty() && w != "24h" {
+            return json_err(
+                StatusCode::BAD_REQUEST,
+                format!("unsupported window '{w}' (only '24h' is implemented)"),
+            );
+        }
+    }
+
+    if let Some(provider) = q.provider.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        // Single-provider mode.
+        let p_norm = provider.to_ascii_lowercase();
+        if !matches!(
+            p_norm.as_str(),
+            PROVIDER_GOOGLE | PROVIDER_VOICEBOX | PROVIDER_MINIMAX
+        ) {
+            return json_err(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "unknown provider '{provider}' (allowed: {PROVIDER_GOOGLE}, {PROVIDER_VOICEBOX}, {PROVIDER_MINIMAX})"
+                ),
+            );
+        }
+        match crate::usage::compute_usage(&state.db, &p_norm, now) {
+            Ok(u) => Json(u).into_response(),
+            Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        }
+    } else {
+        // Multi-provider mode: every distinct provider we have ever recorded.
+        match crate::usage::compute_all_providers(&state.db, now) {
+            Ok(list) => Json(list).into_response(),
+            Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        }
     }
 }
 

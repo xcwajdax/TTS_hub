@@ -170,6 +170,20 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
     let matched_folder_id = state.db.folder_rule_match(&source).map_err(err)?;
     let request_json = serde_json::to_string(&req).map_err(err)?;
 
+    // === local per-provider usage counter (2026-06-07) ===
+    // Populate provider / char_count / estimated_tokens at enqueue time so the
+    // usage rollups in src-tauri/src/usage.rs are accurate even for jobs that
+    // fail or are cancelled.
+    let eff_provider = req
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("google")
+        .to_ascii_lowercase();
+    let char_count: i64 = req.text.chars().count() as i64;
+    let estimated_tokens: i64 = (char_count + 2) / 3;
+
     let gen = Generation {
         id: id.clone(),
         created_at: now_ms,
@@ -191,7 +205,7 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         attempts: 0,
         updated_at: now_ms,
         request_json: Some(request_json),
-        provider: req.provider.clone(),
+        provider: Some(eff_provider),
         input_chars: None,
         prompt_tokens: None,
         output_tokens: None,
@@ -202,6 +216,8 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         original_prompt: req.original_prompt.clone(),
         chat_session_id: None, // set after chat message is created below
         chat_message_id: None,
+        char_count,
+        estimated_tokens,
     };
 
     // === chat-window extension (2026-06-06) ===
@@ -2108,4 +2124,26 @@ pub fn play_soundboard_slot(
     app: AppHandle,
 ) -> Result<(), String> {
     crate::plugins::play_soundboard_slot_impl(&app, state.inner(), index)
+}
+
+// === local per-provider usage counter (2026-06-07) ===
+
+/// Roll up one provider's local usage. Returns zeros if the provider has not
+/// been used yet. This is what the UI badge calls.
+#[tauri::command]
+pub fn get_provider_usage(
+    provider: String,
+    state: State<'_, AppArc>,
+) -> Result<crate::usage::ProviderUsage, String> {
+    let now = chrono::Utc::now().timestamp();
+    crate::usage::compute_usage(&state.db, &provider, now).map_err(err)
+}
+
+/// Roll up usage for every provider that has at least one generation.
+#[tauri::command]
+pub fn get_all_usage(
+    state: State<'_, AppArc>,
+) -> Result<Vec<crate::usage::ProviderUsage>, String> {
+    let now = chrono::Utc::now().timestamp();
+    crate::usage::compute_all_providers(&state.db, now).map_err(err)
 }

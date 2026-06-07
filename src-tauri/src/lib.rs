@@ -30,6 +30,7 @@ mod chat;
 mod local_storage;
 mod audio_output_devices;
 mod webview_media_permissions;
+mod usage;
 
 use std::sync::Arc;
 
@@ -156,6 +157,9 @@ pub fn run() {
             commands::update_soundboard_slot,
             commands::clear_soundboard_slot,
             commands::play_soundboard_slot,
+            // === local per-provider usage counter (2026-06-07) ===
+            commands::get_provider_usage,
+            commands::get_all_usage,
             roleplay::commands::roleplay_list_projects,
             roleplay::commands::roleplay_create_project,
             roleplay::commands::roleplay_load_project,

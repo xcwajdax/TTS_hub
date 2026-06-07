@@ -99,6 +99,25 @@ export async function getTokenUsage(): Promise<UsageSummary> {
   return invoke<UsageSummary>("get_token_usage");
 }
 
+// === local per-provider usage counter (2026-06-07) ===
+export interface ProviderUsage {
+  provider: string;
+  total_chars: number;
+  total_tokens_est: number;
+  total_generations: number;
+  last_24h_chars: number;
+  last_24h_generations: number;
+  as_of: number;
+}
+
+export async function getProviderUsage(provider: string): Promise<ProviderUsage> {
+  return invoke<ProviderUsage>("get_provider_usage", { provider });
+}
+
+export async function getAllUsage(): Promise<ProviderUsage[]> {
+  return invoke<ProviderUsage[]>("get_all_usage");
+}
+
 export async function listJobs(scope: JobScope): Promise<Generation[]> {
   return invoke<Generation[]>("list_jobs", { scope });
 }
