@@ -259,6 +259,10 @@ pub fn build_generate_req_from_profile(
         original_prompt: None,
         chat_session_id: None,
         chat_role: None,
+        // Roleplay/voice-profile TTS comes from the desktop UI; no messenger
+        // origin. External callers (Telegram bot etc.) construct GenerateReq
+        // directly in commands.rs and can populate this.
+        origin: None,
     }
 }
 

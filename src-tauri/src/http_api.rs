@@ -143,6 +143,11 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         // NOTE: deliberately NO /usage/remaining endpoint — MiniMax API has no
         // quota signal; see the IMPORTANT block in src-tauri/src/minimax.rs.
         .route("/usage", get(usage_http))
+        // === origin attribution (2026-06-07) — additive ===
+        // List generations whose `origin_kind` matches `?kind=…` (free-form,
+        // e.g. "telegram", "discord", "webhook", "cli"). Useful for the
+        // Telegram bot to query its own history.
+        .route("/generations/by-origin", get(generations_by_origin_http))
         .with_state(state)
         .layer(Extension(app_handle))
         .layer(cors);
@@ -232,6 +237,36 @@ async fn usage_http(
             Ok(list) => Json(list).into_response(),
             Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         }
+    }
+}
+
+// === origin attribution (2026-06-07) ===
+//
+// GET /generations/by-origin?kind=telegram&limit=50
+//
+// Returns the most recent generations tagged with the given `origin_kind`
+// (free-form). The kind is whatever an external caller put in the
+// `origin.kind` field of the GenerateReq it sent to /generate — typically
+// "telegram", "discord", "webhook", or "cli".
+#[derive(Debug, Deserialize)]
+struct ByOriginQuery {
+    kind: String,
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+async fn generations_by_origin_http(
+    State(state): State<AppArc>,
+    Query(q): Query<ByOriginQuery>,
+) -> Response {
+    let kind = q.kind.trim();
+    if kind.is_empty() {
+        return json_err(StatusCode::BAD_REQUEST, "kind is required");
+    }
+    let lim = q.limit.unwrap_or(100).clamp(1, 1000);
+    match state.db.list_by_origin_kind(kind, lim) {
+        Ok(list) => Json(list).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
 }
 

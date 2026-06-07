@@ -60,6 +60,7 @@ pub fn run() {
             commands::generate,
             commands::get_token_usage,
             commands::list_history,
+            commands::list_generations_for_origin,
             commands::list_folders,
             commands::list_tags,
             commands::create_tag,

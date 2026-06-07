@@ -109,6 +109,31 @@ pub struct GenerateReq {
     /// message tied to this generation.
     #[serde(default)]
     pub chat_role: Option<String>,
+    // === origin attribution (2026-06-07) — additive, optional ===
+    /// Identifies the external messenger / client that triggered this
+    /// generation. Free-form kind (e.g. "telegram", "discord", "webhook",
+    /// "cli"). Distinct from `chat_session_id`, which is for the
+    /// in-TTShub Chat tab.
+    #[serde(default)]
+    pub origin: Option<GenerationOrigin>,
+}
+
+/// Where a generation came from — populated by external callers (Telegram
+/// bot, future Discord/WhatsApp bots, webhook handlers, CLI) when they
+/// invoke `POST /generate`. The kind is free-form so new messengers do not
+/// require a code change.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GenerationOrigin {
+    /// Free-form kind, e.g. "telegram" | "discord" | "webhook" | "cli" | "desktop".
+    pub kind: String,
+    #[serde(default)]
+    pub platform_id: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default)]
+    pub user_name: Option<String>,
+    #[serde(default)]
+    pub thread_id: Option<String>,
 }
 
 fn resolve_filtered_text(mut req: GenerateReq) -> Result<GenerateReq, String> {
@@ -218,6 +243,16 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         chat_message_id: None,
         char_count,
         estimated_tokens,
+        // === origin attribution (2026-06-07) — additive ===
+        // Populated from req.origin so external callers (Telegram bot, future
+        // Discord/WhatsApp bots) can audit which messenger triggered which
+        // generation. NULL for desktop-originated generations that did not
+        // pass an origin block.
+        origin_kind: req.origin.as_ref().map(|o| o.kind.clone()),
+        origin_platform_id: req.origin.as_ref().and_then(|o| o.platform_id.clone()),
+        origin_user_id: req.origin.as_ref().and_then(|o| o.user_id.clone()),
+        origin_user_name: req.origin.as_ref().and_then(|o| o.user_name.clone()),
+        origin_thread_id: req.origin.as_ref().and_then(|o| o.thread_id.clone()),
     };
 
     // === chat-window extension (2026-06-06) ===
@@ -325,6 +360,24 @@ pub fn list_history(
         }
         _ => Err("invalid scope".into()),
     }
+}
+
+/// List generations filtered by `origin_kind` (free-form, e.g. "telegram",
+/// "discord", "webhook", "cli"). Distinct from the in-TTShub Chat tab:
+/// origin covers external messengers that POSTed to /generate. New in
+/// 2026-06-07 alongside the origin attribution columns.
+#[tauri::command]
+pub fn list_generations_for_origin(
+    origin_kind: String,
+    limit: Option<i64>,
+    state: State<'_, AppArc>,
+) -> Result<Vec<Generation>, String> {
+    let lim = limit.unwrap_or(100).clamp(1, 1000);
+    let trimmed = origin_kind.trim();
+    if trimmed.is_empty() {
+        return Err("origin_kind is empty".into());
+    }
+    state.db.list_by_origin_kind(trimmed, lim).map_err(err)
 }
 
 /// scope: "active" (queued+running) | "interrupted" | "failed" | "all".

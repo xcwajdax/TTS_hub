@@ -64,6 +64,24 @@ pub struct Generation {
     /// `(char_count + 2) / 3` — MiniMax rule of thumb for Polish (≈3 chars/token).
     #[serde(default)]
     pub estimated_tokens: i64,
+    // === external-messenger origin attribution (2026-06-07) ===
+    // Separate layer from the in-TTShub chat columns above. `origin` is
+    // populated by external gateways (Telegram bot, future Discord, etc.)
+    // via `POST /generate`. NULL means "unknown origin" — desktop-UI
+    // generations never set this and stay NULL. The `kind` field is a
+    // free-form short string ("telegram" | "discord" | "webhook" | "cli"
+    // | "desktop" | ...). No validation on it (new messengers shouldn't
+    // require a code change here).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_platform_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_user_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_user_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,7 +148,7 @@ pub struct UsageSummary {
     pub current_session: UsageTotals,
 }
 
-const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens";
+const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id";
 
 fn default_source() -> String {
     "manual".to_string()
@@ -234,6 +252,22 @@ impl Db {
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN original_prompt TEXT", []);
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN chat_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL", []);
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN chat_message_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL", []);
+
+        // === external-messenger origin attribution (2026-06-07) — additive, idempotent ===
+        // All five columns are nullable; no defaults. NULL means "unknown
+        // origin" (desktop-UI generations, pre-migration rows). External
+        // messengers (Telegram bot, etc.) explicitly set these via
+        // `POST /generate`'s optional `origin` block. See `GenerationOrigin`
+        // in commands.rs.
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_kind TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_platform_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_user_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_user_name TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_thread_id TEXT", []);
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_generations_origin_kind ON generations(origin_kind, created_at DESC)",
+            [],
+        );
 
         // === local per-provider usage counter (2026-06-07) — additive, idempotent ===
         // `provider` column was already added (line above the chat-window block) as nullable.
@@ -343,7 +377,7 @@ impl Db {
     pub fn insert(&self, g: &Generation) -> Result<()> {
         let c = self.conn.lock().unwrap();
         c.execute(
-            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27)",
+            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32)",
             params![
                 g.id,
                 g.created_at,
@@ -372,6 +406,11 @@ impl Db {
                 g.chat_message_id,
                 g.char_count,
                 g.estimated_tokens,
+                g.origin_kind,
+                g.origin_platform_id,
+                g.origin_user_id,
+                g.origin_user_name,
+                g.origin_thread_id,
             ],
         )?;
         Ok(())
@@ -610,6 +649,25 @@ impl Db {
         } else {
             stmt.query_map([], row_to_gen)?
         };
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// List the most recent generations with a given `origin_kind` (free-form,
+    /// e.g. "telegram", "discord"). Used by the bot to audit its own history
+    /// and by the desktop UI to filter external-messenger generations. NULL
+    /// rows (desktop-UI, pre-migration) are excluded.
+    pub fn list_by_origin_kind(
+        &self,
+        origin_kind: &str,
+        limit: i64,
+    ) -> Result<Vec<Generation>> {
+        let c = self.conn.lock().unwrap();
+        let lim = limit.clamp(1, 10_000);
+        let sql = format!(
+            "SELECT {GEN_SELECT} FROM generations WHERE origin_kind = ?1 ORDER BY created_at DESC LIMIT ?2"
+        );
+        let mut stmt = c.prepare(&sql)?;
+        let rows = stmt.query_map((origin_kind, lim), row_to_gen)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -990,6 +1048,11 @@ fn row_to_gen(row: &rusqlite::Row) -> rusqlite::Result<Generation> {
         chat_message_id: row.get(29)?,
         char_count: row.get::<_, Option<i64>>(30)?.unwrap_or(0),
         estimated_tokens: row.get::<_, Option<i64>>(31)?.unwrap_or(0),
+        origin_kind: row.get(32)?,
+        origin_platform_id: row.get(33)?,
+        origin_user_id: row.get(34)?,
+        origin_user_name: row.get(35)?,
+        origin_thread_id: row.get(36)?,
     })
 }
 

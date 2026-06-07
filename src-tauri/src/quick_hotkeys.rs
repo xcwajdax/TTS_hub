@@ -369,6 +369,8 @@ pub fn build_generate_req(
         original_prompt: None,
         chat_session_id: None,
         chat_role: None,
+        // Desktop UI does not currently set an origin block.
+        origin: None,
     }
 }
 

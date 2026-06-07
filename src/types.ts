@@ -111,6 +111,16 @@ export interface Generation {
   ui_color?: string | null;
   /** User-defined archive tags (archived rows only). */
   tag_ids?: string[];
+  // === origin attribution (2026-06-07) — optional, populated by external ===
+  // === callers (Telegram bot, future Discord/WhatsApp bots) that POST to ===
+  // === /generate with an `origin` block. NULL for desktop-originated ===
+  // === generations. Free-form kind: "telegram" | "discord" | "webhook" | ===
+  // === "cli" | "desktop". ===
+  origin_kind?: string | null;
+  origin_platform_id?: string | null;
+  origin_user_id?: string | null;
+  origin_user_name?: string | null;
+  origin_thread_id?: string | null;
 }
 
 export interface UsageTotals {

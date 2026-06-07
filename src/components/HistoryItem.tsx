@@ -352,6 +352,20 @@ export default function HistoryItem({
           <span>
             <span className="text-muted/70">Źródło:</span> {sourceLabelForGeneration(gen)}
           </span>
+          {gen.origin_kind && (
+            <span
+              title={
+                [gen.origin_user_name, gen.origin_user_id, gen.origin_platform_id]
+                  .filter(Boolean)
+                  .join(" · ") || gen.origin_kind
+              }
+            >
+              <span className="text-muted/70">Origin:</span>{" "}
+              {gen.origin_user_name
+                ? `${gen.origin_kind}: ${gen.origin_user_name}`
+                : gen.origin_kind}
+            </span>
+          )}
           <span className="min-w-0 truncate" title={gen.voice}>
             <span className="text-muted/70">Głos:</span> {gen.voice}
           </span>

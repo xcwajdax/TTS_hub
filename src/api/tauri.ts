@@ -37,6 +37,22 @@ export async function listHistory(
   });
 }
 
+/**
+ * List generations filtered by `origin_kind` (free-form, e.g. "telegram",
+ * "discord", "webhook", "cli"). Distinct from listHistory which is scoped
+ * to the in-TTShub session/archive. New in 2026-06-07 — see plan:
+ * ~/.hermes/plans/2026-06-07_071243-ttshub-origin-attribution.md
+ */
+export async function listGenerationsForOrigin(
+  originKind: string,
+  limit?: number,
+): Promise<Generation[]> {
+  return invoke<Generation[]>("list_generations_for_origin", {
+    originKind,
+    limit: limit ?? null,
+  });
+}
+
 export async function listFolders(): Promise<ArchiveFolder[]> {
   return invoke<ArchiveFolder[]>("list_folders");
 }
