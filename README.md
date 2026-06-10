@@ -251,6 +251,7 @@ Reset: usuń folder `%APPDATA%\TTS_hub\`.
 |------|------|
 | [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | Specyfikacja produktu i wymagań |
 | [docs/API.md](docs/API.md) | Referencja HTTP API |
+| [docs/VOICE_WORKFLOWS.md](docs/VOICE_WORKFLOWS.md) | Profile głosu, skróty TTS, soundboard i wyjście audio |
 | [docs/PROJECT_GUIDELINES.md](docs/PROJECT_GUIDELINES.md) | **Zasady pracy** (Git, kod, sekrety, AI) |
 | [docs/PUBLICATION_READINESS.md](docs/PUBLICATION_READINESS.md) | Ocena gotowości do ewentualnej publikacji repo |
 | [docs/screenshots/](docs/screenshots/) | Zrzuty ekranu do README i PR |
@@ -266,10 +267,11 @@ TTS_hub/
 ├── src/                   # React + TypeScript
 │   ├── components/        # UI (MainPanel, WaveformPlayer, History…)
 │   ├── api/tauri.ts       # most do Rust
-│   └── context/           # PlaybackContext
+│   └── context/           # PlaybackContext, routing odtwarzania
 ├── src-tauri/             # Rust: TTS, SQLite, axum API
 │   └── src/
 │       ├── google.rs      # klient Gemini TTS
+│       ├── voice_profiles.rs # zapisane profile TTS
 │       ├── http_api.rs    # localhost:8765
 │       └── db.rs          # historia
 └── docs/                  # spec, API, screenshots

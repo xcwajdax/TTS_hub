@@ -4,7 +4,7 @@ Wersja dokumentu: **0.1.0** · maj 2026
 
 ## 1. Cel produktu
 
-**TTS Hub** to aplikacja desktopowa (Windows/macOS/Linux) do syntezy mowy przez **Google Gemini TTS**, z interfejsem do pracy ręcznej oraz **lokalnym API HTTP** do automatyzacji.
+**TTS Hub** to aplikacja desktopowa (Windows/macOS/Linux) do syntezy mowy przez **Google Gemini TTS**, **MiniMax** i lokalny **Voice Box**, z interfejsem do pracy ręcznej oraz **lokalnym API HTTP** do automatyzacji.
 
 ## 2. Stos technologiczny
 
@@ -13,7 +13,7 @@ Wersja dokumentu: **0.1.0** · maj 2026
 | Shell | Tauri 2 |
 | Backend | Rust (tokio, axum, rusqlite, reqwest) |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS |
-| TTS | Google Generative Language API (modele `*-tts*`) |
+| TTS | Google Generative Language API (modele `*-tts*`), MiniMax, Voice Box |
 | Historia | SQLite (`history.db`) |
 | Konwersja audio | WAV natywnie; MP3/OGG przez `ffmpeg` |
 
@@ -43,10 +43,12 @@ Proporcje siatki (desktop):
 - Opcjonalny **prompt stylu** (np. „Powiedz to spokojnie szeptem”).
 - Skrót **Ctrl+Enter** do generacji.
 - Pasek postępu generacji (szacowany czas wg długości tekstu).
+- **Profile głosu** — zapisany zestaw providera, modelu, głosu, stylu i parametrów providera; kliknięcie profilu uruchamia generację z tekstu edytora. Szczegóły: [VOICE_WORKFLOWS.md](./VOICE_WORKFLOWS.md).
 
 ### 4.2 Odtwarzanie
 
 - **Waveform** z seekiem, czasem, głośnością i wyciszeniem; trzy tryby wizualizacji (słupki, słupki szczegółowe, linia fali), wybór w ustawieniach Wygląd, menu PPM na timeline lub domyślnie ze skórki (`preferences.timeline_view`).
+- **Wybór wyjścia audio** w pasku tytułu i panelu odtwarzania; WebView2 używa `setSinkId`, a Windows ma fallback listy WASAPI. Szczegóły: [VOICE_WORKFLOWS.md](./VOICE_WORKFLOWS.md).
 - Metadane: model, głos, format, statystyki tekstu (znaki, słowa, tempo).
 - Nawigacja po sesji (indeks X/Y).
 
@@ -70,6 +72,8 @@ Proporcje siatki (desktop):
 - Format zapisu: WAV / MP3 / OGG.
 - Własne ścieżki folderów **temp** i **archive**.
 - **Maks. generacji w historii sesji (temp)** — limit globalny dla poprzednich uruchomień (domyślnie 100, zakres 10–500).
+- **Szybkie skróty TTS** — globalne presety dla zaznaczonego tekstu; mogą wskazywać zapisany profil głosu.
+- **Rozszerzenia** — wbudowany soundboard z 8 slotami, plikami lub generacjami z historii oraz skrótami globalnymi.
 
 ## 5. Modele TTS (domyślny zestaw)
 
@@ -90,6 +94,8 @@ Lista może być rozszerzana dynamicznie przez API Google.
 | `%APPDATA%/TTS_hub/history.db` | SQLite |
 | `%APPDATA%/TTS_hub/voice_samples/` | Cache próbek głosów |
 | `%APPDATA%/TTS_hub/settings.json` | Ustawienia aplikacji |
+| `%APPDATA%/TTS_hub/plugins/soundboard.json` | Konfiguracja slotów soundboarda |
+| `%APPDATA%/TTS_hub/plugins/soundboard/` | Kopie plików przypisanych ręcznie do soundboarda |
 
 ## 7. Lokalne API
 

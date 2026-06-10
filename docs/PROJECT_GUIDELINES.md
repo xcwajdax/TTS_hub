@@ -155,6 +155,7 @@ Szablon: [.github/pull_request_template.md](../.github/pull_request_template.md)
 |------------|----------------|
 | Endpoint / payload HTTP | [docs/API.md](API.md) |
 | Zachowanie produktu / UX | [docs/SPECIFICATION.md](SPECIFICATION.md) |
+| Profile głosu / skróty / soundboard / wyjście audio | [docs/VOICE_WORKFLOWS.md](VOICE_WORKFLOWS.md) |
 | Widoczny UI, instalacja | [README.md](../README.md), ewentualnie `docs/screenshots/` |
 | Gotowość release / blokery | [docs/PUBLICATION_READINESS.md](PUBLICATION_READINESS.md) |
 | Zasady pracy (ten dokument) | [docs/PROJECT_GUIDELINES.md](PROJECT_GUIDELINES.md) |
@@ -211,6 +212,7 @@ docs/
 ├── PROJECT_GUIDELINES.md   ← ten plik (zasady pracy)
 ├── SPECIFICATION.md        ← co produkt robi
 ├── API.md                  ← localhost HTTP
+├── VOICE_WORKFLOWS.md      ← profile głosu, skróty, soundboard, wyjście audio
 ├── PUBLICATION_READINESS.md← ocena pod publiczne repo
 └── screenshots/            ← zrzuty do README
 ```
