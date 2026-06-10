@@ -18,6 +18,7 @@ export type MenuActionId =
   | "save"
   | "save_as"
   | "settings"
+  | "minimax_voices"
   | "quick_setup"
   | "quick_hotkeys"
   | "soundboard"
@@ -29,6 +30,7 @@ interface Options {
   onRefresh: () => void;
   onError: (message: string) => void;
   onOpenSettings: () => void;
+  onOpenMinimaxVoices?: () => void;
   onOpenQuickSetup?: () => void;
   onOpenQuickHotkeys?: () => void;
   onOpenSoundboard?: () => void;
@@ -40,6 +42,7 @@ export function useAppMenu({
   onRefresh,
   onError,
   onOpenSettings,
+  onOpenMinimaxVoices,
   onOpenQuickSetup,
   onOpenQuickHotkeys,
   onOpenSoundboard,
@@ -66,6 +69,9 @@ export function useAppMenu({
             case "settings":
               onOpenSettings();
               break;
+            case "minimax_voices":
+              onOpenMinimaxVoices?.();
+              break;
             case "quick_setup":
               onOpenQuickSetup?.();
               break;
@@ -77,7 +83,7 @@ export function useAppMenu({
               break;
             case "about":
               await message(
-                "TTS Hub — synteza mowy przez Google Gemini i Voice Box.\nLokalne API: http://127.0.0.1:8765",
+                "TTS Hub — synteza mowy przez Google Gemini, Voice Box i Minimax.\nLokalne API: http://127.0.0.1:8765",
                 { title: "O TTS Hub", kind: "info" },
               );
               break;
@@ -98,6 +104,7 @@ export function useAppMenu({
     onRefresh,
     onError,
     onOpenSettings,
+    onOpenMinimaxVoices,
     onOpenQuickSetup,
     onOpenQuickHotkeys,
     onOpenSoundboard,

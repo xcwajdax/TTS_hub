@@ -1,0 +1,102 @@
+{
+  "social": [
+    {
+      "file": "00-hook-lektor.wav",
+      "persona": "lektor",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_female_1_sample1",
+      "language": "pl",
+      "minimax_speed": 1.05,
+      "text": "Masz tekst. Chcesz mowę. Na swoim komputerze."
+    },
+    {
+      "file": "01-tworca.wav",
+      "persona": "tworca",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_female_1_sample1",
+      "language": "pl",
+      "text": "Nagrywam podcasty i audiobooki. Zaznaczam fragment w dowolnym oknie — i słyszę go od razu w wybranym głosie. Google, MiniMax albo lokalny Voice Box. Ale mój kolega woli API…"
+    },
+    {
+      "file": "02-developer.wav",
+      "persona": "developer",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_male_1_sample4",
+      "language": "pl",
+      "minimax_speed": 0.95,
+      "text": "Jeden endpoint na localhost. Skrypt, n8n, bot — generacja, historia, próbki. Hotkeye działają w każdym programie. A w Cursorze Agent czyta mi podsumowania…"
+    },
+    {
+      "file": "03-cursor.wav",
+      "persona": "cursor",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_male_1_sample4",
+      "language": "pl",
+      "text": "Agent kończy turę — aplikacja czyta na głos po polsku. Bez kopiowania, bez przełączania okien."
+    },
+    {
+      "file": "04-cta-lektor.wav",
+      "persona": "lektor",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_female_1_sample1",
+      "language": "pl",
+      "minimax_speed": 1.05,
+      "text": "TTS Hub — darmowy rdzeń open source, Twoje klucze API. Pełna wersja — link w bio."
+    }
+  ],
+  "full": [
+    {
+      "file": "00-intro-lektor.wav",
+      "persona": "lektor",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_female_1_sample1",
+      "language": "pl",
+      "minimax_speed": 1.05,
+      "text": "Masz tekst. Chcesz mowę. Na swoim komputerze. TTS Hub to natywna aplikacja desktopowa — Tauri, interfejs po polsku, wersja preview zero jeden zero. Zamienia tekst na mowę przez Google Gemini TTS, MiniMax i lokalny Voice Box. Zobacz, jak trzech użytkowników korzysta z tego na co dzień."
+    },
+    {
+      "file": "01-tworca.wav",
+      "persona": "tworca",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_female_1_sample1",
+      "language": "pl",
+      "text": "Jestem twórcą treści — podcasty, lektorstwo, audiobooki. W TTS Hub wklejam tekst albo zaznaczam fragment w dowolnym oknie i od razu słyszę wynik. Mam Google, MiniMax i Voice Box w jednym miejscu — przełączam providera, gdy mi pasuje. Filtry tekstu usuwają kod i cytaty zanim generuję, a waveform z seekiem pozwala słuchać fragmentów bez eksportu. Historia sesji i archiwum trzymają wszystko w SQLite — wracam do wcześniejszych nagrań jednym kliknięciem. Profile głosów z avatarami pamiętają moje ulubione ustawienia. A gdy robię dialogi wielogłosowe — wchodzę w Roleplay. Gdy mam dziesiątki plików dziennie, wchodzi API…"
+    },
+    {
+      "file": "02-developer.wav",
+      "persona": "developer",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_male_1_sample4",
+      "language": "pl",
+      "minimax_speed": 0.95,
+      "text": "Ja automatyzuję. TTS Hub wystawia REST API na localhost — bez auth, tylko na mojej maszynie. Jeden POST na generate, historia, audio, próbki głosów — skrypt, n8n albo własny bot. Globalne hotkeye działają w każdym oknie Windows: zaznaczony tekst, skrót, gotowe. Soundboard daje mi osiem slotów z historii lub dysku — Ctrl Shift i cyfra. Szybka konfiguracja prowadzi przez Google, MiniMax i Voice Box krok po kroku. A gdy pracuję w Cursorze z Agentem…"
+    },
+    {
+      "file": "03-cursor.wav",
+      "persona": "cursor",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_male_1_sample4",
+      "language": "pl",
+      "text": "Pracuję w Cursorze z Agentem AI. Po każdej turze asystent owija podsumowanie w markery TTS Hub — i aplikacja czyta je na głos po polsku. Skill tts-hub-speak woła lokalne API; nie muszę nic kopiować. Wybieram głos w ustawieniach integracji — preset albo własny profil. Autoplay odpala audio w aplikacji, mogę słuchać w tle podczas kodowania. Trzy perspektywy — jedna aplikacja. Chcesz więcej szczegółów?"
+    },
+    {
+      "file": "04-cta-lektor.wav",
+      "persona": "lektor",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_female_1_sample1",
+      "language": "pl",
+      "minimax_speed": 1.05,
+      "text": "TTS Hub — rdzeń aplikacji jest darmowy i open source na licencji MIT. Klucze API providerów są Twoje — płacisz bezpośrednio Google, MiniMax albo korzystasz lokalnie z Voice Box. Pobierz instalator dla Windows z GitHub Releases. Trzy skórki — VIBELIFE, Matrix i Light Zen — wybierz styl, który Ci pasuje. Link w opisie."
+    }
+  ]
+}

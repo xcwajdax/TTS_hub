@@ -10,22 +10,65 @@
  * for live updates from the backend.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import * as api from "../api/tauri";
+import type { TtsVoiceProfile } from "../appSettings";
+import VoiceProfileBadge from "../components/VoiceProfileBadge";
+import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import type { ChatMessage, ChatSession } from "./types";
+import { getAppSettings } from "../api/tauri";
 
 interface Props {
   onError: (msg: string | null) => void;
   onToast: (msg: string | null) => void;
+  /** Saved voice profiles. If omitted, ChatView loads them itself. */
+  voiceProfiles?: TtsVoiceProfile[];
 }
 
-export default function ChatView({ onError, onToast }: Props) {
+export default function ChatView({ onError, onToast, voiceProfiles: voiceProfilesProp }: Props) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [newSource, setNewSource] = useState("hermes");
+  // Saved voice profiles — used to render the badge in the bubble header.
+  // We re-load on `VOICE_PROFILES_CHANGED` so renames/edits propagate
+  // immediately without the user having to switch sessions.
+  const [voiceProfilesState, setVoiceProfilesState] = useState<TtsVoiceProfile[]>(
+    () => voiceProfilesProp ?? [],
+  );
+  const voiceProfiles = voiceProfilesProp ?? voiceProfilesState;
+  useEffect(() => {
+    if (voiceProfilesProp) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const view = await getAppSettings();
+        if (!cancelled) setVoiceProfilesState(view.voice_profiles ?? []);
+      } catch {
+        // ignore — badges simply won't render
+      }
+    };
+    void refresh();
+    const onChange = () => void refresh();
+    window.addEventListener(VOICE_PROFILES_CHANGED, onChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(VOICE_PROFILES_CHANGED, onChange);
+    };
+  }, [voiceProfilesProp]);
+  // Map messageId → resolved profile (for bubbles that carry
+  // `voice_profile_id`). Memoised to keep referential stability.
+  const profileByMessageId = useMemo(() => {
+    const map = new Map<string, TtsVoiceProfile | null>();
+    for (const m of messages) {
+      if (!m.voice_profile_id) continue;
+      const hit = voiceProfiles.find((p) => p.id === m.voice_profile_id) ?? null;
+      map.set(m.id, hit);
+    }
+    return map;
+  }, [messages, voiceProfiles]);
 
   const refreshSessions = async () => {
     try {
@@ -256,13 +299,24 @@ export default function ChatView({ onError, onToast }: Props) {
                         : "bg-panel2 text-heading"
                     }`}
                   >
-                    <div className="text-xs opacity-60 mb-1 flex justify-between gap-2">
-                      <span>
-                        {m.role === "user"
-                          ? "Ty"
-                          : m.role === "assistant"
-                            ? "Asystent"
-                            : "System"}
+                    <div className="text-xs opacity-60 mb-1 flex justify-between items-center gap-2">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span>
+                          {m.role === "user"
+                            ? "Ty"
+                            : m.role === "assistant"
+                              ? "Asystent"
+                              : "System"}
+                        </span>
+                        {m.role === "assistant" && m.voice_profile_id && (
+                          <VoiceProfileBadge
+                            profile={profileByMessageId.get(m.id) ?? null}
+                            fallbackLabel="Profil usunięty"
+                            size="sm"
+                            showName
+                            className="opacity-90"
+                          />
+                        )}
                       </span>
                       <span>
                         {new Date(m.created_at).toLocaleTimeString("pl-PL", {

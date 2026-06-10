@@ -371,6 +371,10 @@ pub fn build_generate_req(
         chat_role: None,
         // Desktop UI does not currently set an origin block.
         origin: None,
+        // === voice-profile attribution (2026-06-09) ===
+        // Quick hotkey path uses the preset's optional `voice_profile_id`
+        // so history items carry the badge back to the saved profile.
+        voice_profile_id: preset.voice_profile_id.clone(),
     }
 }
 

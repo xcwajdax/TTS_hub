@@ -22,6 +22,11 @@ export interface ChatMessage {
   generation_id: string | null;
   created_at: number;
   order_index: number;
+  /** Snapshot of the saved TtsVoiceProfile id used to produce the bubble's
+   *  audio. Populated when the message is created via `enqueue_request` with
+   *  a `voice_profile_id` (e.g. roleplay segment). Used by `<VoiceProfileBadge>`
+   *  in the chat bubble header. */
+  voice_profile_id?: string | null;
 }
 
 export interface CreateSessionReq {
@@ -39,4 +44,5 @@ export interface AddMessageReq {
   role: "user" | "assistant" | "system";
   content: string;
   generation_id?: string;
+  voice_profile_id?: string;
 }

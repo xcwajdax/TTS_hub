@@ -152,19 +152,17 @@ curl http://127.0.0.1:8765/audio/<id> --output speech.wav
 # Klon (plik audio na dysku; TTS Hub musi działać)
 curl -X POST http://127.0.0.1:8765/minimax/clone-voice `
   -H "Content-Type: application/json" `
-  -d '{"source_path":"C:/path/maklowicz_28s.mp3","voice_id":"robert_maklowicz","name":"Robert Maklowicz","model":"minimax:speech-2.8-hd"}'
+  -d '{"source_path":"C:/path/sample-voice.mp3","voice_id":"my_custom_voice","name":"Mój głos","model":"minimax:speech-2.8-hd"}'
 
 curl -X POST http://127.0.0.1:8765/minimax/sync-voices
 ```
-
-Skrypt: `scripts/dev/clone-maklowicz.ps1`
 
 ### MiniMax (skill / Cursor)
 
 ```powershell
 curl -X POST http://127.0.0.1:8765/generate `
   -H "Content-Type: application/json" `
-  -d '{"provider":"minimax","text":"Test.","summary_text":"Test.","model":"speech-2.8-hd","voice":"robert_maklowicz","language":"pl","format":"mp3","minimax_speed":0.9,"minimax_pitch":-2,"autoplay":true,"source":"cursor-skill"}'
+  -d '{"provider":"minimax","text":"Test.","summary_text":"Test.","model":"speech-2.8-hd","voice":"Polish_female_1_sample1","language":"pl","format":"mp3","autoplay":true,"source":"cursor-skill"}'
 ```
 
 ### Voice Box

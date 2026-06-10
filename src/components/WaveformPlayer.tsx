@@ -14,7 +14,8 @@ import {
 import { timelineViewBarCount } from "../lib/timelineView";
 import { drawWaveform } from "../lib/waveformCanvas";
 import AudioOutputSelect from "./AudioOutputSelect";
-import TimelineContextMenu from "./TimelineContextMenu";
+import TimelinePanelMenu from "./TimelinePanelMenu";
+import type { ArchiveFolder, ArchiveTag, Generation } from "../types";
 
 const DEFAULT_VOLUME = 0.8;
 const VOLUME_STORAGE_KEY = "tts-hub.playback.volume";
@@ -23,6 +24,11 @@ const MUTED_STORAGE_KEY = "tts-hub.playback.muted";
 interface Props {
   src: string;
   className?: string;
+  current?: Generation | null;
+  folders?: ArchiveFolder[];
+  tags?: ArchiveTag[];
+  onHistoryChanged?: () => void;
+  onError?: (e: string) => void;
 }
 
 function readStoredVolume(): number {
@@ -31,7 +37,15 @@ function readStoredVolume(): number {
   return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : DEFAULT_VOLUME;
 }
 
-export default function WaveformPlayer({ src, className = "" }: Props) {
+export default function WaveformPlayer({
+  src,
+  className = "",
+  current = null,
+  folders = [],
+  tags = [],
+  onHistoryChanged,
+  onError,
+}: Props) {
   const { audioRef, playing, togglePlay, seekTo, playbackRate, setPlaybackRate } = usePlayback();
   const { mode: timelineMode } = useTimelineView();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -229,6 +243,21 @@ export default function WaveformPlayer({ src, className = "" }: Props) {
             ))}
           </select>
         </label>
+
+        {current && onHistoryChanged && onError && (
+          <button
+            type="button"
+            className="shrink-0 w-8 h-8 rounded-lg border border-border bg-panel2 text-muted hover:border-accent hover:text-accent flex items-center justify-center text-sm"
+            aria-label="Opcje generacji i wyglądu timeline"
+            title="Opcje generacji i wyglądu timeline"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setContextMenu({ x: rect.left, y: rect.bottom + 4 });
+            }}
+          >
+            ⋮
+          </button>
+        )}
       </div>
 
       <div
@@ -257,9 +286,14 @@ export default function WaveformPlayer({ src, className = "" }: Props) {
       </div>
 
       {contextMenu && (
-        <TimelineContextMenu
+        <TimelinePanelMenu
           anchorX={contextMenu.x}
           anchorY={contextMenu.y}
+          current={current}
+          folders={folders}
+          tags={tags}
+          onChanged={onHistoryChanged ?? (() => undefined)}
+          onError={onError ?? (() => undefined)}
           onClose={() => setContextMenu(null)}
         />
       )}

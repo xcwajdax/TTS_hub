@@ -57,7 +57,7 @@ Optional: `-ConversationId "<id>"` if known.
 
 ### Głos Makłowicza (MiniMax)
 
-**Źródło `voice_id`:** panel **Ustawienia zaawansowane → Integracja Cursor** w TTS Hub (np. klon `robert_maklowicz`). Skill nie trzyma własnego ID — bierze to z aplikacji, żeby uniknąć rozjazdu z klonem w MiniMax.
+**Źródło `voice_id`:** panel **Ustawienia → Cursor** w TTS Hub (np. preset `Polish_female_1_sample1`). Skill nie trzyma własnego ID — bierze to z aplikacji, żeby uniknąć rozjazdu z konfiguracją w aplikacji.
 
 W `config.json.example` preset `minimax` ma ten sam głos jako **fallback** (gdy integracja wyłączona lub brak API). Strojenie (tempo, pitch) ustaw w panelu Integracja Cursor:
 

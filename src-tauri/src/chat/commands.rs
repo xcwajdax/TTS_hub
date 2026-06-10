@@ -107,6 +107,7 @@ pub fn chat_add_message(
     role: String,
     content: String,
     generation_id: Option<String>,
+    voice_profile_id: Option<String>,
 ) -> Result<ChatMessage, String> {
     let m = {
         let conn = lock_db(&state)?;
@@ -116,6 +117,7 @@ pub fn chat_add_message(
             &role,
             &content,
             generation_id.as_deref(),
+            voice_profile_id.as_deref(),
         )
         .map_err(|e| e.to_string())?
     };

@@ -92,6 +92,24 @@ export function resolveHistoryItemColor(gen: Generation): string {
   return getSourceUi(gen.source).defaultColor;
 }
 
+/** Card surface for history rows — accent tint + elevation on panel background. */
+export function historyItemSurfaceStyle(
+  accentColor: string,
+  isCurrent: boolean,
+): Record<string, string | number> {
+  const base = {
+    borderLeftWidth: 4,
+    borderLeftColor: accentColor,
+  };
+  if (isCurrent) return base;
+  return {
+    ...base,
+    backgroundColor: "rgb(var(--color-panel2))",
+    backgroundImage: `linear-gradient(90deg, ${hexToRgba(accentColor, 0.22)} 0%, ${hexToRgba(accentColor, 0.08)} 2.75rem, transparent 4.75rem)`,
+    boxShadow: `0 2px 6px rgb(0 0 0 / 0.38), 0 0 0 1px rgb(var(--color-border) / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.04)`,
+  };
+}
+
 export function sourceLabelForGeneration(gen: Generation): string {
   return getSourceUi(gen.source).label;
 }

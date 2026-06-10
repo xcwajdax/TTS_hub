@@ -1,6 +1,6 @@
 <div align="center">
 
-# TTS Hub
+<img src="docs/logo.svg" alt="TTS Hub" width="320" />
 
 **Desktopowa aplikacja do syntezy mowy (Google · MiniMax · Voice Box) z lokalnym API HTTP**
 
@@ -13,21 +13,23 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-v0.1.0_preview-orange)](docs/PUBLICATION_READINESS.md)
 
-[Pobierz](#-pobierz-windows) · [Instalacja](#-szybki-start) · [Posłuchaj](#-posłuchaj-próbki) · [Funkcje](#-funkcje) · [API](#-lokalne-api-http) · [Model](#-model-i-koszty) · [Dokumentacja](#-dokumentacja)
+[Pobierz](#-pobierz-windows) · [Instalacja](#-szybki-start) · [Posłuchaj](#-posłuchaj-próbki) · [Funkcje](#-funkcje) · [Film promo](docs/promo/README.md) · [API](#-lokalne-api-http) · [Model](#-model-i-koszty) · [Dokumentacja](#-dokumentacja)
 
 </div>
 
 ---
 
 <p align="center">
-  <img src="docs/screenshots/main-window.png" alt="TTS Hub — główny widok: edytor, historia, waveform (skórka Light / Zen)" width="920" />
+  <img src="docs/screenshots/main-window.png" alt="TTS Hub — zakładka TTS: wybór modelu, edytor, kolejka generacji i pasek odtwarzania (skórka VIBELIFE)" width="920" />
 </p>
 
-<p align="center"><em>Okno desktopowe (Tauri): providery, edytor blokowy, historia sesji i odtwarzacz z waveformem. Skórki: <strong>VIBELIFE</strong>, <strong>Matrix</strong>, <strong>Light / Zen</strong> — przełącznik w pasku tytułu.</em></p>
+<p align="center"><em>Zakładka <strong>TTS</strong>: profile głosu, edytor blokowy, kolejka zadań i odtwarzacz z waveformem. Skórki: <strong>VIBELIFE</strong>, <strong>Matrix</strong>, <strong>Light / Zen</strong> — przełącznik w pasku tytułu.</em></p>
 
 <p align="center">
-  <img src="docs/screenshots/settings-cursor.png" alt="TTS Hub — integracja Cursor z głosem sklonowanym" width="450" />
+  <img src="docs/screenshots/history-archive.png" alt="TTS Hub — zakładka Historia: archiwum, foldery i panel szczegółów generacji" width="920" />
 </p>
+
+<p align="center"><em>Zakładka <strong>Historia</strong>: sesja, archiwum z folderami, filtry profili i podgląd wybranej generacji.</em></p>
 
 ---
 
@@ -41,11 +43,10 @@ TTS Hub to **natywna aplikacja desktopowa** (Tauri 2), która zamienia tekst na 
 
 ## 🔊 Posłuchaj (próbki)
 
-Ten sam krótki tekst w **pięciu głosach** (wygenerowane lokalnie przez TTS Hub). Kliknij link — odsłuchasz na stronie pliku w GitHubie (README nie obsługuje osadzonego `<audio>`).
+Ten sam krótki tekst w **czterech głosach systemowych** (wygenerowane lokalnie przez TTS Hub). Kliknij link — odsłuchasz na stronie pliku w GitHubie (README nie obsługuje osadzonego `<audio>`).
 
 | Głos | Próbka |
 |------|--------|
-| MiniMax — **Grzegorz Braun** (klon) | [▶ minimax-grzegorz-braun.mp3](docs/samples/minimax-grzegorz-braun.mp3) |
 | MiniMax — kobieta PL | [▶ minimax-polish-female.mp3](docs/samples/minimax-polish-female.mp3) |
 | MiniMax — mężczyzna PL | [▶ minimax-polish-male.mp3](docs/samples/minimax-polish-male.mp3) |
 | Google — Kore | [▶ google-kore.wav](docs/samples/google-kore.wav) |
@@ -59,18 +60,20 @@ Pełna lista i regeneracja: **[docs/samples/](docs/samples/)** (`generate-readme
 
 | Obszar | Opis |
 |--------|------|
-| **Providery** | **Google** Gemini TTS · **MiniMax** (presety + głosy sklonowane) · **Voice Box** (lokalny) |
+| **Providery** | **Google** Gemini TTS · **MiniMax** (presety + własne profile głosu) · **Voice Box** (lokalny) |
 | **Synteza** | Single-speaker lub dialog multi-speaker; opcjonalny prompt stylu |
 | **Modele** | Gemini 3.1 / 2.5 Flash / Pro TTS; MiniMax speech-2.x; Voice Box profile |
 | **Odtwarzanie** | Waveform z seekiem, głośnością, czasem i metadanymi generacji |
-| **Historia** | Sesja (temp: bieżące + poprzednie uruchomienia, limit w ustawieniach) + archiwum trwałe; edycja tytułów |
+| **Historia** | Zakładka Historia: sesja, archiwum z folderami, widok compact/full, edycja tytułów |
 | **Próbki głosów** | Cache lokalny; odtwarzanie i batch wszystkich głosów dla modelu |
 | **Eksport** | WAV natywnie; MP3/OGG przez `ffmpeg` |
 | **API** | REST na localhost — generacja, historia, audio, próbki głosów |
 | **Ustawienia** | Profile API key, własne foldery, tryb zapisu ręczny/auto |
 | **Szybka konfiguracja** | Kreator providerów (Google / Voice Box / MiniMax), testy połączeń, Help — [docs/QUICK_SETUP.md](docs/QUICK_SETUP.md) |
 | **Filtry tekstu** | Presety: usuwanie kodu, cytatów i reguł regex; podgląd przed generacją; tryb blokowy |
-| **Integracja Cursor** | Hooki Agent Chat → podsumowanie TTS (max 10 zdań) z autoplay w aplikacji |
+| **Roleplay** | Wielogłosowe skrypty z markerami kolorów, podsumowanie przed generacją |
+| **Czat** | Sesje głosowe z agentem — historia wiadomości i odtwarzanie odpowiedzi |
+| **Integracja Cursor** | Skill lub hooki Agent Chat → podsumowanie TTS (max 10 zdań) z autoplay |
 | **Szybkie skróty TTS** | Globalne hotkeye (Windows): zaznaczony tekst w dowolnym oknie → TTS z własnym providerem/głosem/stylu |
 
 **Skróty:** `Ctrl+Enter` — generuj · **Edycja → Szybkie skróty…** — konfiguracja globalnych hotkeyów · klik w historii (opcjonalnie) — odtwórz
@@ -157,17 +160,18 @@ Wynik: `src-tauri/target/release/tts-hub.exe` oraz `src-tauri/target/release/bun
 ## 🖥️ Interfejs
 
 ```
-┌────────────────────────────────────────┬──────────────────┐
-│  Ustawienia · próbki głosów · tekst    │  Sesja / Archiwum │
-├────────────────────────────────────────┤  (historia)       │
-│  Waveform · play · metadane generacji  │                   │
-└────────────────────────────────────────┴──────────────────┘
+┌──────────┬────────────────────────────────┬─────────────────┐
+│ TTS ·    │  Edytor · kolejka · waveform   │  Historia /     │
+│ Roleplay │                                │  ostatnie gen.  │
+│ Historia │                                │                 │
+│ Czat · ⚙ │                                │                 │
+└──────────┴────────────────────────────────┴─────────────────┘
 ```
 
-- **Panel główny** — model, głos, styl, edytor tekstu, generacja.
-- **Pasek odtwarzania** — waveform, tagi model/głos/format, statystyki tekstu.
-- **Sidebar** — karty historii z zapisem, usuwaniem i „Pokaż w eksploratorze”.
-- **Ustawienia zaawansowane** (⚙) — API, ścieżki, format zapisu.
+- **Zakładki** — TTS, Roleplay, Historia, Głosy Minimax, Rozszerzenia, Czat, Ustawienia.
+- **Panel TTS** — model, głos, profil, edytor blokowy, kolejka generacji.
+- **Historia** — archiwum z folderami, filtry profili, panel szczegółów wybranej generacji.
+- **Pasek statusu** — API, MCP, hooki Cursor; tryb bezpieczny w pasku tytułu.
 
 ---
 
@@ -214,7 +218,7 @@ Po **każdej turze** z podsumowaniem (także pośredniej), gdy aktywujesz skill:
 1. **TTS Hub uruchomiony** — API `http://127.0.0.1:8765`.
 2. Skopiuj `.cursor/skills/tts-hub-speak/config.json.example` → `config.json`.
 3. W Cursorze: **`@tts-hub-speak`** — agent owija podsumowanie w `<!-- tts-summary -->` i woła skrypt `speak-summary.ps1`.
-4. Głos i model: ustaw w **Integracja Cursor** w aplikacji (np. klon Makłowicza); skill z `prefer_app_config: true` bierze `voice_id` stamtąd, nie z osobnego wpisu w config skillu.
+4. Głos i model: ustaw w **Ustawienia → Cursor** w aplikacji (np. preset MiniMax `Polish_female_1_sample1`); skill z `prefer_app_config: true` bierze `voice_id` stamtąd, nie z osobnego wpisu w config skillu.
 
 Szczegóły: [docs/CURSOR_SKILL.md](docs/CURSOR_SKILL.md)
 

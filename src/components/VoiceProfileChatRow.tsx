@@ -9,7 +9,8 @@ interface Props {
   preview: string;
   shortcutHint?: string | null;
   selected?: boolean;
-  onGenerate: () => void;
+  isReroute?: boolean;
+  onSelect: () => void;
   onContextMenu: (event: React.MouseEvent) => void;
 }
 
@@ -18,7 +19,8 @@ export default function VoiceProfileChatRow({
   preview,
   shortcutHint,
   selected,
-  onGenerate,
+  isReroute,
+  onSelect,
   onContextMenu,
 }: Props) {
   const voiceId = profileVoiceId(profile);
@@ -30,8 +32,8 @@ export default function VoiceProfileChatRow({
       className={`voice-profile-chat-row w-full text-left flex items-center gap-3 px-3 py-2.5 border-b border-border/40 transition-colors ${
         selected ? "bg-accent/10" : "hover:bg-panel2/80"
       }`}
-      title="Kliknij, aby wygenerować mowę z tekstu w edytorze. Prawy przycisk — menu."
-      onClick={onGenerate}
+      title="Kliknij, aby wybrać profil. Prawy przycisk — menu."
+      onClick={onSelect}
       onContextMenu={onContextMenu}
     >
       <AvatarImage
@@ -43,7 +45,14 @@ export default function VoiceProfileChatRow({
       <div className="flex-1 min-w-0 flex flex-col gap-0.5">
         <div className="flex items-baseline justify-between gap-2 min-w-0">
           <span className="text-sm font-medium text-heading truncate">{profile.name}</span>
-          {shortcutHint ? (
+          {isReroute ? (
+            <span
+              className="text-[9px] font-semibold uppercase tracking-wide text-accent2 shrink-0"
+              title="Reroute globalny — wszystkie żądania API idą tym profilem"
+            >
+              Reroute
+            </span>
+          ) : shortcutHint ? (
             <span
               className="text-[9px] font-mono text-accent2/90 shrink-0"
               title={`Skrót: ${shortcutHint}`}

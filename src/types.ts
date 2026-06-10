@@ -32,6 +32,12 @@ export interface GenerateRequest {
   minimax_speed?: number | null;
   minimax_vol?: number | null;
   minimax_pitch?: number | null;
+  // === voice-profile attribution (2026-06-09) — optional ===
+  // Id of the saved TtsVoiceProfile used for this generation. When set,
+  // the backend stores it on `generations.voice_profile_id` (and, if a chat
+  // session is attached, on `chat_messages.voice_profile_id` too) so the
+  // history items and chat bubbles can render the profile avatar/name.
+  voice_profile_id?: string | null;
 }
 
 export type GenerationSource = "manual" | "http" | "cursor" | "cursor-skill" | "quick_hotkey";
@@ -79,7 +85,9 @@ export type JobStatus =
   | "done"
   | "failed"
   | "interrupted"
-  | "cancelled";
+  | "cancelled"
+  | "pending_approval"
+  | "rejected";
 
 export interface Generation {
   id: string;
@@ -121,6 +129,12 @@ export interface Generation {
   origin_user_id?: string | null;
   origin_user_name?: string | null;
   origin_thread_id?: string | null;
+  // === voice-profile attribution (2026-06-09) — optional ===
+  // Snapshot of the saved TtsVoiceProfile id at generation time. The history
+  // UI resolves it against `appSettings.voice_profiles` to render a
+  // `<VoiceProfileBadge>` (avatar + name). When null, the UI falls back to
+  // fuzzy matching on (provider, model, voice) — or to a bare "voice" label.
+  voice_profile_id?: string | null;
 }
 
 export interface UsageTotals {
@@ -136,6 +150,6 @@ export interface UsageSummary {
   current_session: UsageTotals;
 }
 
-export type HistoryScope = "session" | "archive" | "cursor";
+export type HistoryScope = "session" | "archive" | "cursor" | "bots";
 
-export type JobScope = "active" | "interrupted" | "failed" | "all";
+export type JobScope = "active" | "interrupted" | "failed" | "pending_approval" | "all";

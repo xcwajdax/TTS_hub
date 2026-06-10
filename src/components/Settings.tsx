@@ -28,6 +28,7 @@ import type { SpeakerConfig, TtsModel, TtsProvider } from "../types";
 import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
 import VoiceSamplePlayButton from "./VoiceSamplePlayButton";
 import VoiceSamples from "./VoiceSamples";
+import { PROVIDER_TABS } from "../lib/providerSwitch";
 
 export interface SettingsState {
   provider: TtsProvider;
@@ -42,12 +43,6 @@ export interface SettingsState {
   minimaxVol: number;
   minimaxPitch: number;
 }
-
-const PROVIDER_OPTIONS: { id: TtsProvider; label: string }[] = [
-  { id: "google", label: "Google Gemini" },
-  { id: "voicebox", label: "Voice Box" },
-  { id: "minimax", label: "Minimax Portal" },
-];
 
 interface Props {
   state: SettingsState;
@@ -76,11 +71,11 @@ export default function Settings({
   onChange,
   onError,
 }: Props) {
-  const providerOptions = PROVIDER_OPTIONS.filter((o) =>
+  const providerOptions = PROVIDER_TABS.filter((o) =>
     isProviderEnabled(enabledProviders, o.id),
   );
   const visibleProviders =
-    providerOptions.length > 0 ? providerOptions : PROVIDER_OPTIONS;
+    providerOptions.length > 0 ? providerOptions : PROVIDER_TABS;
 
   useEffect(() => {
     if (!visibleProviders.some((o) => o.id === state.provider)) {
@@ -206,49 +201,6 @@ export default function Settings({
 
   const minimaxStatusLabel = minimaxStatus?.message ?? "Minimax — sprawdzanie…";
 
-  const switchProvider = (provider: TtsProvider) => {
-    if (provider === state.provider) return;
-    if (provider === "voicebox") {
-      const model = (voiceboxModels[0] ?? FALLBACK_VOICEBOX_MODELS[0]).id;
-      const profile = voiceboxProfiles[0];
-      onChange({
-        ...state,
-        provider,
-        model,
-        voice: profile?.name ?? state.voice,
-        voiceboxProfileId: profile?.id ?? state.voiceboxProfileId,
-        language: profile?.language ?? state.language,
-        multiSpeaker: false,
-      });
-      return;
-    }
-    if (provider === "minimax") {
-      const model = minimaxModelOptions[0]?.id ?? DEFAULT_MINIMAX_MODEL;
-      const lang = minimaxLangOptions[0]?.code ?? DEFAULT_MINIMAX_LANGUAGE;
-      const voice = pickMinimaxVoiceForLanguage(
-        minimaxPresets,
-        lang,
-        state.voice,
-        clonedVoiceIds,
-      );
-      onChange({
-        ...state,
-        provider,
-        model,
-        language: lang,
-        voice,
-        multiSpeaker: false,
-      });
-      return;
-    }
-    onChange({
-      ...state,
-      provider,
-      model: models.find((m) => m.id === DEFAULT_TTS_MODEL)?.id ?? DEFAULT_TTS_MODEL,
-      voice: voices.includes(state.voice) ? state.voice : "Kore",
-    });
-  };
-
   const updateVoiceboxProfile = (profileId: string) => {
     const profile = voiceboxProfiles.find((p) => p.id === profileId);
     onChange({
@@ -296,17 +248,6 @@ export default function Settings({
 
   return (
     <div className="grid grid-cols-1 gap-3 p-3 bg-panel/40">
-      <label className="flex flex-col gap-1 text-xs text-muted">
-        Provider
-        <select className="field" value={state.provider} onChange={(e) => switchProvider(e.target.value as TtsProvider)}>
-          {(providerOptions.length > 0 ? providerOptions : PROVIDER_OPTIONS).map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
       <label className="flex flex-col gap-1 text-xs text-muted">
         Tryb
         <button

@@ -1,0 +1,5 @@
+file 'C:/Users/user/Documents/VIBELIFE2026/TTS_hub/docs/promo/video/work-social/clip_00.mp4'
+file 'C:/Users/user/Documents/VIBELIFE2026/TTS_hub/docs/promo/video/work-social/clip_01.mp4'
+file 'C:/Users/user/Documents/VIBELIFE2026/TTS_hub/docs/promo/video/work-social/clip_02.mp4'
+file 'C:/Users/user/Documents/VIBELIFE2026/TTS_hub/docs/promo/video/work-social/clip_03.mp4'
+file 'C:/Users/user/Documents/VIBELIFE2026/TTS_hub/docs/promo/video/work-social/clip_04.mp4'

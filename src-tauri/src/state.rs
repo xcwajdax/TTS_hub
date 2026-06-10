@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::sync::{Arc, OnceLock, RwLock};
+use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::app_settings::AppSettings;
@@ -28,6 +29,7 @@ pub struct AppState {
     pub session_id: String,
     pub job_queue: OnceLock<Arc<JobQueue>>,
     pub roleplay_queue: OnceLock<Arc<RoleplayQueue>>,
+    pub app_handle: OnceLock<AppHandle>,
     pub soundboard_path: std::path::PathBuf,
     pub soundboard: RwLock<SoundboardSettings>,
     pub plugins_state_path: std::path::PathBuf,
@@ -82,6 +84,7 @@ impl AppState {
             session_id,
             job_queue: OnceLock::new(),
             roleplay_queue: OnceLock::new(),
+            app_handle: OnceLock::new(),
             soundboard_path,
             soundboard: RwLock::new(soundboard),
             plugins_state_path,

@@ -15,10 +15,12 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::audio::AudioFormat;
 use crate::app_settings::{PROVIDER_GOOGLE, PROVIDER_MINIMAX, PROVIDER_VOICEBOX};
 use crate::commands::{
-    create_folder_impl, delete_folder_impl, delete_folder_rule_impl, do_archive, enqueue_request,
-    list_folder_rules_impl, list_folders_impl, minimax_clone_voice_impl, move_to_folder_impl,
-    rename_folder_impl, sync_minimax_voices_impl, upsert_folder_rule_impl, GenerateReq,
+    approve_generation_ids, create_folder_impl, delete_folder_impl, delete_folder_rule_impl,
+    do_archive, enqueue_request, list_folder_rules_impl, list_folders_impl,
+    minimax_clone_voice_impl, move_to_folder_impl, reject_generation_ids, rename_folder_impl,
+    sync_minimax_voices_impl, upsert_folder_rule_impl, GenerateReq,
 };
+use crate::db::STATUS_PENDING_APPROVAL;
 use crate::cursor_integration::{self, TtsHubExportedConfig};
 use crate::db::{Folder, FolderRule, FolderRuleInput, Generation};
 use crate::google::VOICES;
@@ -98,6 +100,8 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         .route("/folder-rules/:id", delete(folder_rules_delete_http))
         .route("/audio/:id", get(audio))
         .route("/jobs", get(jobs_list))
+        .route("/jobs/approve", post(jobs_approve))
+        .route("/jobs/reject", post(jobs_reject))
         .route("/jobs/:id", get(job_get).delete(job_discard))
         .route("/jobs/:id/cancel", post(job_cancel))
         .route("/jobs/:id/resume", post(job_resume))
@@ -373,17 +377,45 @@ async fn jobs_list(State(state): State<AppArc>, Query(q): Query<JobsQuery>) -> R
         "active" => &["queued", "running"],
         "interrupted" => &["interrupted"],
         "failed" => &["failed"],
-        "all" => &["queued", "running", "interrupted", "failed", "cancelled"],
+        "pending_approval" => &[STATUS_PENDING_APPROVAL],
+        "all" => &[
+            "queued",
+            "running",
+            "interrupted",
+            "failed",
+            "cancelled",
+            STATUS_PENDING_APPROVAL,
+            "rejected",
+        ],
         _ => {
             return json_err(
                 StatusCode::BAD_REQUEST,
-                "scope must be active|interrupted|failed|all",
+                "scope must be active|interrupted|failed|pending_approval|all",
             )
         }
     };
     match state.db.list_by_statuses(statuses) {
         Ok(list) => Json::<Vec<Generation>>(list).into_response(),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkJobIds {
+    ids: Vec<String>,
+}
+
+async fn jobs_approve(State(state): State<AppArc>, Json(body): Json<BulkJobIds>) -> Response {
+    match approve_generation_ids(&state, &body.ids) {
+        Ok(result) => Json(result).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn jobs_reject(State(state): State<AppArc>, Json(body): Json<BulkJobIds>) -> Response {
+    match reject_generation_ids(&state, &body.ids) {
+        Ok(result) => Json(result).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
 
@@ -558,12 +590,13 @@ async fn history(State(state): State<AppArc>, Query(q): Query<HistoryQuery>) -> 
     let scope = q.scope.unwrap_or_else(|| "session".to_string());
     let res = match scope.as_str() {
         "session" => state.db.list_temp_history(),
+        "bots" => state.db.list_bots_feed(50),
         "archive" => match q.folder_id.as_deref() {
             Some("__all__") | None => state.db.list_archive(),
             Some("__none__") => state.db.list_generations_in_folder(None),
             Some(fid) => state.db.list_generations_in_folder(Some(fid)),
         },
-        _ => return json_err(StatusCode::BAD_REQUEST, "scope must be session|archive"),
+        _ => return json_err(StatusCode::BAD_REQUEST, "scope must be session|archive|bots"),
     };
     match res {
         Ok(list) => Json::<Vec<Generation>>(list).into_response(),
@@ -1078,6 +1111,7 @@ async fn chat_add_message_http(
         &req.role,
         &req.content,
         req.generation_id.as_deref(),
+        req.voice_profile_id.as_deref(),
     ) {
         Ok(m) => Json(m).into_response(),
         Err(e) => chat_err(e),

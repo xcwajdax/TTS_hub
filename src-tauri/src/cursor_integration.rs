@@ -410,3 +410,49 @@ pub fn uninstall_hooks(remove_script: bool, remove_config: bool) -> Result<Unins
         removed_config,
     })
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct McpIntegrationStatus {
+    pub configured: bool,
+    pub config_path: Option<String>,
+    pub scope: Option<String>,
+}
+
+fn mcp_json_has_ttshub(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    raw.contains("ttshub-mcp") || raw.contains("ttshub_mcp")
+}
+
+/// Detect whether Cursor (or compatible harness) has ttshub-mcp in mcp.json.
+pub fn mcp_status() -> McpIntegrationStatus {
+    if let Ok(dir) = cursor_dir() {
+        let global = dir.join("mcp.json");
+        if mcp_json_has_ttshub(&global) {
+            return McpIntegrationStatus {
+                configured: true,
+                config_path: Some(global.to_string_lossy().to_string()),
+                scope: Some("global".into()),
+            };
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let workspace = cwd.join(".cursor").join("mcp.json");
+        if mcp_json_has_ttshub(&workspace) {
+            return McpIntegrationStatus {
+                configured: true,
+                config_path: Some(workspace.to_string_lossy().to_string()),
+                scope: Some("workspace".into()),
+            };
+        }
+    }
+    McpIntegrationStatus {
+        configured: false,
+        config_path: None,
+        scope: None,
+    }
+}

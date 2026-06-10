@@ -1,0 +1,125 @@
+{
+  "project_id": "promo-tts-hub-film-001",
+  "project_name": "Film promocyjny TTS Hub",
+  "palette": [
+    { "color": "#facc15", "voiceProfileId": "promo-vp-lektor-001" },
+    { "color": "#f472b6", "voiceProfileId": "promo-vp-tworca-001" },
+    { "color": "#38bdf8", "voiceProfileId": "promo-vp-developer-001" },
+    { "color": "#4ade80", "voiceProfileId": "promo-vp-cursor-001" }
+  ],
+  "doc_json": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "heading",
+        "attrs": { "level": 2 },
+        "content": [{ "type": "text", "text": "Wariant social (≤60 s)" }]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#facc15" } }],
+            "text": "Masz tekst. Chcesz mowę. Na swoim komputerze."
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#f472b6" } }],
+            "text": "Nagrywam podcasty i audiobooki. Zaznaczam fragment w dowolnym oknie — i słyszę go od razu w wybranym głosie. Google, MiniMax albo lokalny Voice Box. Ale mój kolega woli API…"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#38bdf8" } }],
+            "text": "Jeden endpoint na localhost. Skrypt, n8n, bot — generacja, historia, próbki. Hotkeye działają w każdym programie. A w Cursorze Agent czyta mi podsumowania…"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#4ade80" } }],
+            "text": "Agent kończy turę — aplikacja czyta na głos po polsku. Bez kopiowania, bez przełączania okien."
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#facc15" } }],
+            "text": "TTS Hub — darmowy rdzeń open source, Twoje klucze API. Pełna wersja — link w bio."
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": { "level": 2 },
+        "content": [{ "type": "text", "text": "Wariant pełny (rozwinięcie)" }]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#facc15" } }],
+            "text": "Masz tekst. Chcesz mowę. Na swoim komputerze. TTS Hub to natywna aplikacja desktopowa — Tauri, interfejs po polsku, wersja preview zero jeden zero. Zamienia tekst na mowę przez Google Gemini TTS, MiniMax i lokalny Voice Box. Zobacz, jak trzech użytkowników korzysta z tego na co dzień."
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#f472b6" } }],
+            "text": "Jestem twórcą treści — podcasty, lektorstwo, audiobooki. W TTS Hub wklejam tekst albo zaznaczam fragment w dowolnym oknie i od razu słyszę wynik. Mam Google, MiniMax i Voice Box w jednym miejscu — przełączam providera, gdy mi pasuje. Filtry tekstu usuwają kod i cytaty zanim generuję, a waveform z seekiem pozwala słuchać fragmentów bez eksportu. Historia sesji i archiwum trzymają wszystko w SQLite — wracam do wcześniejszych nagrań jednym kliknięciem. Profile głosów z avatarami pamiętają moje ulubione ustawienia. A gdy robię dialogi wielogłosowe — wchodzę w Roleplay. Gdy mam dziesiątki plików dziennie, wchodzi API…"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#38bdf8" } }],
+            "text": "Ja automatyzuję. TTS Hub wystawia REST API na localhost — bez auth, tylko na mojej maszynie. Jeden POST na generate, historia, audio, próbki głosów — skrypt, n8n albo własny bot. Globalne hotkeye działają w każdym oknie Windows: zaznaczony tekst, skrót, gotowe. Soundboard daje mi osiem slotów z historii lub dysku — Ctrl Shift i cyfra. Szybka konfiguracja prowadzi przez Google, MiniMax i Voice Box krok po kroku. A gdy pracuję w Cursorze z Agentem…"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#4ade80" } }],
+            "text": "Pracuję w Cursorze z Agentem AI. Po każdej turze asystent owija podsumowanie w markery TTS Hub — i aplikacja czyta je na głos po polsku. Skill tts-hub-speak woła lokalne API; nie muszę nic kopiować. Wybieram głos w ustawieniach integracji — preset albo własny profil. Autoplay odpala audio w aplikacji, mogę słuchać w tle podczas kodowania. Trzy perspektywy — jedna aplikacja. Chcesz więcej szczegółów?"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [{ "type": "highlight", "attrs": { "color": "#facc15" } }],
+            "text": "TTS Hub — rdzeń aplikacji jest darmowy i open source na licencji MIT. Klucze API providerów są Twoje — płacisz bezpośrednio Google, MiniMax albo korzystasz lokalnie z Voice Box. Pobierz instalator dla Windows z GitHub Releases. Trzy skórki — VIBELIFE, Matrix i Light Zen — wybierz styl, który Ci pasuje. Link w opisie."
+          }
+        ]
+      }
+    ]
+  }
+}

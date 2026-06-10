@@ -11,7 +11,6 @@ TTS Hub zamienia tekst na mowę na Twoim komputerze. Słuchasz właśnie tej sam
 '@.Trim()
 
 $samples = @(
-    @{ file = 'minimax-grzegorz-braun.mp3'; provider = 'minimax'; model = 'speech-2.8-hd'; voice = 'grzegorz_braun'; language = 'pl'; format = 'mp3' }
     @{ file = 'minimax-polish-female.mp3'; provider = 'minimax'; model = 'speech-2.8-hd'; voice = 'Polish_female_1_sample1'; language = 'pl'; format = 'mp3' }
     @{ file = 'minimax-polish-male.mp3'; provider = 'minimax'; model = 'speech-2.8-hd'; voice = 'Polish_male_1_sample4'; language = 'pl'; format = 'mp3' }
     @{ file = 'google-kore.wav'; provider = 'google'; model = 'gemini-2.5-flash-preview-tts'; voice = 'Kore'; style = 'Powiedz spokojnie po polsku:'; format = 'wav' }

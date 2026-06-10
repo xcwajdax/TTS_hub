@@ -278,6 +278,7 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     quick_hotkeys: view.quick_hotkeys,
     editor_quick_gen: view.editor_quick_gen ?? defaultEditorQuickGenSettings(),
     voice_profiles: view.voice_profiles ?? [],
+    reroute_voice_profile_id: view.reroute_voice_profile_id ?? null,
     quick_setup_completed: view.quick_setup_completed,
     enabled_providers: view.enabled_providers,
     minimax_enabled_languages: view.minimax_enabled_languages,
@@ -285,6 +286,8 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     minimax_api_key: view.minimax_api_key ?? null,
     temp_history_max: view.temp_history_max ?? DEFAULT_TEMP_HISTORY_MAX,
     timeline_view: normalizeTimelineViewMode(view.timeline_view),
+    safe_mode: view.safe_mode ?? false,
+    safe_mode_auto_open_queue: view.safe_mode_auto_open_queue ?? true,
   };
 }
 
@@ -306,6 +309,8 @@ export interface AppSettings {
   quick_hotkeys?: QuickHotkeysSettings;
   editor_quick_gen?: EditorQuickGenSettings;
   voice_profiles?: TtsVoiceProfile[];
+  /** Gdy ustawione — wszystkie żądania generacji (poza roleplay / skrótami) idą tym profilem. */
+  reroute_voice_profile_id?: string | null;
   quick_setup_completed?: boolean;
   enabled_providers?: TtsProviderId[];
   /** Hub codes (`pl`, `en`). Empty = all catalog languages. */
@@ -316,6 +321,10 @@ export interface AppSettings {
   temp_history_max?: number;
   /** Main playback bar waveform style: bars | bars-detailed | line */
   timeline_view?: TimelineViewMode;
+  /** Hold new generations for manual approval before synthesis. */
+  safe_mode?: boolean;
+  /** Expand queue panel and show approval tab when a new pending item arrives. */
+  safe_mode_auto_open_queue?: boolean;
 }
 
 export { DEFAULT_TIMELINE_VIEW };
@@ -340,6 +349,17 @@ export interface CursorIntegrationStatus {
   pwsh_available: boolean;
   last_install_ts: number | null;
   last_cursor_at: number | null;
+}
+
+export interface McpIntegrationStatus {
+  configured: boolean;
+  config_path: string | null;
+  scope: "global" | "workspace" | null;
+}
+
+export interface AppBuildInfo {
+  version: string;
+  git_hash: string | null;
 }
 
 export interface CursorInstallReport {

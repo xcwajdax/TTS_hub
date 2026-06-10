@@ -71,6 +71,40 @@ pub fn voice_avatar_path(paths: &AppPaths, provider: &str, voice_id: &str) -> Pa
         .join(format!("{}.jpg", sanitize_key(voice_id)))
 }
 
+/// Avatar for external bot platforms (e.g. telegram, discord). Stored under
+/// `avatars/origins/{kind}.jpg`. Falls back to the HTTP source avatar when missing.
+pub fn origin_avatar_path(paths: &AppPaths, origin_kind: &str) -> PathBuf {
+    paths
+        .avatars
+        .join("origins")
+        .join(format!("{}.jpg", sanitize_key(origin_kind)))
+}
+
+pub fn origin_avatar_info(paths: &AppPaths, origin_kind: &str) -> AvatarInfo {
+    let path = origin_avatar_path(paths, origin_kind);
+    if path.is_file() {
+        return avatar_info(&path);
+    }
+    avatar_info(&source_avatar_path(paths, "http"))
+}
+
+pub fn list_origin_avatars(paths: &AppPaths) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let dir = paths.avatars.join("origins");
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jpg") {
+                continue;
+            }
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                map.insert(stem.to_string(), path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    map
+}
+
 pub fn avatar_info(path: &Path) -> AvatarInfo {
     if path.is_file() {
         AvatarInfo {

@@ -82,6 +82,13 @@ pub struct Generation {
     pub origin_user_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin_thread_id: Option<String>,
+    // === voice-profile attribution (2026-06-09) ===
+    /// Snapshot of the saved voice profile id at generation time. Survives
+    /// deletion/renaming of the profile so history items and chat bubbles can
+    /// still show which voice was used. NULL = no profile (legacy data,
+    /// direct one-off TTS, or external messenger that did not pass it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,7 +155,7 @@ pub struct UsageSummary {
     pub current_session: UsageTotals,
 }
 
-const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id";
+const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id";
 
 fn default_source() -> String {
     "manual".to_string()
@@ -164,6 +171,8 @@ pub const STATUS_DONE: &str = "done";
 pub const STATUS_FAILED: &str = "failed";
 pub const STATUS_INTERRUPTED: &str = "interrupted";
 pub const STATUS_CANCELLED: &str = "cancelled";
+pub const STATUS_PENDING_APPROVAL: &str = "pending_approval";
+pub const STATUS_REJECTED: &str = "rejected";
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -287,6 +296,21 @@ impl Db {
             "CREATE INDEX IF NOT EXISTS idx_generations_provider ON generations(provider, created_at DESC)",
             [],
         );
+
+        // === voice-profile attribution (2026-06-09) — additive, idempotent ===
+        // Snapshot of the saved TtsVoiceProfile id. NULL for legacy rows and
+        // for one-off TTS calls that did not pass `voice_profile_id` in the
+        // request. The history UI and chat bubbles use this column to
+        // resolve and render the profile avatar/name; when NULL they fall
+        // back to fuzzy-matching against (provider, model, voice).
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN voice_profile_id TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_generations_voice_profile ON generations(voice_profile_id, created_at DESC)",
+            [],
+        );
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS folders (
@@ -369,6 +393,14 @@ impl Db {
             CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, order_index ASC);
             "#,
         )?;
+        // === voice-profile attribution on chat bubbles (2026-06-09) — additive, idempotent ===
+        // Mirrors generations.voice_profile_id so the chat UI can render the
+        // voice profile avatar/name in the bubble header. Populated by
+        // enqueue_request and by the roleplay segment pipeline.
+        let _ = conn.execute(
+            "ALTER TABLE chat_messages ADD COLUMN voice_profile_id TEXT",
+            [],
+        );
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -377,7 +409,7 @@ impl Db {
     pub fn insert(&self, g: &Generation) -> Result<()> {
         let c = self.conn.lock().unwrap();
         c.execute(
-            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32)",
+            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33)",
             params![
                 g.id,
                 g.created_at,
@@ -411,6 +443,7 @@ impl Db {
                 g.origin_user_id,
                 g.origin_user_name,
                 g.origin_thread_id,
+                g.voice_profile_id,
             ],
         )?;
         Ok(())
@@ -428,11 +461,11 @@ impl Db {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    /// All non-archived temp history rows across app sessions (tab „Sesja”).
+    /// Tab „Sesja”: all completed generations (temp, archived, and in folders).
     pub fn list_temp_history(&self) -> Result<Vec<Generation>> {
         let c = self.conn.lock().unwrap();
         let sql = format!(
-            "SELECT {GEN_SELECT} FROM generations WHERE status = 'done' AND is_archived = 0 AND folder_id IS NULL ORDER BY created_at DESC"
+            "SELECT {GEN_SELECT} FROM generations WHERE status = 'done' ORDER BY created_at DESC"
         );
         let mut stmt = c.prepare(&sql)?;
         let rows = stmt.query_map([], row_to_gen)?;
@@ -448,6 +481,18 @@ impl Db {
         );
         let mut stmt = c.prepare(&sql)?;
         let rows = stmt.query_map((session_id, lim), row_to_gen)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// External bot feed: generations with `origin_kind` set (any status, all sessions).
+    pub fn list_bots_feed(&self, limit: usize) -> Result<Vec<Generation>> {
+        let c = self.conn.lock().unwrap();
+        let lim = limit.clamp(1, 100) as i64;
+        let sql = format!(
+            "SELECT {GEN_SELECT} FROM generations WHERE origin_kind IS NOT NULL AND TRIM(origin_kind) != '' ORDER BY created_at DESC LIMIT ?1"
+        );
+        let mut stmt = c.prepare(&sql)?;
+        let rows = stmt.query_map([lim], row_to_gen)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -1053,6 +1098,7 @@ fn row_to_gen(row: &rusqlite::Row) -> rusqlite::Result<Generation> {
         origin_user_id: row.get(34)?,
         origin_user_name: row.get(35)?,
         origin_thread_id: row.get(36)?,
+        voice_profile_id: row.get(37)?,
     })
 }
 
@@ -1418,6 +1464,14 @@ mod tests {
             original_prompt: None,
             chat_session_id: None,
             chat_message_id: None,
+            char_count: 0,
+            estimated_tokens: 0,
+            origin_kind: None,
+            origin_platform_id: None,
+            origin_user_id: None,
+            origin_user_name: None,
+            origin_thread_id: None,
+            voice_profile_id: None,
         }
     }
 

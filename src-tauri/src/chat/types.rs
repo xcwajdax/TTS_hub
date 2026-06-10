@@ -27,6 +27,12 @@ pub struct ChatMessage {
     pub generation_id: Option<String>,
     pub created_at: i64,
     pub order_index: i64,
+    /// Snapshot of the saved voice profile id used to produce this message's
+    /// audio. Populated by `enqueue_request` (from `GenerateReq`) and by the
+    /// roleplay segment pipeline. The chat UI uses this to render a
+    /// `<VoiceProfileBadge>` in the bubble header.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,4 +53,6 @@ pub struct AddMessageReq {
     pub role: String,
     pub content: String,
     pub generation_id: Option<String>,
+    #[serde(default)]
+    pub voice_profile_id: Option<String>,
 }

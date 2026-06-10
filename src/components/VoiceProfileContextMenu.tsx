@@ -5,7 +5,10 @@ interface Props {
   profile: TtsVoiceProfile;
   anchorX: number;
   anchorY: number;
+  isReroute: boolean;
   onEditSettings: () => void;
+  onSetReroute: () => void;
+  onClearReroute: () => void;
   onClose: () => void;
 }
 
@@ -13,7 +16,10 @@ export default function VoiceProfileContextMenu({
   profile,
   anchorX,
   anchorY,
+  isReroute,
   onEditSettings,
+  onSetReroute,
+  onClearReroute,
   onClose,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -73,6 +79,31 @@ export default function VoiceProfileContextMenu({
       >
         Edytuj ustawienia profilu…
       </button>
+      {isReroute ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="w-full text-left px-3 py-2 hover:bg-panel2/80 text-accent2 transition-colors"
+          onClick={() => {
+            onClearReroute();
+            onClose();
+          }}
+        >
+          Wyłącz reroute globalny
+        </button>
+      ) : (
+        <button
+          type="button"
+          role="menuitem"
+          className="w-full text-left px-3 py-2 hover:bg-panel2/80 text-foreground transition-colors"
+          onClick={() => {
+            onSetReroute();
+            onClose();
+          }}
+        >
+          Użyj jako reroute globalny…
+        </button>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { ReactNode } from "react";
+import type { Editor } from "@tiptap/react";
 import { EditorContent, useEditor, Extension } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
@@ -68,9 +68,7 @@ export interface RichTextEditorProps {
   excludedBlockIds?: ReadonlySet<string>;
   disabled?: boolean;
   placeholder?: string;
-  focusBlockId?: string | null;
-  onBlockFocused?: () => void;
-  floatingAction?: ReactNode;
+  onEditorReady?: (editor: Editor | null) => void;
 }
 
 export default function RichTextEditor({
@@ -81,9 +79,7 @@ export default function RichTextEditor({
   excludedBlockIds,
   disabled,
   placeholder,
-  focusBlockId,
-  onBlockFocused,
-  floatingAction,
+  onEditorReady,
 }: RichTextEditorProps) {
   const prevBlocksRef = useRef<Block[]>(value.blocks);
   prevBlocksRef.current = value.blocks;
@@ -159,30 +155,18 @@ export default function RichTextEditor({
   }, [editor, excludedBlockIds]);
 
   useEffect(() => {
-    if (!editor || !focusBlockId) return;
-    let foundPos: number | null = null;
-    editor.state.doc.forEach((node, offset) => {
-      const id = idFor(node);
-      if (id === focusBlockId && foundPos === null) foundPos = offset + 1;
-    });
-    if (foundPos !== null) {
-      editor.commands.focus(foundPos);
-      const dom = editor.view.domAtPos(foundPos).node as HTMLElement;
-      const el = dom?.nodeType === 1 ? dom : (dom?.parentElement as HTMLElement | null);
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-    onBlockFocused?.();
-  }, [editor, focusBlockId, onBlockFocused]);
+    onEditorReady?.(editor);
+    return () => onEditorReady?.(null);
+  }, [editor, onEditorReady]);
 
   return (
-    <div className="flex-1 w-full min-h-0 min-w-0 bg-panel2 border border-border rounded-lg overflow-auto relative">
+    <div className="flex-1 w-full min-h-0 min-w-0 overflow-auto relative">
       {editor && editor.isEmpty && placeholder && (
         <div className="pointer-events-none absolute top-3 left-3 text-sm text-muted whitespace-pre-line">
           {placeholder}
         </div>
       )}
-      <EditorContent editor={editor} className="h-full" />
-      {floatingAction && <div className="absolute right-3 bottom-3 z-10">{floatingAction}</div>}
+      <EditorContent editor={editor} className="h-full min-h-[120px]" />
     </div>
   );
 }

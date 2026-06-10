@@ -167,6 +167,7 @@ pub fn add_message(
     role: &str,
     content: &str,
     generation_id: Option<&str>,
+    voice_profile_id: Option<&str>,
 ) -> Result<ChatMessage> {
     let id = format!("msg_{}", uuid::Uuid::new_v4());
     let now = chrono::Utc::now().timestamp_millis();
@@ -177,9 +178,9 @@ pub fn add_message(
             |r| r.get(0),
         )?;
     conn.execute(
-        "INSERT INTO chat_messages (id, session_id, role, content, generation_id, created_at, order_index)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![id, session_id, role, content, generation_id, now, order],
+        "INSERT INTO chat_messages (id, session_id, role, content, generation_id, voice_profile_id, created_at, order_index)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![id, session_id, role, content, generation_id, voice_profile_id, now, order],
     )?;
     conn.execute(
         "UPDATE chat_sessions SET last_active_at = ?1, message_count = message_count + 1 WHERE id = ?2",
@@ -193,12 +194,13 @@ pub fn add_message(
         generation_id: generation_id.map(String::from),
         created_at: now,
         order_index: order,
+        voice_profile_id: voice_profile_id.map(String::from),
     })
 }
 
 pub fn list_messages(conn: &Connection, session_id: &str) -> Result<Vec<ChatMessage>> {
     let mut stmt = conn.prepare(
-        "SELECT id, session_id, role, content, generation_id, created_at, order_index
+        "SELECT id, session_id, role, content, generation_id, voice_profile_id, created_at, order_index
          FROM chat_messages WHERE session_id = ?1 ORDER BY order_index ASC",
     )?;
     let rows = stmt.query_map(params![session_id], |row| {
@@ -208,8 +210,9 @@ pub fn list_messages(conn: &Connection, session_id: &str) -> Result<Vec<ChatMess
             role: row.get(2)?,
             content: row.get(3)?,
             generation_id: row.get(4)?,
-            created_at: row.get(5)?,
-            order_index: row.get(6)?,
+            created_at: row.get(6)?,
+            order_index: row.get(7)?,
+            voice_profile_id: row.get(5)?,
         })
     })?;
     let mut out = Vec::new();

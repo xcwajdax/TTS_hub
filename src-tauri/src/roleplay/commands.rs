@@ -263,6 +263,12 @@ pub fn build_generate_req_from_profile(
         // origin. External callers (Telegram bot etc.) construct GenerateReq
         // directly in commands.rs and can populate this.
         origin: None,
+        // === voice-profile attribution (2026-06-09) ===
+        // Each roleplay segment is bound to a saved voice profile by id.
+        // We snapshot it onto the request so the resulting Generation row
+        // (and any chat bubble, when the segment is replayed through the
+        // chat window) carries the badge back to the same profile.
+        voice_profile_id: Some(profile.id.clone()),
     }
 }
 

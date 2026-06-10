@@ -1,0 +1,26 @@
+{
+  "youtube": {
+    "full_video_id": "REPLACE_WITH_YOUTUBE_VIDEO_ID",
+    "short_video_id": "REPLACE_WITH_YOUTUBE_SHORT_ID",
+    "full_title": "TTS Hub — 3 sposoby na syntezę mowy (twórca · developer · Cursor)",
+    "short_title": "TTS Hub w 60 sekund — 3 persony, jedna aplikacja",
+    "description_file": "../scripts/promo-narration.md"
+  },
+  "landing": {
+    "embed_full": true,
+    "embed_short_link": true,
+    "poster": "../storyboard/full/00-intro.png"
+  },
+  "deliverables": {
+    "social_9x16": "promo-social-9x16.mp4",
+    "social_1x1": "promo-social-1x1.mp4",
+    "full_16x9": "promo-full-16x9.mp4"
+  },
+  "upload_checklist": [
+    "Wgraj promo-full-16x9.mp4 na YouTube (public lub unlisted)",
+    "Wklej rozdziały z video/chapters-youtube.txt do opisu",
+    "Wgraj promo-social-9x16.mp4 jako YouTube Short / Reels / TikTok",
+    "Ustaw youtube.full_video_id i youtube.short_video_id w tym pliku",
+    "Odśwież landing — embed w sekcji #film"
+  ]
+}

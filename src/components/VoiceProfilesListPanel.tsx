@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { getAppSettings } from "../api/tauri";
 import type { TtsVoiceProfile } from "../appSettings";
-import { requestGenerateWithVoiceProfile } from "../lib/voiceProfileActions";
 import {
+  isRerouteProfile,
   previewTextForProfile,
+  setRerouteVoiceProfile,
   sortProfilesForChatList,
 } from "../lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
@@ -15,6 +16,8 @@ import VoiceProfileShortcutFooter from "./VoiceProfileShortcutFooter";
 
 interface Props {
   recentGenerations: Generation[];
+  activeProfileId: string | null;
+  onSelectProfile: (profile: TtsVoiceProfile) => void;
   onEditProfile: (profile: TtsVoiceProfile) => void;
   onError: (message: string) => void;
   onSuccess?: (message: string) => void;
@@ -22,12 +25,14 @@ interface Props {
 
 export default function VoiceProfilesListPanel({
   recentGenerations,
+  activeProfileId,
+  onSelectProfile,
   onEditProfile,
   onError,
   onSuccess,
 }: Props) {
   const [profiles, setProfiles] = useState<TtsVoiceProfile[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [rerouteProfileId, setRerouteProfileId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     profile: TtsVoiceProfile;
     x: number;
@@ -36,8 +41,14 @@ export default function VoiceProfilesListPanel({
 
   const refresh = () => {
     void getAppSettings()
-      .then((view) => setProfiles(view.voice_profiles ?? []))
-      .catch(() => setProfiles([]));
+      .then((view) => {
+        setProfiles(view.voice_profiles ?? []);
+        setRerouteProfileId(view.reroute_voice_profile_id ?? null);
+      })
+      .catch(() => {
+        setProfiles([]);
+        setRerouteProfileId(null);
+      });
   };
 
   useEffect(() => {
@@ -49,16 +60,15 @@ export default function VoiceProfilesListPanel({
   const sorted = useMemo(() => sortProfilesForChatList(profiles), [profiles]);
 
   const selectedProfile = useMemo(
-    () => sorted.find((p) => p.id === selectedId) ?? null,
-    [sorted, selectedId],
+    () => sorted.find((p) => p.id === activeProfileId) ?? null,
+    [sorted, activeProfileId],
   );
 
   useEffect(() => {
-    if (selectedId && !sorted.some((p) => p.id === selectedId)) {
-      setSelectedId(null);
+    if (activeProfileId && !sorted.some((p) => p.id === activeProfileId)) {
       setContextMenu(null);
     }
-  }, [sorted, selectedId]);
+  }, [sorted, activeProfileId]);
 
   if (sorted.length === 0) {
     return (
@@ -75,14 +85,22 @@ export default function VoiceProfilesListPanel({
   return (
     <div className="flex flex-col min-h-0 h-full">
       <p className="shrink-0 px-3 py-1.5 text-[10px] text-muted border-b border-border/50 leading-snug">
-        Kliknij profil — generacja z edytora. Prawy przycisk — edycja ustawień.
+        Kliknij profil, aby go wybrać. Prawy przycisk — edycja lub reroute globalny (wymusza profil
+        dla Cursor, API HTTP i innych klientów).
+        {rerouteProfileId ? (
+          <>
+            {" "}
+            <span className="text-accent2 font-medium">Reroute aktywny.</span>
+          </>
+        ) : null}
       </p>
       <div className="voice-profile-chat-list flex-1 min-h-0 overflow-y-auto">
         {sorted.map((profile) => {
           const preview = previewTextForProfile(profile, recentGenerations);
-          const selected = profile.id === selectedId;
+          const selected = profile.id === activeProfileId;
+          const reroute = isRerouteProfile(profile.id, rerouteProfileId);
           const shortcutHint =
-            profile.shortcut?.trim() && profile.shortcut_enabled !== false
+            !reroute && profile.shortcut?.trim() && profile.shortcut_enabled !== false
               ? shortcutDisplayLabel(profile.shortcut)
               : null;
           return (
@@ -92,10 +110,11 @@ export default function VoiceProfilesListPanel({
               preview={preview}
               shortcutHint={shortcutHint}
               selected={selected}
-              onGenerate={() => requestGenerateWithVoiceProfile(profile.id)}
+              isReroute={reroute}
+              onSelect={() => onSelectProfile(profile)}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setSelectedId(profile.id);
+                onSelectProfile(profile);
                 setContextMenu({ profile, x: e.clientX, y: e.clientY });
               }}
             />
@@ -110,7 +129,7 @@ export default function VoiceProfilesListPanel({
         />
       ) : (
         <p className="shrink-0 border-t border-border px-3 py-2 text-[10px] text-muted text-center leading-snug">
-          Prawy przycisk na profilu — menu i edycja skrótu poniżej.
+          Wybierz profil z listy — ustawienia załadują się w panelu TTS.
         </p>
       )}
       {contextMenu ? (
@@ -118,7 +137,24 @@ export default function VoiceProfilesListPanel({
           profile={contextMenu.profile}
           anchorX={contextMenu.x}
           anchorY={contextMenu.y}
+          isReroute={isRerouteProfile(contextMenu.profile.id, rerouteProfileId)}
           onEditSettings={() => onEditProfile(contextMenu.profile)}
+          onSetReroute={() => {
+            void setRerouteVoiceProfile(contextMenu.profile.id)
+              .then(() => {
+                setRerouteProfileId(contextMenu.profile.id);
+                onSuccess?.(`Reroute globalny: ${contextMenu.profile.name}`);
+              })
+              .catch((e) => onError(String(e)));
+          }}
+          onClearReroute={() => {
+            void setRerouteVoiceProfile(null)
+              .then(() => {
+                setRerouteProfileId(null);
+                onSuccess?.("Reroute globalny wyłączony");
+              })
+              .catch((e) => onError(String(e)));
+          }}
           onClose={() => setContextMenu(null)}
         />
       ) : null}

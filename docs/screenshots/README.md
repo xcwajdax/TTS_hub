@@ -1,27 +1,28 @@
 # Zrzuty ekranu
 
-Zrzuty z **okna Tauri** (`npm run tauri dev`), ~1400×900.
+Zrzuty z **okna Tauri** (`npm run tauri dev`), ~1400×900, skórka **VIBELIFE**.
 
 | Plik | Opis |
 |------|------|
-| `main-window.png` | Główny widok — Light / Zen, Minimax, historia, waveform |
-| `main-generating.png` | Generacja w toku + aktywne zadania |
-| `settings-general.png` | Ustawienia zaawansowane → Ogólne (ścieżki, profile API) |
+| `main-window.png` | Zakładka **TTS** — wybór modelu, edytor, kolejka, pasek odtwarzania |
+| `history-archive.png` | Zakładka **Historia** — archiwum, foldery, panel szczegółów |
+| `settings-general.png` | Ustawienia → Ogólne (providery, kolejka, tryb zapisu) |
 | `settings-usage.png` | Ustawienia → Zużycie (tokeny, koszty) |
-| `settings-cursor.png` | Ustawienia → Cursor (skill, hooki, głos klon) |
+| `settings-cursor.png` | Ustawienia → Cursor (skill, hooki) |
 | `quick-hotkey-demo.gif` | Szybki skrót z Notatnika (demo) |
 
 ## Starsze / pomocnicze
 
 | Plik | Opis |
 |------|------|
-| `skin-vibelife.png`, `skin-matrix.png`, `skin-light-zen.png` | Podgląd Vite (wąski viewport) — do zastąpienia zrzutami Tauri per skórka |
+| `main-generating.png` | Generacja w toku + aktywne zadania |
+| `skin-vibelife.png`, `skin-matrix.png`, `skin-light-zen.png` | Podgląd skórek (starsze) |
 | [capture-skins.mjs](capture-skins.mjs) | Regeneracja podglądu przeglądarki (Playwright) |
 
-## Jak zaktualizować (zalecane)
+## Jak zaktualizować
 
 1. `npm run tauri dev` — pełne okno, pasek skórek.
 2. Win+Shift+S — zapisz jako pliki powyżej w tym folderze.
-3. Dla trzech skórek: ten sam układ, przełącz **VIBELIFE** / **Matrix** / **Light** w pasku tytułu.
+3. **Bez prywatnych profili głosu** na zrzutach do README — używaj presetów systemowych (np. `Polish_female_1_sample1`, `Kore`).
 
 Źródła robocze mogą leżeć w `GITHUBSCREENS/` (lokalnie, opcjonalnie niecommitowane).

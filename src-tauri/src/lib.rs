@@ -75,6 +75,9 @@ pub fn run() {
             commands::upsert_folder_rule,
             commands::delete_folder_rule,
             commands::list_jobs,
+            commands::set_safe_mode,
+            commands::approve_generations,
+            commands::reject_generations,
             commands::cancel_job,
             commands::resume_job,
             commands::discard_job,
@@ -120,6 +123,8 @@ pub fn run() {
             commands::generate_all_voice_samples,
             commands::get_session_id,
             commands::get_cursor_integration_status,
+            commands::get_app_build_info,
+            commands::get_mcp_integration_status,
             commands::install_cursor_hooks,
             commands::uninstall_cursor_hooks,
             commands::export_cursor_hook_config,
@@ -141,6 +146,9 @@ pub fn run() {
             commands::read_image_file_base64,
             commands::list_source_avatars,
             commands::get_source_avatar,
+            commands::list_origin_avatars,
+            commands::get_origin_avatar,
+            commands::save_origin_avatar,
             commands::get_voice_avatar,
             commands::save_source_avatar,
             commands::save_voice_avatar,
@@ -190,6 +198,7 @@ pub fn run() {
         .setup(move |app| {
             menu::attach(app)?;
             let handle = app.handle().clone();
+            let _ = app_state.app_handle.set(handle.clone());
             let max_concurrent = app_state
                 .settings
                 .read()

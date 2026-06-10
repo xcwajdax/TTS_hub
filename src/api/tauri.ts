@@ -1,10 +1,12 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import type {
+  AppBuildInfo,
   AppSettings,
   AppSettingsView,
   CursorIntegration,
   CursorIntegrationStatus,
   CursorInstallReport,
+  McpIntegrationStatus,
 } from "../appSettings";
 import type {
   ArchiveFolder,
@@ -136,6 +138,24 @@ export async function getAllUsage(): Promise<ProviderUsage[]> {
 
 export async function listJobs(scope: JobScope): Promise<Generation[]> {
   return invoke<Generation[]>("list_jobs", { scope });
+}
+
+export interface BulkApprovalResult {
+  approved: number;
+  rejected: number;
+  skipped: number;
+}
+
+export async function setSafeMode(enabled: boolean): Promise<boolean> {
+  return invoke<boolean>("set_safe_mode", { enabled });
+}
+
+export async function approveGenerations(ids: string[]): Promise<BulkApprovalResult> {
+  return invoke<BulkApprovalResult>("approve_generations", { ids });
+}
+
+export async function rejectGenerations(ids: string[]): Promise<BulkApprovalResult> {
+  return invoke<BulkApprovalResult>("reject_generations", { ids });
 }
 
 export async function cancelJob(id: string): Promise<void> {
@@ -421,6 +441,14 @@ export async function getCursorIntegrationStatus(): Promise<CursorIntegrationSta
   return invoke<CursorIntegrationStatus>("get_cursor_integration_status");
 }
 
+export async function getAppBuildInfo(): Promise<AppBuildInfo> {
+  return invoke<AppBuildInfo>("get_app_build_info");
+}
+
+export async function getMcpIntegrationStatus(): Promise<McpIntegrationStatus> {
+  return invoke<McpIntegrationStatus>("get_mcp_integration_status");
+}
+
 export async function installCursorHooks(): Promise<CursorInstallReport> {
   return invoke<CursorInstallReport>("install_cursor_hooks");
 }
@@ -524,6 +552,18 @@ export async function listSourceAvatars(): Promise<Record<string, string>> {
 
 export async function getSourceAvatar(source: string): Promise<AvatarInfo> {
   return invoke<AvatarInfo>("get_source_avatar", { source });
+}
+
+export async function listOriginAvatars(): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>("list_origin_avatars");
+}
+
+export async function getOriginAvatar(originKind: string): Promise<AvatarInfo> {
+  return invoke<AvatarInfo>("get_origin_avatar", { originKind });
+}
+
+export async function saveOriginAvatar(originKind: string, imageBase64: string): Promise<string> {
+  return invoke<string>("save_origin_avatar", { originKind, imageBase64 });
 }
 
 export async function getVoiceAvatar(provider: string, voiceId: string): Promise<AvatarInfo> {
