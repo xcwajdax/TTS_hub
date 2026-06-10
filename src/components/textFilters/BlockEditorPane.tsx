@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import BlockList from "../editor/BlockList";
+import type { Editor } from "@tiptap/react";
+import EditorFormatToolbar from "../editor/EditorFormatToolbar";
 import RichTextEditor from "../editor/RichTextEditor";
 import { blocksToPlainText, markdownToHtml, plainTextToDoc } from "../editor/blockTransform";
 import type { BlockDoc } from "../editor/types";
@@ -14,7 +15,7 @@ interface Props {
   onBlockDocChange: (doc: BlockDoc) => void;
   onEnterWithCtrl?: () => void;
   placeholder?: string;
-  floatingAction?: ReactNode;
+  footerAction?: ReactNode;
 }
 
 export function blockDocToSourceText(doc: BlockDoc): string {
@@ -49,17 +50,9 @@ export default function BlockEditorPane({
   onBlockDocChange,
   onEnterWithCtrl,
   placeholder,
-  floatingAction,
+  footerAction,
 }: Props) {
-  const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
-
-  const excludedIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const b of blockDoc.blocks) {
-      if (!b.included) ids.add(b.id);
-    }
-    return ids;
-  }, [blockDoc.blocks]);
+  const [editor, setEditor] = useState<Editor | null>(null);
 
   const initialHtml = useMemo(() => {
     const src = blockDocToSourceText(blockDoc);
@@ -67,33 +60,22 @@ export default function BlockEditorPane({
     return markdownToHtml(src);
   }, []);
 
-  const toggleBlock = (id: string) => {
-    onBlockDocChange({
-      blocks: blockDoc.blocks.map((b) =>
-        b.id === id ? { ...b, included: !b.included } : b,
-      ),
-    });
-  };
-
   return (
-    <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden gap-2">
-      <BlockList
-        className="w-44 shrink-0 min-h-0 overflow-y-auto border border-border rounded-lg bg-panel2"
-        blocks={blockDoc.blocks}
-        onToggle={toggleBlock}
-        onFocusBlock={setFocusBlockId}
-      />
+    <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden border border-border rounded-lg bg-panel2">
+      <EditorFormatToolbar editor={editor} />
       <RichTextEditor
         value={blockDoc}
         initialHtml={initialHtml}
-        excludedBlockIds={excludedIds}
-        focusBlockId={focusBlockId}
-        onBlockFocused={() => setFocusBlockId(null)}
         onChange={onBlockDocChange}
         onEnterWithCtrl={onEnterWithCtrl}
         placeholder={placeholder}
-        floatingAction={floatingAction}
+        onEditorReady={setEditor}
       />
+      {footerAction ? (
+        <div className="shrink-0 flex items-center justify-end gap-2 px-3 py-2 border-t border-border bg-panel2/80">
+          {footerAction}
+        </div>
+      ) : null}
     </div>
   );
 }

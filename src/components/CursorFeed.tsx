@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import type { Generation } from "../types";
 import { useRelativeTime } from "../hooks/useRelativeTime";
+import {
+  historyItemSurfaceStyle,
+  resolveHistoryItemColor,
+} from "../lib/historySourceUi";
 
 interface Props {
   /** All cursor/cursor-skill rows in current session (any status). */
@@ -60,13 +64,17 @@ function FeedRow({
 }) {
   const rel = useRelativeTime(gen.created_at);
   const label = gen.title ?? gen.summary_text ?? gen.text.slice(0, 80);
+  const accentColor = resolveHistoryItemColor(gen);
   return (
     <li>
       <button
         type="button"
-        className={`w-full text-left px-2 py-1.5 rounded text-xs border ${
-          isCurrent ? "border-accent bg-panel2" : "border-border bg-panel/60 hover:bg-panel2"
+        className={`history-item history-item--compact w-full text-left px-2 py-1.5 rounded-md text-xs border ${
+          isCurrent
+            ? "history-item--current border-accent bg-panel2"
+            : "border-border hover:brightness-110"
         }`}
+        style={historyItemSurfaceStyle(accentColor, isCurrent)}
         onClick={() => onPlay(gen)}
         title={gen.conversation_id ? `conv ${gen.conversation_id}` : undefined}
       >

@@ -94,6 +94,9 @@ export interface TrackedJob {
   text: string;
   source?: GenerationSource;
   provider?: string | null;
+  voice_profile_id?: string | null;
+  origin_kind?: string | null;
+  origin_user_name?: string | null;
 }
 
 interface JobPhasePayload {
@@ -163,6 +166,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const trackEnqueued = useCallback((gen: Generation) => {
+    if (gen.status === "pending_approval" || gen.status === "rejected") return;
     const samples = loadSamples();
     const chars = (gen.text ?? "").length;
     const now = performance.now();
@@ -181,6 +185,9 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         text: gen.text,
         source: gen.source,
         provider: gen.provider ?? null,
+        voice_profile_id: gen.voice_profile_id ?? null,
+        origin_kind: gen.origin_kind ?? null,
+        origin_user_name: gen.origin_user_name ?? null,
       },
     }));
     setLatestId(gen.id);

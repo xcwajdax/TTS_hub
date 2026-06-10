@@ -26,7 +26,7 @@ $ExamplePath = Join-Path $SkillRoot 'config.json.example'
 $WorkDir = Join-Path $env:TEMP 'cursor-tts-skill'
 $LogFile = Join-Path $WorkDir 'cursor-tts-skill.log'
 $DedupeFile = Join-Path $WorkDir 'last-summary.sha1'
-$DefaultMinimaxVoice = 'robert_maklowicz'
+$DefaultMinimaxVoice = 'Polish_female_1_sample1'
 $DefaultMinimaxLanguage = 'pl'
 
 if (-not (Test-Path $WorkDir)) {

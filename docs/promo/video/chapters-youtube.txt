@@ -1,0 +1,10 @@
+# Rozdziały YouTube — wklej do opisu filmu (linie zaczynające się od timestampu)
+
+0:00 Intro
+0:21 Twórca treści
+0:57 Developer i API
+1:30 Integracja Cursor
+1:55 Pobierz TTS Hub
+
+# Lub zaimportuj w YouTube Studio → Rozdziały
+

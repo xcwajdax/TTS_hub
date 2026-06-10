@@ -32,6 +32,10 @@ import {
 
   type VoiceBoxProfile,
 
+  type ProviderUsage,
+
+  getProviderUsage,
+
 } from "../api/tauri";
 
 import { DEFAULT_MINIMAX_LANGUAGE } from "../appSettings";
@@ -480,6 +484,8 @@ export default function TtsPresetFields({
 
         </select>
 
+        <ProviderUsageBadge provider={state.provider} />
+
       </label>
 
 
@@ -846,3 +852,50 @@ export default function TtsPresetFields({
 }
 
 
+// === local per-provider usage counter (2026-06-07) ===
+// Small inline badge rendered under the provider dropdown. Calls the
+// `get_provider_usage` Tauri command on mount and on `provider` change, then
+// shows "minimax: 4.1k tokens / 24h" (or "0" for never-used providers).
+// Errors are swallowed silently — usage is purely informational.
+
+function formatTokenBadge(tokens: number): string {
+  const abs = Math.abs(tokens);
+  if (abs >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
+  return tokens.toString();
+}
+
+function ProviderUsageBadge({ provider }: { provider: string }) {
+  const [usage, setUsage] = useState<ProviderUsage | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const u = await getProviderUsage(provider);
+        if (!cancelled) setUsage(u);
+      } catch {
+        // Swallow — this badge is purely informational.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [provider]);
+
+  if (!usage) {
+    return (
+      <span className="text-[10px] text-muted/70 mt-0.5">…</span>
+    );
+  }
+
+  const label = `${provider}: ${formatTokenBadge(usage.last_24h_chars)} znaków · ${formatTokenBadge(usage.last_24h_generations)} gen / 24h`;
+  return (
+    <span
+      className="tag tabular-nums shrink-0 mt-0.5 self-start"
+      title={`Lokalny licznik: ${usage.total_chars} znaków, ${usage.total_tokens_est} est. tokenów, ${usage.total_generations} wygenerowań (łącznie). Ostatnie 24h: ${usage.last_24h_chars} znaków, ${usage.last_24h_generations} gen. as_of=${usage.as_of}`}
+    >
+      {label}
+    </span>
+  );
+}

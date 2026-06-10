@@ -13,11 +13,14 @@ use tauri::AppHandle;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::audio::AudioFormat;
+use crate::app_settings::{PROVIDER_GOOGLE, PROVIDER_MINIMAX, PROVIDER_VOICEBOX};
 use crate::commands::{
-    create_folder_impl, delete_folder_impl, delete_folder_rule_impl, do_archive, enqueue_request,
-    list_folder_rules_impl, list_folders_impl, minimax_clone_voice_impl, move_to_folder_impl,
-    rename_folder_impl, sync_minimax_voices_impl, upsert_folder_rule_impl, GenerateReq,
+    approve_generation_ids, create_folder_impl, delete_folder_impl, delete_folder_rule_impl,
+    do_archive, enqueue_request, list_folder_rules_impl, list_folders_impl,
+    minimax_clone_voice_impl, move_to_folder_impl, reject_generation_ids, rename_folder_impl,
+    sync_minimax_voices_impl, upsert_folder_rule_impl, GenerateReq,
 };
+use crate::db::STATUS_PENDING_APPROVAL;
 use crate::cursor_integration::{self, TtsHubExportedConfig};
 use crate::db::{Folder, FolderRule, FolderRuleInput, Generation};
 use crate::google::VOICES;
@@ -60,6 +63,15 @@ struct JobsQuery {
     scope: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct UsageQuery {
+    /// If set, return only this provider. If absent, return all enabled providers.
+    provider: Option<String>,
+    /// Reserved for future use — only `24h` is implemented right now.
+    #[serde(default)]
+    window: Option<String>,
+}
+
 pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -88,6 +100,8 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         .route("/folder-rules/:id", delete(folder_rules_delete_http))
         .route("/audio/:id", get(audio))
         .route("/jobs", get(jobs_list))
+        .route("/jobs/approve", post(jobs_approve))
+        .route("/jobs/reject", post(jobs_reject))
         .route("/jobs/:id", get(job_get).delete(job_discard))
         .route("/jobs/:id/cancel", post(job_cancel))
         .route("/jobs/:id/resume", post(job_resume))
@@ -115,6 +129,29 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
             "/plugins/soundboard/slots/:index/audio",
             get(soundboard_slot_audio),
         )
+        // === chat-window extension (2026-06-06) ===
+        .route("/chat/sessions", get(chat_list_sessions_http).post(chat_create_session_http))
+        .route(
+            "/chat/sessions/:id",
+            get(chat_get_session_http)
+                .patch(chat_update_session_http)
+                .delete(chat_delete_session_http),
+        )
+        .route(
+            "/chat/sessions/:id/messages",
+            get(chat_list_messages_http).post(chat_add_message_http),
+        )
+        .route("/chat/sessions/:id/replay/:message_id", post(chat_replay_message_http))
+        .route("/chat/sources", get(chat_list_sources_http))
+        // === local per-provider usage counter (2026-06-07) ===
+        // NOTE: deliberately NO /usage/remaining endpoint — MiniMax API has no
+        // quota signal; see the IMPORTANT block in src-tauri/src/minimax.rs.
+        .route("/usage", get(usage_http))
+        // === origin attribution (2026-06-07) — additive ===
+        // List generations whose `origin_kind` matches `?kind=…` (free-form,
+        // e.g. "telegram", "discord", "webhook", "cli"). Useful for the
+        // Telegram bot to query its own history.
+        .route("/generations/by-origin", get(generations_by_origin_http))
         .with_state(state)
         .layer(Extension(app_handle))
         .layer(cors);
@@ -151,6 +188,89 @@ async fn voicebox_models(State(state): State<AppArc>) -> Response {
     match state.voicebox.list_tts_models().await {
         Ok(models) => Json(models).into_response(),
         Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+// === local per-provider usage counter (2026-06-07) ===
+//
+// GET /usage?provider=minimax&window=24h  → one ProviderUsage
+// GET /usage                              → list of every provider we have
+//                                           ever seen in the generations table,
+//                                           sorted alphabetically by name.
+//
+// We deliberately do NOT expose /usage/remaining — there is no real
+// upstream signal to read. See the IMPORTANT block in src-tauri/src/minimax.rs.
+async fn usage_http(
+    State(state): State<AppArc>,
+    Query(q): Query<UsageQuery>,
+) -> Response {
+    let now = chrono::Utc::now().timestamp();
+    // `window` is reserved for future use; the only window we have right now
+    // is 24h. We accept the param and validate it lightly so we can extend
+    // to "1h" / "7d" later without a breaking change.
+    if let Some(w) = q.window.as_deref() {
+        if !w.is_empty() && w != "24h" {
+            return json_err(
+                StatusCode::BAD_REQUEST,
+                format!("unsupported window '{w}' (only '24h' is implemented)"),
+            );
+        }
+    }
+
+    if let Some(provider) = q.provider.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        // Single-provider mode.
+        let p_norm = provider.to_ascii_lowercase();
+        if !matches!(
+            p_norm.as_str(),
+            PROVIDER_GOOGLE | PROVIDER_VOICEBOX | PROVIDER_MINIMAX
+        ) {
+            return json_err(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "unknown provider '{provider}' (allowed: {PROVIDER_GOOGLE}, {PROVIDER_VOICEBOX}, {PROVIDER_MINIMAX})"
+                ),
+            );
+        }
+        match crate::usage::compute_usage(&state.db, &p_norm, now) {
+            Ok(u) => Json(u).into_response(),
+            Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        }
+    } else {
+        // Multi-provider mode: every distinct provider we have ever recorded.
+        match crate::usage::compute_all_providers(&state.db, now) {
+            Ok(list) => Json(list).into_response(),
+            Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        }
+    }
+}
+
+// === origin attribution (2026-06-07) ===
+//
+// GET /generations/by-origin?kind=telegram&limit=50
+//
+// Returns the most recent generations tagged with the given `origin_kind`
+// (free-form). The kind is whatever an external caller put in the
+// `origin.kind` field of the GenerateReq it sent to /generate — typically
+// "telegram", "discord", "webhook", or "cli".
+#[derive(Debug, Deserialize)]
+struct ByOriginQuery {
+    kind: String,
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+async fn generations_by_origin_http(
+    State(state): State<AppArc>,
+    Query(q): Query<ByOriginQuery>,
+) -> Response {
+    let kind = q.kind.trim();
+    if kind.is_empty() {
+        return json_err(StatusCode::BAD_REQUEST, "kind is required");
+    }
+    let lim = q.limit.unwrap_or(100).clamp(1, 1000);
+    match state.db.list_by_origin_kind(kind, lim) {
+        Ok(list) => Json(list).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
 }
 
@@ -257,17 +377,45 @@ async fn jobs_list(State(state): State<AppArc>, Query(q): Query<JobsQuery>) -> R
         "active" => &["queued", "running"],
         "interrupted" => &["interrupted"],
         "failed" => &["failed"],
-        "all" => &["queued", "running", "interrupted", "failed", "cancelled"],
+        "pending_approval" => &[STATUS_PENDING_APPROVAL],
+        "all" => &[
+            "queued",
+            "running",
+            "interrupted",
+            "failed",
+            "cancelled",
+            STATUS_PENDING_APPROVAL,
+            "rejected",
+        ],
         _ => {
             return json_err(
                 StatusCode::BAD_REQUEST,
-                "scope must be active|interrupted|failed|all",
+                "scope must be active|interrupted|failed|pending_approval|all",
             )
         }
     };
     match state.db.list_by_statuses(statuses) {
         Ok(list) => Json::<Vec<Generation>>(list).into_response(),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkJobIds {
+    ids: Vec<String>,
+}
+
+async fn jobs_approve(State(state): State<AppArc>, Json(body): Json<BulkJobIds>) -> Response {
+    match approve_generation_ids(&state, &body.ids) {
+        Ok(result) => Json(result).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn jobs_reject(State(state): State<AppArc>, Json(body): Json<BulkJobIds>) -> Response {
+    match reject_generation_ids(&state, &body.ids) {
+        Ok(result) => Json(result).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
 
@@ -442,12 +590,13 @@ async fn history(State(state): State<AppArc>, Query(q): Query<HistoryQuery>) -> 
     let scope = q.scope.unwrap_or_else(|| "session".to_string());
     let res = match scope.as_str() {
         "session" => state.db.list_temp_history(),
+        "bots" => state.db.list_bots_feed(50),
         "archive" => match q.folder_id.as_deref() {
             Some("__all__") | None => state.db.list_archive(),
             Some("__none__") => state.db.list_generations_in_folder(None),
             Some(fid) => state.db.list_generations_in_folder(Some(fid)),
         },
-        _ => return json_err(StatusCode::BAD_REQUEST, "scope must be session|archive"),
+        _ => return json_err(StatusCode::BAD_REQUEST, "scope must be session|archive|bots"),
     };
     match res {
         Ok(list) => Json::<Vec<Generation>>(list).into_response(),
@@ -866,4 +1015,136 @@ async fn audio(
     };
     let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     audio_bytes_response(bytes, mime, range)
+}
+
+// ============================================================================
+// chat-window HTTP handlers (2026-06-06)
+// ============================================================================
+
+use crate::chat::types::{AddMessageReq, CreateSessionReq, UpdateSessionReq};
+
+fn chat_err(e: impl std::fmt::Display) -> Response {
+    json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+}
+
+async fn chat_create_session_http(
+    State(state): State<AppArc>,
+    Json(req): Json<CreateSessionReq>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::create_session(&conn, &req.source, req.title.as_deref()) {
+        Ok(s) => Json(s).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_list_sessions_http(
+    State(state): State<AppArc>,
+    Query(q): Query<ChatListQuery>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::list_sessions(
+        &conn,
+        q.source.as_deref(),
+        q.saved_only.unwrap_or(false),
+    ) {
+        Ok(s) => Json(s).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_get_session_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::get_session(&conn, &id) {
+        Ok(Some(s)) => Json(s).into_response(),
+        Ok(None) => json_err(StatusCode::NOT_FOUND, "session not found"),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_update_session_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateSessionReq>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::update_session(&conn, &id, req.title.as_deref(), req.is_saved) {
+        Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_delete_session_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::delete_session(&conn, &id) {
+        Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_list_messages_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::list_messages(&conn, &id) {
+        Ok(m) => Json(m).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_add_message_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+    Json(req): Json<AddMessageReq>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::add_message(
+        &conn,
+        &id,
+        &req.role,
+        &req.content,
+        req.generation_id.as_deref(),
+        req.voice_profile_id.as_deref(),
+    ) {
+        Ok(m) => Json(m).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_replay_message_http(
+    State(state): State<AppArc>,
+    Path((session_id, message_id)): Path<(String, String)>,
+) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::message_generation_id(&conn, &message_id) {
+        Ok(Some(gid)) => Json(serde_json::json!({
+            "session_id": session_id,
+            "message_id": message_id,
+            "generation_id": gid,
+        }))
+        .into_response(),
+        Ok(None) => json_err(StatusCode::NOT_FOUND, "message has no audio"),
+        Err(e) => chat_err(e),
+    }
+}
+
+async fn chat_list_sources_http(State(state): State<AppArc>) -> Response {
+    let conn = state.db.conn();
+    match crate::chat::db::list_recent_sources(&conn, 30 * 24 * 3600 * 1000) {
+        Ok(s) => Json(s).into_response(),
+        Err(e) => chat_err(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatListQuery {
+    source: Option<String>,
+    saved_only: Option<bool>,
 }

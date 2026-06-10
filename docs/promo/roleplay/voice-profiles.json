@@ -1,0 +1,69 @@
+{
+  "description": "Profile głosów dla filmu promocyjnego. Zaimportuj przez setup-roleplay-promo.ps1 lub dodaj ręcznie w Ustawienia → Profile głosów.",
+  "profiles": [
+    {
+      "id": "promo-vp-lektor-001",
+      "name": "Promo — Lektor",
+      "provider": "google",
+      "model": "gemini-2.5-flash-preview-tts",
+      "voice": "Kore",
+      "style": "Powiedz pewnie i zwięźle po polsku, ton prezentera:",
+      "profile_id": null,
+      "language": null,
+      "engine": null,
+      "minimax_speed": null,
+      "minimax_vol": null,
+      "minimax_pitch": null,
+      "multi_speaker": false,
+      "speakers": []
+    },
+    {
+      "id": "promo-vp-tworca-001",
+      "name": "Promo — Twórca",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_female_1_sample1",
+      "style": null,
+      "profile_id": null,
+      "language": "pl",
+      "engine": null,
+      "minimax_speed": 1,
+      "minimax_vol": 1,
+      "minimax_pitch": 0,
+      "multi_speaker": false,
+      "speakers": []
+    },
+    {
+      "id": "promo-vp-developer-001",
+      "name": "Promo — Developer",
+      "provider": "google",
+      "model": "gemini-2.5-flash-preview-tts",
+      "voice": "Charon",
+      "style": "Powiedz spokojnie i rzeczowo po polsku, ton techniczny:",
+      "profile_id": null,
+      "language": null,
+      "engine": null,
+      "minimax_speed": null,
+      "minimax_vol": null,
+      "minimax_pitch": null,
+      "multi_speaker": false,
+      "speakers": []
+    },
+    {
+      "id": "promo-vp-cursor-001",
+      "name": "Promo — Cursor",
+      "provider": "minimax",
+      "model": "speech-2.8-hd",
+      "voice": "Polish_male_1_sample4",
+      "style": null,
+      "profile_id": null,
+      "language": "pl",
+      "engine": null,
+      "minimax_speed": 1,
+      "minimax_vol": 1,
+      "minimax_pitch": 0,
+      "multi_speaker": false,
+      "speakers": []
+    }
+  ]
+}

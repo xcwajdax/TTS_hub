@@ -224,6 +224,10 @@ pub struct AppSettings {
     pub editor_quick_gen: EditorQuickGenSettings,
     #[serde(default)]
     pub voice_profiles: Vec<TtsVoiceProfile>,
+    /// When set, incoming generation requests (except roleplay / quick hotkeys)
+    /// are forced through this saved voice profile regardless of caller params.
+    #[serde(default)]
+    pub reroute_voice_profile_id: Option<String>,
     #[serde(default)]
     pub quick_setup_completed: bool,
     #[serde(default)]
@@ -238,6 +242,16 @@ pub struct AppSettings {
     /// Main playback bar waveform: bars | bars-detailed | line
     #[serde(default = "default_timeline_view")]
     pub timeline_view: String,
+    /// When true, new generations are held for user approval before synthesis.
+    #[serde(default)]
+    pub safe_mode: bool,
+    /// Expand the queue panel and switch to approval tab when a pending item arrives.
+    #[serde(default = "default_safe_mode_auto_open_queue")]
+    pub safe_mode_auto_open_queue: bool,
+}
+
+fn default_safe_mode_auto_open_queue() -> bool {
+    true
 }
 
 fn default_minimax_enabled_languages() -> Vec<String> {
@@ -298,6 +312,7 @@ impl Default for AppSettings {
             quick_hotkeys: QuickHotkeysSettings::default(),
             editor_quick_gen: EditorQuickGenSettings::default(),
             voice_profiles: Vec::new(),
+            reroute_voice_profile_id: None,
             quick_setup_completed: false,
             enabled_providers: Vec::new(),
             minimax_enabled_languages: default_minimax_enabled_languages(),
@@ -305,6 +320,8 @@ impl Default for AppSettings {
             minimax_api_key: None,
             temp_history_max: default_temp_history_max(),
             timeline_view: default_timeline_view(),
+            safe_mode: false,
+            safe_mode_auto_open_queue: default_safe_mode_auto_open_queue(),
         }
     }
 }
@@ -447,6 +464,14 @@ impl AppSettings {
         self.quick_hotkeys.normalize();
         self.editor_quick_gen.normalize();
         normalize_voice_profiles(&mut self.voice_profiles);
+        if let Some(id) = self.reroute_voice_profile_id.take() {
+            let trimmed = id.trim().to_string();
+            if trimmed.is_empty() || !self.voice_profiles.iter().any(|p| p.id == trimmed) {
+                self.reroute_voice_profile_id = None;
+            } else {
+                self.reroute_voice_profile_id = Some(trimmed);
+            }
+        }
         self.voicebox_base_url = normalize_optional_path(self.voicebox_base_url.take());
         self.minimax_api_key = self
             .minimax_api_key

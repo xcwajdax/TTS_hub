@@ -15,6 +15,7 @@ pub struct AppPaths {
     pub skin_registry_cache: PathBuf,
     pub plugins: PathBuf,
     pub soundboard_storage: PathBuf,
+    pub roleplay_projects: PathBuf,
     pub db: PathBuf,
 }
 
@@ -31,6 +32,7 @@ impl AppPaths {
         let skin_registry_cache = root.join("skin_registry_cache");
         let plugins = root.join("plugins");
         let soundboard_storage = plugins.join("soundboard");
+        let roleplay_projects = root.join("roleplay");
         let db = root.join("history.db");
 
         std::fs::create_dir_all(&root)?;
@@ -42,6 +44,7 @@ impl AppPaths {
         std::fs::create_dir_all(&skin_registry_cache)?;
         std::fs::create_dir_all(&plugins)?;
         std::fs::create_dir_all(&soundboard_storage)?;
+        std::fs::create_dir_all(&roleplay_projects)?;
 
         Ok(Self {
             root,
@@ -54,6 +57,7 @@ impl AppPaths {
             skin_registry_cache,
             plugins,
             soundboard_storage,
+            roleplay_projects,
             db,
         })
     }

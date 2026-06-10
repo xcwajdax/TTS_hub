@@ -19,11 +19,14 @@ import {
   savePlaybackRate,
   type PlaybackRate,
 } from "../lib/playbackPrefs";
+import { loadPlainTextIntoEditor } from "../lib/editorTextLoad";
 import type { Generation } from "../types";
 
 export interface SelectOptions {
   /** When false, playback switches without loading source text into the editor. */
   loadEditorText?: boolean;
+  /** When false, loads audio into timeline without starting playback. Default true. */
+  autoPlay?: boolean;
 }
 
 export interface PlayClipOptions {
@@ -115,6 +118,7 @@ function ensureAudioGraph(audio: HTMLMediaElement): AudioGraph | null {
 
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const skipAutoplayRef = useRef(false);
   const clipAudioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -218,6 +222,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
     setPlaying(false);
 
+    if (skipAutoplayRef.current) {
+      skipAutoplayRef.current = false;
+      audio.load();
+      return;
+    }
+
     const start = () => void playAudio();
     audio.addEventListener("canplay", start, { once: true });
     audio.load();
@@ -228,9 +238,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const select = useCallback((g: Generation, options?: SelectOptions) => {
     if (options?.loadEditorText !== false) {
       setEditorText(g.text);
+      loadPlainTextIntoEditor(g.text);
+    }
+    if (options?.autoPlay === false) {
+      skipAutoplayRef.current = true;
     }
     setCurrent((prev) => {
-      if (prev?.id === g.id) setPlayNonce((n) => n + 1);
+      if (prev?.id === g.id && options?.autoPlay !== false) setPlayNonce((n) => n + 1);
       return g;
     });
   }, []);

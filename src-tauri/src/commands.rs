@@ -13,10 +13,12 @@ use crate::toast_window;
 use crate::text_filters::{self, TextFilterPreset};
 use crate::audio::{convert_audio_file, AudioFormat};
 use crate::avatars::{self, AvatarInfo};
-use crate::cursor_integration::{self, InstallReport, IntegrationStatus, UninstallReport};
+use crate::cursor_integration::{
+    self, InstallReport, IntegrationStatus, McpIntegrationStatus, UninstallReport,
+};
 use crate::db::{
     Folder, FolderRule, FolderRuleInput, Generation, Tag, UsageSummary, STATUS_CANCELLED,
-    STATUS_DONE, STATUS_INTERRUPTED, STATUS_QUEUED,
+    STATUS_DONE, STATUS_INTERRUPTED, STATUS_PENDING_APPROVAL, STATUS_QUEUED, STATUS_REJECTED,
 };
 use crate::google::{GoogleTts, SpeakerConfig, TtsModelInfo, VOICES};
 use crate::minimax::{
@@ -26,6 +28,7 @@ use crate::minimax::{
 use crate::paths::AppPaths;
 use crate::paths::{rename_dir, slugify_name, unique_slug};
 use crate::state::AppState;
+use crate::voice_profiles::apply_reroute_if_configured;
 use crate::voice_samples::{self, VoiceSampleInfo};
 use crate::voicebox::{VoiceBoxHealth, VoiceBoxProfile};
 
@@ -96,6 +99,51 @@ pub struct GenerateReq {
     pub minimax_vol: Option<f32>,
     #[serde(default)]
     pub minimax_pitch: Option<i32>,
+    // === chat-window extension (2026-06-06) — additive, optional ===
+    /// Original user prompt that produced this assistant reply. Stored on
+    /// the generation for context/replay. Does NOT affect TTS output.
+    #[serde(default)]
+    pub original_prompt: Option<String>,
+    /// If set, the generation is also recorded in this chat session. The
+    /// session is auto-created if it doesn't exist.
+    #[serde(default)]
+    pub chat_session_id: Option<String>,
+    /// "assistant" (default) | "user" | "system". Used when adding a chat
+    /// message tied to this generation.
+    #[serde(default)]
+    pub chat_role: Option<String>,
+    // === origin attribution (2026-06-07) — additive, optional ===
+    /// Identifies the external messenger / client that triggered this
+    /// generation. Free-form kind (e.g. "telegram", "discord", "webhook",
+    /// "cli"). Distinct from `chat_session_id`, which is for the
+    /// in-TTShub Chat tab.
+    #[serde(default)]
+    pub origin: Option<GenerationOrigin>,
+    // === voice-profile attribution (2026-06-09) — additive, optional ===
+    /// Id of the saved `TtsVoiceProfile` used for this generation. Snapshot
+    /// at enqueue time and persisted on both `generations.voice_profile_id`
+    /// and (when `chat_session_id` is set) `chat_messages.voice_profile_id`.
+    /// The history and chat UI render this as a badge (avatar + name).
+    #[serde(default)]
+    pub voice_profile_id: Option<String>,
+}
+
+/// Where a generation came from — populated by external callers (Telegram
+/// bot, future Discord/WhatsApp bots, webhook handlers, CLI) when they
+/// invoke `POST /generate`. The kind is free-form so new messengers do not
+/// require a code change.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GenerationOrigin {
+    /// Free-form kind, e.g. "telegram" | "discord" | "webhook" | "cli" | "desktop".
+    pub kind: String,
+    #[serde(default)]
+    pub platform_id: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default)]
+    pub user_name: Option<String>,
+    #[serde(default)]
+    pub thread_id: Option<String>,
 }
 
 fn resolve_filtered_text(mut req: GenerateReq) -> Result<GenerateReq, String> {
@@ -134,6 +182,8 @@ fn synth_text_for_title(req: &GenerateReq) -> &str {
 /// Persist a queued row + push to the worker pool. Returns the queued Generation row.
 /// Used by both the Tauri command and the HTTP /generate endpoint.
 pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, String> {
+    let settings = state.settings.read().map_err(err)?.clone();
+    let req = apply_reroute_if_configured(&settings, req);
     let req = resolve_filtered_text(req)?;
     if req.text.trim().is_empty() {
         return Err("text is empty".into());
@@ -157,6 +207,31 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
     let matched_folder_id = state.db.folder_rule_match(&source).map_err(err)?;
     let request_json = serde_json::to_string(&req).map_err(err)?;
 
+    // === local per-provider usage counter (2026-06-07) ===
+    // Populate provider / char_count / estimated_tokens at enqueue time so the
+    // usage rollups in src-tauri/src/usage.rs are accurate even for jobs that
+    // fail or are cancelled.
+    let eff_provider = req
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("google")
+        .to_ascii_lowercase();
+    let char_count: i64 = req.text.chars().count() as i64;
+    let estimated_tokens: i64 = (char_count + 2) / 3;
+
+    let safe_mode = state
+        .settings
+        .read()
+        .map_err(|e| err(e))?
+        .safe_mode;
+    let initial_status = if safe_mode {
+        STATUS_PENDING_APPROVAL
+    } else {
+        STATUS_QUEUED
+    };
+
     let gen = Generation {
         id: id.clone(),
         created_at: now_ms,
@@ -173,12 +248,12 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         source,
         conversation_id: req.conversation_id.clone(),
         summary_text: req.summary_text.clone(),
-        status: STATUS_QUEUED.to_string(),
+        status: initial_status.to_string(),
         error: None,
         attempts: 0,
         updated_at: now_ms,
         request_json: Some(request_json),
-        provider: req.provider.clone(),
+        provider: Some(eff_provider),
         input_chars: None,
         prompt_tokens: None,
         output_tokens: None,
@@ -186,14 +261,212 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         folder_id: matched_folder_id,
         ui_color: None,
         tag_ids: None,
+        original_prompt: req.original_prompt.clone(),
+        chat_session_id: None, // set after chat message is created below
+        chat_message_id: None,
+        char_count,
+        estimated_tokens,
+        // === origin attribution (2026-06-07) — additive ===
+        // Populated from req.origin so external callers (Telegram bot, future
+        // Discord/WhatsApp bots) can audit which messenger triggered which
+        // generation. NULL for desktop-originated generations that did not
+        // pass an origin block.
+        origin_kind: req.origin.as_ref().map(|o| o.kind.clone()),
+        origin_platform_id: req.origin.as_ref().and_then(|o| o.platform_id.clone()),
+        origin_user_id: req.origin.as_ref().and_then(|o| o.user_id.clone()),
+        origin_user_name: req.origin.as_ref().and_then(|o| o.user_name.clone()),
+        origin_thread_id: req.origin.as_ref().and_then(|o| o.thread_id.clone()),
+        // === voice-profile attribution (2026-06-09) — additive ===
+        // Snapshotted from the request so it survives profile renames and
+        // deletions. NULL when the caller did not specify a saved profile
+        // (one-off TTS, legacy callers, external messengers that don't know
+        // about voice profiles).
+        voice_profile_id: req.voice_profile_id.clone(),
     };
+
+    // === chat-window extension (2026-06-06) ===
+    // If chat_session_id is provided, auto-create the session if it doesn't
+    // exist, then insert a user message (with original_prompt) and an
+    // assistant message (with `text`, generation_id=NULL for now). The
+    // assistant message will be back-linked to this generation after we
+    // enqueue, and the message's `generation_id` will be patched once the
+    // job completes (TODO: job done event hook).
+    if let Some(sid) = req.chat_session_id.as_deref() {
+        let conn = state.db.conn();
+        // Auto-create the session if it doesn't exist (silently — this is
+        // the "auto-detection" feature). Source defaults to "unknown" if
+        // not derivable from the request.
+        if crate::chat::db::get_session(&conn, sid).map_err(err)?.is_none() {
+            let source_name = req
+                .source
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            crate::chat::db::create_session(&conn, &source_name, None).map_err(err)?;
+        }
+        // User message: the original prompt that produced this reply.
+        if let Some(prompt) = req.original_prompt.as_deref() {
+            crate::chat::db::add_message(&conn, sid, "user", prompt, None, None)
+                .map_err(err)?;
+        }
+        // Assistant message: the text being synthesized. generation_id is
+        // back-filled when the job finishes; for now we link via the gen
+        // row's chat_message_id so the message knows its own ID. The
+        // voice_profile_id is snapshotted now (before we move req) so the
+        // bubble can render the badge even before the audio is ready.
+        let assistant_msg = crate::chat::db::add_message(
+            &conn,
+            sid,
+            "assistant",
+            &req.text,
+            None,
+            req.voice_profile_id.as_deref(),
+        )
+        .map_err(err)?;
+        drop(conn);
+        // Stash the resolved session+message IDs on the generation row.
+        let mut gen = gen;
+        gen.chat_session_id = Some(sid.to_string());
+        gen.chat_message_id = Some(assistant_msg.id.clone());
+        state.db.insert(&gen).map_err(err)?;
+        // Back-link the assistant message to this generation id.
+        // We do this with a direct UPDATE because we already created the
+        // message with generation_id=NULL.
+        let conn2 = state.db.conn();
+        let _ = conn2.execute(
+            "UPDATE chat_messages SET generation_id = ?1 WHERE id = ?2",
+            rusqlite::params![gen.id, assistant_msg.id],
+        );
+        if initial_status == STATUS_QUEUED {
+            let queue = state
+                .job_queue()
+                .ok_or_else(|| "job queue not initialized".to_string())?;
+            queue.enqueue(gen.id.clone()).map_err(err)?;
+        } else {
+            emit_pending_approval(state, &gen);
+        }
+        return Ok(gen);
+    }
     state.db.insert(&gen).map_err(err)?;
 
+    if initial_status == STATUS_QUEUED {
+        let queue = state
+            .job_queue()
+            .ok_or_else(|| "job queue not initialized".to_string())?;
+        queue.enqueue(id.clone()).map_err(err)?;
+    } else {
+        emit_pending_approval(state, &gen);
+    }
+    Ok(gen)
+}
+
+fn emit_pending_approval(state: &AppArc, gen: &Generation) {
+    if let Some(app) = state.app_handle.get() {
+        let _ = app.emit("job:pending_approval", gen);
+    }
+}
+
+fn emit_safe_mode_changed(state: &AppArc, enabled: bool) {
+    if let Some(app) = state.app_handle.get() {
+        let _ = app.emit("safe_mode:changed", enabled);
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct BulkApprovalResult {
+    pub approved: usize,
+    pub rejected: usize,
+    pub skipped: usize,
+}
+
+pub(crate) fn approve_generation_ids(
+    state: &AppArc,
+    ids: &[String],
+) -> Result<BulkApprovalResult, String> {
     let queue = state
         .job_queue()
         .ok_or_else(|| "job queue not initialized".to_string())?;
-    queue.enqueue(id.clone()).map_err(err)?;
-    Ok(gen)
+    let mut approved = 0usize;
+    let mut skipped = 0usize;
+    for id in ids {
+        let row = match state.db.get(id).map_err(err)? {
+            Some(g) => g,
+            None => {
+                skipped += 1;
+                continue;
+            }
+        };
+        if row.status != STATUS_PENDING_APPROVAL {
+            skipped += 1;
+            continue;
+        }
+        state.db.mark_queued(id).map_err(err)?;
+        queue.enqueue(id.clone()).map_err(err)?;
+        approved += 1;
+    }
+    Ok(BulkApprovalResult {
+        approved,
+        rejected: 0,
+        skipped,
+    })
+}
+
+pub(crate) fn reject_generation_ids(
+    state: &AppArc,
+    ids: &[String],
+) -> Result<BulkApprovalResult, String> {
+    let mut rejected = 0usize;
+    let mut skipped = 0usize;
+    for id in ids {
+        let row = match state.db.get(id).map_err(err)? {
+            Some(g) => g,
+            None => {
+                skipped += 1;
+                continue;
+            }
+        };
+        if row.status != STATUS_PENDING_APPROVAL {
+            skipped += 1;
+            continue;
+        }
+        state
+            .db
+            .update_status(id, STATUS_REJECTED, None)
+            .map_err(err)?;
+        rejected += 1;
+    }
+    Ok(BulkApprovalResult {
+        approved: 0,
+        rejected,
+        skipped,
+    })
+}
+
+#[tauri::command]
+pub fn set_safe_mode(enabled: bool, state: State<'_, AppArc>) -> Result<bool, String> {
+    {
+        let mut settings = state.settings.write().map_err(err)?;
+        settings.safe_mode = enabled;
+        settings.normalize();
+    }
+    state.persist_settings().map_err(err)?;
+    emit_safe_mode_changed(state.inner(), enabled);
+    Ok(enabled)
+}
+
+#[tauri::command]
+pub fn approve_generations(
+    ids: Vec<String>,
+    state: State<'_, AppArc>,
+) -> Result<BulkApprovalResult, String> {
+    approve_generation_ids(state.inner(), &ids)
+}
+
+#[tauri::command]
+pub fn reject_generations(
+    ids: Vec<String>,
+    state: State<'_, AppArc>,
+) -> Result<BulkApprovalResult, String> {
+    reject_generation_ids(state.inner(), &ids)
 }
 
 #[tauri::command]
@@ -224,11 +497,16 @@ pub fn list_history(
     state: State<'_, AppArc>,
 ) -> Result<Vec<Generation>, String> {
     match scope.as_str() {
-        "session" => state.db.list_temp_history().map_err(err),
+        "session" => {
+            let mut gens = state.db.list_temp_history().map_err(err)?;
+            attach_tag_ids(&state.db, &mut gens)?;
+            Ok(gens)
+        }
         "cursor" => state
             .db
             .list_cursor_feed(&state.session_id, 30)
             .map_err(err),
+        "bots" => state.db.list_bots_feed(50).map_err(err),
         "archive" => {
             let mut gens = match folder_id.as_deref() {
                 Some("__all__") | None => state.db.list_archive().map_err(err)?,
@@ -245,14 +523,41 @@ pub fn list_history(
     }
 }
 
-/// scope: "active" (queued+running) | "interrupted" | "failed" | "all".
+/// List generations filtered by `origin_kind` (free-form, e.g. "telegram",
+/// "discord", "webhook", "cli"). Distinct from the in-TTShub Chat tab:
+/// origin covers external messengers that POSTed to /generate. New in
+/// 2026-06-07 alongside the origin attribution columns.
+#[tauri::command]
+pub fn list_generations_for_origin(
+    origin_kind: String,
+    limit: Option<i64>,
+    state: State<'_, AppArc>,
+) -> Result<Vec<Generation>, String> {
+    let lim = limit.unwrap_or(100).clamp(1, 1000);
+    let trimmed = origin_kind.trim();
+    if trimmed.is_empty() {
+        return Err("origin_kind is empty".into());
+    }
+    state.db.list_by_origin_kind(trimmed, lim).map_err(err)
+}
+
+/// scope: "active" (queued+running) | "interrupted" | "failed" | "pending_approval" | "all".
 #[tauri::command]
 pub fn list_jobs(scope: String, state: State<'_, AppArc>) -> Result<Vec<Generation>, String> {
     let statuses: &[&str] = match scope.as_str() {
         "active" => &["queued", "running"],
         "interrupted" => &["interrupted"],
         "failed" => &["failed"],
-        "all" => &["queued", "running", "interrupted", "failed", "cancelled"],
+        "pending_approval" => &[STATUS_PENDING_APPROVAL],
+        "all" => &[
+            "queued",
+            "running",
+            "interrupted",
+            "failed",
+            "cancelled",
+            STATUS_PENDING_APPROVAL,
+            STATUS_REJECTED,
+        ],
         _ => return Err("invalid scope".into()),
     };
     state.db.list_by_statuses(statuses).map_err(err)
@@ -1012,7 +1317,20 @@ pub fn set_app_settings(
     state: State<'_, AppArc>,
     app: AppHandle,
 ) -> Result<AppSettingsView, String> {
+    let prev_safe = state
+        .settings
+        .read()
+        .map_err(err)?
+        .safe_mode;
     state.apply_and_save_settings(settings).map_err(err)?;
+    let next_safe = state
+        .settings
+        .read()
+        .map_err(err)?
+        .safe_mode;
+    if prev_safe != next_safe {
+        emit_safe_mode_changed(state.inner(), next_safe);
+    }
     state.apply_temp_retention().map_err(err)?;
     quick_hotkeys::reload_from_settings(&app, state.inner())?;
     get_app_settings(state)
@@ -1465,6 +1783,28 @@ pub fn get_cursor_integration_status(
     Ok(s)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AppBuildInfo {
+    pub version: String,
+    pub git_hash: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_app_build_info() -> AppBuildInfo {
+    let git_hash = option_env!("GIT_HASH")
+        .map(str::to_string)
+        .filter(|s| !s.is_empty());
+    AppBuildInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        git_hash,
+    }
+}
+
+#[tauri::command]
+pub fn get_mcp_integration_status() -> McpIntegrationStatus {
+    cursor_integration::mcp_status()
+}
+
 #[tauri::command]
 pub fn install_cursor_hooks(
     app: AppHandle,
@@ -1779,6 +2119,40 @@ pub fn list_source_avatars(
 }
 
 #[tauri::command]
+pub fn get_origin_avatar(origin_kind: String, state: State<'_, AppArc>) -> Result<AvatarInfo, String> {
+    let kind = origin_kind.trim();
+    if kind.is_empty() {
+        return Err("origin_kind is required".into());
+    }
+    let paths = read_paths(&state)?;
+    Ok(avatars::origin_avatar_info(&paths, kind))
+}
+
+#[tauri::command]
+pub fn list_origin_avatars(
+    state: State<'_, AppArc>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let paths = read_paths(&state)?;
+    Ok(avatars::list_origin_avatars(&paths))
+}
+
+#[tauri::command]
+pub fn save_origin_avatar(
+    origin_kind: String,
+    image_base64: String,
+    state: State<'_, AppArc>,
+) -> Result<String, String> {
+    let kind = origin_kind.trim();
+    if kind.is_empty() {
+        return Err("origin_kind is required".into());
+    }
+    let paths = read_paths(&state)?;
+    let path = avatars::origin_avatar_path(&paths, kind);
+    avatars::save_avatar_jpeg(&path, &image_base64).map_err(err)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 pub fn get_source_avatar(source: String, state: State<'_, AppArc>) -> Result<AvatarInfo, String> {
     avatars::validate_source(&source).map_err(err)?;
     let paths = read_paths(&state)?;
@@ -2042,4 +2416,26 @@ pub fn play_soundboard_slot(
     app: AppHandle,
 ) -> Result<(), String> {
     crate::plugins::play_soundboard_slot_impl(&app, state.inner(), index)
+}
+
+// === local per-provider usage counter (2026-06-07) ===
+
+/// Roll up one provider's local usage. Returns zeros if the provider has not
+/// been used yet. This is what the UI badge calls.
+#[tauri::command]
+pub fn get_provider_usage(
+    provider: String,
+    state: State<'_, AppArc>,
+) -> Result<crate::usage::ProviderUsage, String> {
+    let now = chrono::Utc::now().timestamp();
+    crate::usage::compute_usage(&state.db, &provider, now).map_err(err)
+}
+
+/// Roll up usage for every provider that has at least one generation.
+#[tauri::command]
+pub fn get_all_usage(
+    state: State<'_, AppArc>,
+) -> Result<Vec<crate::usage::ProviderUsage>, String> {
+    let now = chrono::Utc::now().timestamp();
+    crate::usage::compute_all_providers(&state.db, now).map_err(err)
 }

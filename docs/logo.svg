@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="72" viewBox="0 0 420 72" fill="none" role="img" aria-label="TTS Hub">
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C5CFF"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="8" width="56" height="56" rx="14" fill="url(#brand)"/>
+  <g transform="translate(32 36) rotate(-14) scale(0.34)">
+    <path fill="#F3F4F7" d="M228 268C228 220 266 182 314 182H710C758 182 796 220 796 268V598C796 646 758 684 710 684H392L288 788L312 684H314C266 684 228 646 228 598Z"/>
+    <g transform="translate(512 438) rotate(4)">
+      <rect x="-150" y="-72" width="52" height="138" rx="8" fill="#15171A"/>
+      <rect x="98" y="-72" width="52" height="138" rx="8" fill="#15171A"/>
+      <rect x="-98" y="-128" width="196" height="52" rx="8" fill="#15171A"/>
+      <rect x="-98" y="76" width="196" height="52" rx="8" fill="#15171A"/>
+    </g>
+  </g>
+  <text x="76" y="46" font-family="ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif" font-size="34" font-weight="700" fill="#E6E8EE">TTS Hub</text>
+</svg>

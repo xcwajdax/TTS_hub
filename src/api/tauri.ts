@@ -1,10 +1,12 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import type {
+  AppBuildInfo,
   AppSettings,
   AppSettingsView,
   CursorIntegration,
   CursorIntegrationStatus,
   CursorInstallReport,
+  McpIntegrationStatus,
 } from "../appSettings";
 import type {
   ArchiveFolder,
@@ -34,6 +36,22 @@ export async function listHistory(
   return invoke<Generation[]>("list_history", {
     scope,
     folderId: folderId ?? null,
+  });
+}
+
+/**
+ * List generations filtered by `origin_kind` (free-form, e.g. "telegram",
+ * "discord", "webhook", "cli"). Distinct from listHistory which is scoped
+ * to the in-TTShub session/archive. New in 2026-06-07 — see plan:
+ * ~/.hermes/plans/2026-06-07_071243-ttshub-origin-attribution.md
+ */
+export async function listGenerationsForOrigin(
+  originKind: string,
+  limit?: number,
+): Promise<Generation[]> {
+  return invoke<Generation[]>("list_generations_for_origin", {
+    originKind,
+    limit: limit ?? null,
   });
 }
 
@@ -99,8 +117,45 @@ export async function getTokenUsage(): Promise<UsageSummary> {
   return invoke<UsageSummary>("get_token_usage");
 }
 
+// === local per-provider usage counter (2026-06-07) ===
+export interface ProviderUsage {
+  provider: string;
+  total_chars: number;
+  total_tokens_est: number;
+  total_generations: number;
+  last_24h_chars: number;
+  last_24h_generations: number;
+  as_of: number;
+}
+
+export async function getProviderUsage(provider: string): Promise<ProviderUsage> {
+  return invoke<ProviderUsage>("get_provider_usage", { provider });
+}
+
+export async function getAllUsage(): Promise<ProviderUsage[]> {
+  return invoke<ProviderUsage[]>("get_all_usage");
+}
+
 export async function listJobs(scope: JobScope): Promise<Generation[]> {
   return invoke<Generation[]>("list_jobs", { scope });
+}
+
+export interface BulkApprovalResult {
+  approved: number;
+  rejected: number;
+  skipped: number;
+}
+
+export async function setSafeMode(enabled: boolean): Promise<boolean> {
+  return invoke<boolean>("set_safe_mode", { enabled });
+}
+
+export async function approveGenerations(ids: string[]): Promise<BulkApprovalResult> {
+  return invoke<BulkApprovalResult>("approve_generations", { ids });
+}
+
+export async function rejectGenerations(ids: string[]): Promise<BulkApprovalResult> {
+  return invoke<BulkApprovalResult>("reject_generations", { ids });
 }
 
 export async function cancelJob(id: string): Promise<void> {
@@ -386,6 +441,14 @@ export async function getCursorIntegrationStatus(): Promise<CursorIntegrationSta
   return invoke<CursorIntegrationStatus>("get_cursor_integration_status");
 }
 
+export async function getAppBuildInfo(): Promise<AppBuildInfo> {
+  return invoke<AppBuildInfo>("get_app_build_info");
+}
+
+export async function getMcpIntegrationStatus(): Promise<McpIntegrationStatus> {
+  return invoke<McpIntegrationStatus>("get_mcp_integration_status");
+}
+
 export async function installCursorHooks(): Promise<CursorInstallReport> {
   return invoke<CursorInstallReport>("install_cursor_hooks");
 }
@@ -489,6 +552,18 @@ export async function listSourceAvatars(): Promise<Record<string, string>> {
 
 export async function getSourceAvatar(source: string): Promise<AvatarInfo> {
   return invoke<AvatarInfo>("get_source_avatar", { source });
+}
+
+export async function listOriginAvatars(): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>("list_origin_avatars");
+}
+
+export async function getOriginAvatar(originKind: string): Promise<AvatarInfo> {
+  return invoke<AvatarInfo>("get_origin_avatar", { originKind });
+}
+
+export async function saveOriginAvatar(originKind: string, imageBase64: string): Promise<string> {
+  return invoke<string>("save_origin_avatar", { originKind, imageBase64 });
 }
 
 export async function getVoiceAvatar(provider: string, voiceId: string): Promise<AvatarInfo> {
@@ -606,4 +681,186 @@ export function audioSrc(filePath: string): string {
 
 export function playbackAudioSrc(generationId: string): string {
   return `${LOCAL_API_BASE}/audio/${encodeURIComponent(generationId)}`;
+}
+
+export interface RoleplayProjectSummary {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  status: string;
+  segment_count: number;
+}
+
+export interface RoleplaySegment {
+  id: string;
+  project_id: string;
+  order_index: number;
+  text: string;
+  voice_profile_id: string;
+  color: string;
+  generation_id?: string | null;
+  status: string;
+  retry_count?: number;
+  error?: string | null;
+}
+
+export interface RoleplayProject {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  doc_json: string;
+  palette_json: string;
+  timeline_json: string;
+  status: string;
+  segments: RoleplaySegment[];
+}
+
+export interface SaveRoleplayProjectReq {
+  id: string;
+  name: string;
+  doc_json: string;
+  palette_json: string;
+  timeline_json: string;
+  status: string;
+  segments: Array<{
+    id: string;
+    order_index: number;
+    text: string;
+    voice_profile_id: string;
+    color: string;
+  }>;
+}
+
+export interface RoleplayQueueProgress {
+  project_id: string;
+  total: number;
+  done: number;
+  current_segment_id: string | null;
+  paused: boolean;
+}
+
+export async function roleplayListProjects(): Promise<RoleplayProjectSummary[]> {
+  return invoke("roleplay_list_projects");
+}
+
+export async function roleplayCreateProject(name: string): Promise<RoleplayProject> {
+  return invoke("roleplay_create_project", { name });
+}
+
+export async function roleplayLoadProject(id: string): Promise<RoleplayProject> {
+  return invoke("roleplay_load_project", { id });
+}
+
+export async function roleplaySaveProject(req: SaveRoleplayProjectReq): Promise<RoleplayProject> {
+  return invoke("roleplay_save_project", { req });
+}
+
+export async function roleplayDeleteProject(id: string): Promise<void> {
+  return invoke("roleplay_delete_project", { id });
+}
+
+export async function roleplayUpdateTimeline(projectId: string, timelineJson: string): Promise<void> {
+  return invoke("roleplay_update_timeline", { projectId, timelineJson });
+}
+
+export async function roleplayStartQueue(projectId: string): Promise<RoleplayQueueProgress> {
+  return invoke("roleplay_start_queue", { projectId });
+}
+
+export async function roleplayPauseQueue(projectId: string): Promise<void> {
+  return invoke("roleplay_pause_queue", { projectId });
+}
+
+export async function roleplayResumeQueue(projectId: string): Promise<void> {
+  return invoke("roleplay_resume_queue", { projectId });
+}
+
+export async function roleplayCancelQueue(projectId: string): Promise<void> {
+  return invoke("roleplay_cancel_queue", { projectId });
+}
+
+export async function roleplayGetQueueProgress(projectId: string): Promise<RoleplayQueueProgress> {
+  return invoke("roleplay_get_queue_progress", { projectId });
+}
+
+export async function roleplayRegenerateSegment(
+  projectId: string,
+  segmentId: string,
+): Promise<void> {
+  return invoke("roleplay_regenerate_segment", { projectId, segmentId });
+}
+
+export async function roleplayImportAudio(projectId: string, sourcePath: string): Promise<string> {
+  return invoke("roleplay_import_audio", { projectId, sourcePath });
+}
+
+export async function roleplayWriteMixWav(projectId: string, wavBase64: string): Promise<string> {
+  return invoke("roleplay_write_mix_wav", { projectId, wavBase64 });
+}
+
+export async function roleplayExportMix(
+  wavPath: string,
+  destPath: string,
+  format: string,
+): Promise<string> {
+  return invoke("roleplay_export_mix", { wavPath, destPath, format });
+}
+
+// === chat-window (2026-06-06) ===
+import type {
+  AddMessageReq,
+  ChatMessage,
+  ChatSession,
+} from "../chat/types";
+
+export async function chatCreateSession(
+  source: string,
+  title?: string,
+): Promise<ChatSession> {
+  return invoke<ChatSession>("chat_create_session", { source, title });
+}
+
+export async function chatListSessions(
+  source?: string,
+  savedOnly = false,
+): Promise<ChatSession[]> {
+  return invoke<ChatSession[]>("chat_list_sessions", { source, savedOnly });
+}
+
+export async function chatGetSession(id: string): Promise<ChatSession | null> {
+  return invoke<ChatSession | null>("chat_get_session", { id });
+}
+
+export async function chatUpdateSession(
+  id: string,
+  title?: string | null,
+  isSaved?: boolean,
+): Promise<void> {
+  return invoke<void>("chat_update_session", { id, title, isSaved });
+}
+
+export async function chatDeleteSession(id: string): Promise<void> {
+  return invoke<void>("chat_delete_session", { id });
+}
+
+export async function chatListMessages(sessionId: string): Promise<ChatMessage[]> {
+  return invoke<ChatMessage[]>("chat_list_messages", { sessionId });
+}
+
+export async function chatAddMessage(
+  sessionId: string,
+  req: AddMessageReq,
+): Promise<ChatMessage> {
+  return invoke<ChatMessage>("chat_add_message", { sessionId, ...req });
+}
+
+/** Returns the generation_id (audio file pointer) for a chat message. */
+export async function chatReplayMessage(messageId: string): Promise<string> {
+  return invoke<string>("chat_replay_message", { messageId });
+}
+
+export async function chatListRecentSources(): Promise<[string, number][]> {
+  return invoke<[string, number][]>("chat_list_recent_sources");
 }

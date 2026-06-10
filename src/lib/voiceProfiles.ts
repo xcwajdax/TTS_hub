@@ -129,6 +129,28 @@ export function generationMatchesProfile(
   return gen.voice.trim() === profile.voice.trim();
 }
 
+/**
+ * Resolve a Generation to the TtsVoiceProfile that produced it.
+ *
+ * 1. If `gen.voice_profile_id` is set, look it up by id (the snapshot is
+ *    authoritative — survives profile renames and deletions).
+ * 2. Otherwise fuzzy-match on (provider, model, voice) so legacy rows
+ *    (created before the column existed) still resolve correctly.
+ *
+ * Returns `null` when no profile can be resolved; callers should then
+ * fall back to displaying the raw `gen.voice` string.
+ */
+export function resolveProfileForGeneration(
+  gen: Generation,
+  profiles: TtsVoiceProfile[],
+): TtsVoiceProfile | null {
+  if (gen.voice_profile_id) {
+    const hit = profiles.find((p) => p.id === gen.voice_profile_id);
+    if (hit) return hit;
+  }
+  return profiles.find((p) => generationMatchesProfile(gen, p)) ?? null;
+}
+
 export function oneLinePreview(text: string, maxLen = 72): string {
   const line = text.replace(/\s+/g, " ").trim();
   if (!line) return "";
@@ -161,6 +183,24 @@ export function sortProfilesForChatList(profiles: TtsVoiceProfile[]): TtsVoicePr
     if (tb !== ta) return tb - ta;
     return a.name.localeCompare(b.name, "pl");
   });
+}
+
+export async function setRerouteVoiceProfile(profileId: string | null): Promise<void> {
+  const view = await getAppSettings();
+  await setAppSettings(
+    appSettingsViewToPayload({
+      ...view,
+      reroute_voice_profile_id: profileId,
+    }),
+  );
+  window.dispatchEvent(new Event(VOICE_PROFILES_CHANGED));
+}
+
+export function isRerouteProfile(
+  profileId: string,
+  rerouteVoiceProfileId: string | null | undefined,
+): boolean {
+  return !!rerouteVoiceProfileId?.trim() && rerouteVoiceProfileId === profileId;
 }
 
 export async function touchVoiceProfilePreviews(

@@ -14,6 +14,39 @@ const UPLOAD_URL: &str = "https://api.minimax.io/v1/files/upload";
 const CLONE_URL: &str = "https://api.minimax.io/v1/voice_clone";
 const GET_VOICE_URL: &str = "https://api.minimax.io/v1/get_voice";
 
+// IMPORTANT (verified 2026-06-07 against platform.minimax.io/docs):
+// MiniMax API does NOT expose any endpoint to check quota, usage, balance, or
+// token consumption. Confirmed 404s for /v1/query_account, /v1/account,
+// /v1/account/quota, /v1/usage, /v1/quota, /v1/user_info, /v1/billing,
+// /v1/balance, /v1/get_quota, /v1/get_account_info, /v1/t2a_v2/query_account,
+// /v1/t2a_v2/quota — all return 404 even with valid Authorization header.
+//
+// Reason: MiniMax retired the per-product quota model. There is no longer a
+// "speech quota" — all products (T2A, LLM, video, image, music) draw from a
+// single shared token pool visible only in the platform.minimax.io dashboard.
+// The /v1/get_voice endpoint returns `voice_slots` (cloned-voice count) but
+// no account/token-pool info. The /v1/t2a_v2 HTTP endpoint returns audio
+// with NO X-RateLimit-* or X-Quota-* headers — only generic AWS ALB headers
+// (alb_receive_time, alb_request_id, Trace-Id) and Minimax-Request-Id.
+//
+// The only API-level limits documented are RPM/TPM (per-minute), shown at
+// https://platform.minimax.io/docs/guides/rate-limits. For T2A speech-2.8
+// series the limit is 60 RPM. These are NOT daily quotas and NOT a token
+// pool — they reset every rolling minute.
+//
+// If we want a visible "remaining usage" indicator in the TTShub UI, the
+// only honest options are:
+//   (1) log into platform.minimax.io dashboard (out of TTShub's scope),
+//   (2) add a local counter that tracks tokens we sent ourselves
+//       (an estimate, not the truth — does not count usage from other tools),
+//   (3) try-and-see: fire a tiny request and report the error if MiniMax
+//       returns 429 (cost: 1 token per check).
+//
+// Earlier (pre-2026-06-07) docs/skill notes that quoted "4000 tokens/day,
+// reset 22:00 CET" were WRONG — that number was the OLD per-product speech
+// quota which MiniMax retired when they moved to a shared token pool.
+// Local per-provider usage counter is now in src-tauri/src/usage.rs; /usage HTTP endpoint.
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MinimaxHealth {
     pub configured: bool,

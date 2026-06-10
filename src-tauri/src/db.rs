@@ -50,6 +50,45 @@ pub struct Generation {
     pub ui_color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag_ids: Option<Vec<String>>,
+    // === chat-window extension (2026-06-06) ===
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_message_id: Option<String>,
+    // === local per-provider usage counter (2026-06-07) ===
+    /// Effective synth text character count, populated at enqueue time.
+    #[serde(default)]
+    pub char_count: i64,
+    /// `(char_count + 2) / 3` — MiniMax rule of thumb for Polish (≈3 chars/token).
+    #[serde(default)]
+    pub estimated_tokens: i64,
+    // === external-messenger origin attribution (2026-06-07) ===
+    // Separate layer from the in-TTShub chat columns above. `origin` is
+    // populated by external gateways (Telegram bot, future Discord, etc.)
+    // via `POST /generate`. NULL means "unknown origin" — desktop-UI
+    // generations never set this and stay NULL. The `kind` field is a
+    // free-form short string ("telegram" | "discord" | "webhook" | "cli"
+    // | "desktop" | ...). No validation on it (new messengers shouldn't
+    // require a code change here).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_platform_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_user_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_user_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_thread_id: Option<String>,
+    // === voice-profile attribution (2026-06-09) ===
+    /// Snapshot of the saved voice profile id at generation time. Survives
+    /// deletion/renaming of the profile so history items and chat bubbles can
+    /// still show which voice was used. NULL = no profile (legacy data,
+    /// direct one-off TTS, or external messenger that did not pass it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,7 +155,7 @@ pub struct UsageSummary {
     pub current_session: UsageTotals,
 }
 
-const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color";
+const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id";
 
 fn default_source() -> String {
     "manual".to_string()
@@ -132,12 +171,22 @@ pub const STATUS_DONE: &str = "done";
 pub const STATUS_FAILED: &str = "failed";
 pub const STATUS_INTERRUPTED: &str = "interrupted";
 pub const STATUS_CANCELLED: &str = "cancelled";
+pub const STATUS_PENDING_APPROVAL: &str = "pending_approval";
+pub const STATUS_REJECTED: &str = "rejected";
 
 pub struct Db {
     conn: Mutex<Connection>,
 }
 
 impl Db {
+    /// Acquire a short-lived `MutexGuard` on the underlying `Connection` for
+    /// out-of-`Db` SQL helpers (e.g. `crate::chat::db`).
+    ///
+    /// The caller MUST drop the guard before awaiting or doing long work.
+    pub fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
+        self.conn.lock().unwrap()
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch(
@@ -207,6 +256,61 @@ impl Db {
         );
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN folder_id TEXT", []);
         let _ = conn.execute("ALTER TABLE generations ADD COLUMN ui_color TEXT", []);
+
+        // === chat-window extension (2026-06-06) — additive, idempotent ===
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN original_prompt TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN chat_session_id TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN chat_message_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL", []);
+
+        // === external-messenger origin attribution (2026-06-07) — additive, idempotent ===
+        // All five columns are nullable; no defaults. NULL means "unknown
+        // origin" (desktop-UI generations, pre-migration rows). External
+        // messengers (Telegram bot, etc.) explicitly set these via
+        // `POST /generate`'s optional `origin` block. See `GenerationOrigin`
+        // in commands.rs.
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_kind TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_platform_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_user_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_user_name TEXT", []);
+        let _ = conn.execute("ALTER TABLE generations ADD COLUMN origin_thread_id TEXT", []);
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_generations_origin_kind ON generations(origin_kind, created_at DESC)",
+            [],
+        );
+
+        // === local per-provider usage counter (2026-06-07) — additive, idempotent ===
+        // `provider` column was already added (line above the chat-window block) as nullable.
+        // We keep the nullable form so we never have to rebuild the table.
+        // `char_count` and `estimated_tokens` are populated in enqueue_request (commands.rs):
+        //   char_count = req.text.chars().count()
+        //   estimated_tokens = (char_count + 2) / 3   (MiniMax rule of thumb for Polish)
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN char_count INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN estimated_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_generations_provider ON generations(provider, created_at DESC)",
+            [],
+        );
+
+        // === voice-profile attribution (2026-06-09) — additive, idempotent ===
+        // Snapshot of the saved TtsVoiceProfile id. NULL for legacy rows and
+        // for one-off TTS calls that did not pass `voice_profile_id` in the
+        // request. The history UI and chat bubbles use this column to
+        // resolve and render the profile avatar/name; when NULL they fall
+        // back to fuzzy-matching against (provider, model, voice).
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN voice_profile_id TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_generations_voice_profile ON generations(voice_profile_id, created_at DESC)",
+            [],
+        );
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS folders (
@@ -241,8 +345,62 @@ impl Db {
                 PRIMARY KEY (generation_id, tag_id)
             );
             CREATE INDEX IF NOT EXISTS idx_generation_tags_tag ON generation_tags(tag_id);
+            CREATE TABLE IF NOT EXISTS roleplay_projects (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                doc_json TEXT NOT NULL DEFAULT '{}',
+                palette_json TEXT NOT NULL DEFAULT '[]',
+                timeline_json TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'draft'
+            );
+            CREATE TABLE IF NOT EXISTS roleplay_segments (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES roleplay_projects(id) ON DELETE CASCADE,
+                order_index INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                voice_profile_id TEXT NOT NULL,
+                color TEXT NOT NULL,
+                generation_id TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                error TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_roleplay_segments_project ON roleplay_segments(project_id, order_index);
+
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                title TEXT,
+                created_at INTEGER NOT NULL,
+                last_active_at INTEGER NOT NULL,
+                is_saved INTEGER NOT NULL DEFAULT 0,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                metadata_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_source ON chat_sessions(source, last_active_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_saved ON chat_sessions(is_saved, last_active_at DESC);
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+                content TEXT NOT NULL,
+                generation_id TEXT,
+                created_at INTEGER NOT NULL,
+                order_index INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, order_index ASC);
             "#,
         )?;
+        // === voice-profile attribution on chat bubbles (2026-06-09) — additive, idempotent ===
+        // Mirrors generations.voice_profile_id so the chat UI can render the
+        // voice profile avatar/name in the bubble header. Populated by
+        // enqueue_request and by the roleplay segment pipeline.
+        let _ = conn.execute(
+            "ALTER TABLE chat_messages ADD COLUMN voice_profile_id TEXT",
+            [],
+        );
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -251,7 +409,7 @@ impl Db {
     pub fn insert(&self, g: &Generation) -> Result<()> {
         let c = self.conn.lock().unwrap();
         c.execute(
-            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
+            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33)",
             params![
                 g.id,
                 g.created_at,
@@ -275,6 +433,17 @@ impl Db {
                 g.request_json,
                 g.folder_id,
                 g.ui_color,
+                g.original_prompt,
+                g.chat_session_id,
+                g.chat_message_id,
+                g.char_count,
+                g.estimated_tokens,
+                g.origin_kind,
+                g.origin_platform_id,
+                g.origin_user_id,
+                g.origin_user_name,
+                g.origin_thread_id,
+                g.voice_profile_id,
             ],
         )?;
         Ok(())
@@ -292,11 +461,11 @@ impl Db {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    /// All non-archived temp history rows across app sessions (tab „Sesja”).
+    /// Tab „Sesja”: all completed generations (temp, archived, and in folders).
     pub fn list_temp_history(&self) -> Result<Vec<Generation>> {
         let c = self.conn.lock().unwrap();
         let sql = format!(
-            "SELECT {GEN_SELECT} FROM generations WHERE status = 'done' AND is_archived = 0 AND folder_id IS NULL ORDER BY created_at DESC"
+            "SELECT {GEN_SELECT} FROM generations WHERE status = 'done' ORDER BY created_at DESC"
         );
         let mut stmt = c.prepare(&sql)?;
         let rows = stmt.query_map([], row_to_gen)?;
@@ -312,6 +481,18 @@ impl Db {
         );
         let mut stmt = c.prepare(&sql)?;
         let rows = stmt.query_map((session_id, lim), row_to_gen)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// External bot feed: generations with `origin_kind` set (any status, all sessions).
+    pub fn list_bots_feed(&self, limit: usize) -> Result<Vec<Generation>> {
+        let c = self.conn.lock().unwrap();
+        let lim = limit.clamp(1, 100) as i64;
+        let sql = format!(
+            "SELECT {GEN_SELECT} FROM generations WHERE origin_kind IS NOT NULL AND TRIM(origin_kind) != '' ORDER BY created_at DESC LIMIT ?1"
+        );
+        let mut stmt = c.prepare(&sql)?;
+        let rows = stmt.query_map([lim], row_to_gen)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -513,6 +694,25 @@ impl Db {
         } else {
             stmt.query_map([], row_to_gen)?
         };
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// List the most recent generations with a given `origin_kind` (free-form,
+    /// e.g. "telegram", "discord"). Used by the bot to audit its own history
+    /// and by the desktop UI to filter external-messenger generations. NULL
+    /// rows (desktop-UI, pre-migration) are excluded.
+    pub fn list_by_origin_kind(
+        &self,
+        origin_kind: &str,
+        limit: i64,
+    ) -> Result<Vec<Generation>> {
+        let c = self.conn.lock().unwrap();
+        let lim = limit.clamp(1, 10_000);
+        let sql = format!(
+            "SELECT {GEN_SELECT} FROM generations WHERE origin_kind = ?1 ORDER BY created_at DESC LIMIT ?2"
+        );
+        let mut stmt = c.prepare(&sql)?;
+        let rows = stmt.query_map((origin_kind, lim), row_to_gen)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -888,6 +1088,17 @@ fn row_to_gen(row: &rusqlite::Row) -> rusqlite::Result<Generation> {
         folder_id: row.get(25)?,
         ui_color: row.get(26)?,
         tag_ids: None,
+        original_prompt: row.get(27)?,
+        chat_session_id: row.get(28)?,
+        chat_message_id: row.get(29)?,
+        char_count: row.get::<_, Option<i64>>(30)?.unwrap_or(0),
+        estimated_tokens: row.get::<_, Option<i64>>(31)?.unwrap_or(0),
+        origin_kind: row.get(32)?,
+        origin_platform_id: row.get(33)?,
+        origin_user_id: row.get(34)?,
+        origin_user_name: row.get(35)?,
+        origin_thread_id: row.get(36)?,
+        voice_profile_id: row.get(37)?,
     })
 }
 
@@ -922,6 +1133,247 @@ fn row_to_folder_rule(row: &rusqlite::Row) -> rusqlite::Result<FolderRule> {
         enabled: row.get::<_, i32>(4)? != 0,
         created_at: row.get(5)?,
     })
+}
+
+fn row_to_roleplay_project(row: &rusqlite::Row) -> rusqlite::Result<crate::roleplay::RoleplayProject> {
+    Ok(crate::roleplay::RoleplayProject {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        created_at: row.get(2)?,
+        updated_at: row.get(3)?,
+        doc_json: row.get(4)?,
+        palette_json: row.get(5)?,
+        timeline_json: row.get(6)?,
+        status: row.get(7)?,
+        segments: Vec::new(),
+    })
+}
+
+fn row_to_roleplay_segment(row: &rusqlite::Row) -> rusqlite::Result<crate::roleplay::RoleplaySegment> {
+    Ok(crate::roleplay::RoleplaySegment {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        order_index: row.get(2)?,
+        text: row.get(3)?,
+        voice_profile_id: row.get(4)?,
+        color: row.get(5)?,
+        generation_id: row.get(6)?,
+        status: row.get(7)?,
+        retry_count: row.get::<_, Option<i64>>(8)?.unwrap_or(0),
+        error: row.get(9)?,
+    })
+}
+
+impl Db {
+    pub fn roleplay_list_projects(&self) -> Result<Vec<crate::roleplay::RoleplayProjectSummary>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT p.id, p.name, p.created_at, p.updated_at, p.status,
+                    (SELECT COUNT(*) FROM roleplay_segments s WHERE s.project_id = p.id) AS segment_count
+             FROM roleplay_projects p
+             ORDER BY p.updated_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(crate::roleplay::RoleplayProjectSummary {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                status: row.get(4)?,
+                segment_count: row.get(5)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn roleplay_create_project(&self, name: &str) -> Result<crate::roleplay::RoleplayProject> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp_millis();
+        let project = crate::roleplay::RoleplayProject {
+            id: id.clone(),
+            name: name.to_string(),
+            created_at: now,
+            updated_at: now,
+            doc_json: r#"{"type":"doc","content":[{"type":"paragraph"}]}"#.to_string(),
+            palette_json: "[]".to_string(),
+            timeline_json: r#"{"tracks":[],"clips":[]}"#.to_string(),
+            status: crate::roleplay::project::PROJECT_STATUS_DRAFT.to_string(),
+            segments: Vec::new(),
+        };
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "INSERT INTO roleplay_projects (id, name, created_at, updated_at, doc_json, palette_json, timeline_json, status)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            params![
+                project.id,
+                project.name,
+                project.created_at,
+                project.updated_at,
+                project.doc_json,
+                project.palette_json,
+                project.timeline_json,
+                project.status,
+            ],
+        )?;
+        Ok(project)
+    }
+
+    pub fn roleplay_get_project(&self, id: &str) -> Result<Option<crate::roleplay::RoleplayProject>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, name, created_at, updated_at, doc_json, palette_json, timeline_json, status
+             FROM roleplay_projects WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map([id], row_to_roleplay_project)?;
+        let mut project = match rows.next() {
+            Some(Ok(p)) => p,
+            Some(Err(e)) => return Err(e.into()),
+            None => return Ok(None),
+        };
+        project.segments = self.roleplay_list_segments_inner(&c, id)?;
+        Ok(Some(project))
+    }
+
+    fn roleplay_list_segments_inner(
+        &self,
+        c: &Connection,
+        project_id: &str,
+    ) -> Result<Vec<crate::roleplay::RoleplaySegment>> {
+        let mut stmt = c.prepare(
+            "SELECT id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error
+             FROM roleplay_segments WHERE project_id = ?1 ORDER BY order_index ASC",
+        )?;
+        let rows = stmt.query_map([project_id], row_to_roleplay_segment)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn roleplay_delete_project(&self, id: &str) -> Result<()> {
+        let c = self.conn.lock().unwrap();
+        c.execute("DELETE FROM roleplay_projects WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn roleplay_save_project(
+        &self,
+        req: &crate::roleplay::project::SaveRoleplayProjectReq,
+    ) -> Result<crate::roleplay::RoleplayProject> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_projects SET name = ?2, updated_at = ?3, doc_json = ?4, palette_json = ?5,
+             timeline_json = ?6, status = ?7 WHERE id = ?1",
+            params![
+                req.id,
+                req.name,
+                now,
+                req.doc_json,
+                req.palette_json,
+                req.timeline_json,
+                req.status,
+            ],
+        )?;
+        c.execute(
+            "DELETE FROM roleplay_segments WHERE project_id = ?1",
+            [&req.id],
+        )?;
+        for seg in &req.segments {
+            c.execute(
+                "INSERT INTO roleplay_segments (id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error)
+                 VALUES (?1,?2,?3,?4,?5,?6,NULL,'pending',0,NULL)",
+                params![
+                    seg.id,
+                    req.id,
+                    seg.order_index,
+                    seg.text,
+                    seg.voice_profile_id,
+                    seg.color,
+                ],
+            )?;
+        }
+        drop(c);
+        self.roleplay_get_project(&req.id)?
+            .ok_or_else(|| anyhow::anyhow!("project not found after save"))
+    }
+
+    pub fn roleplay_update_timeline(&self, project_id: &str, timeline_json: &str) -> Result<()> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_projects SET timeline_json = ?2, updated_at = ?3 WHERE id = ?1",
+            params![project_id, timeline_json, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn roleplay_update_project_status(&self, project_id: &str, status: &str) -> Result<()> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_projects SET status = ?2, updated_at = ?3 WHERE id = ?1",
+            params![project_id, status, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn roleplay_segment_by_generation(
+        &self,
+        generation_id: &str,
+    ) -> Result<Option<crate::roleplay::RoleplaySegment>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error
+             FROM roleplay_segments WHERE generation_id = ?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map([generation_id], row_to_roleplay_segment)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn roleplay_update_segment(
+        &self,
+        seg: &crate::roleplay::RoleplaySegment,
+    ) -> Result<()> {
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_segments SET order_index = ?2, text = ?3, voice_profile_id = ?4, color = ?5,
+             generation_id = ?6, status = ?7, retry_count = ?8, error = ?9 WHERE id = ?1",
+            params![
+                seg.id,
+                seg.order_index,
+                seg.text,
+                seg.voice_profile_id,
+                seg.color,
+                seg.generation_id,
+                seg.status,
+                seg.retry_count,
+                seg.error,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn roleplay_reset_generating_segments(&self) -> Result<()> {
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "UPDATE roleplay_segments SET status = 'pending', generation_id = NULL
+             WHERE status IN ('generating', 'queued')",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub fn roleplay_pending_segments(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<crate::roleplay::RoleplaySegment>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error
+             FROM roleplay_segments WHERE project_id = ?1 AND status = 'pending'
+             ORDER BY order_index ASC",
+        )?;
+        let rows = stmt.query_map([project_id], row_to_roleplay_segment)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
 }
 
 #[cfg(test)]
@@ -1009,6 +1461,17 @@ mod tests {
             folder_id: None,
             ui_color: None,
             tag_ids: None,
+            original_prompt: None,
+            chat_session_id: None,
+            chat_message_id: None,
+            char_count: 0,
+            estimated_tokens: 0,
+            origin_kind: None,
+            origin_platform_id: None,
+            origin_user_id: None,
+            origin_user_name: None,
+            origin_thread_id: None,
+            voice_profile_id: None,
         }
     }
 

@@ -29,6 +29,18 @@ import sourceAllUrl from "../assets/history-icons/source-all.svg?url";
 import viewFullUrl from "../assets/history-icons/view-full.svg?url";
 import viewCompactUrl from "../assets/history-icons/view-compact.svg?url";
 import copyUrl from "../assets/history-icons/copy.svg?url";
+import providerGoogleUrl from "../assets/provider-icons/provider-google.svg?url";
+import providerVoiceboxUrl from "../assets/provider-icons/provider-voicebox.svg?url";
+import providerMinimaxUrl from "../assets/provider-icons/provider-minimax.svg?url";
+import providerAddUrl from "../assets/provider-icons/provider-add.svg?url";
+import providerProfilesUrl from "../assets/provider-icons/provider-profiles.svg?url";
+import tabTtsUrl from "../assets/tab-icons/tab-tts.svg?url";
+import tabRoleplayUrl from "../assets/tab-icons/tab-roleplay.svg?url";
+import tabHistoryUrl from "../assets/tab-icons/tab-history.svg?url";
+import tabMinimaxUrl from "../assets/tab-icons/tab-minimax.svg?url";
+import tabExtensionsUrl from "../assets/tab-icons/tab-extensions.svg?url";
+import tabChatUrl from "../assets/tab-icons/tab-chat.svg?url";
+import tabSettingsUrl from "../assets/tab-icons/tab-settings.svg?url";
 
 /** Slugi z Icons/icons — zawsze wariant `default`, plus history-specific assets. */
 export type IconSlug =
@@ -61,7 +73,19 @@ export type IconSlug =
   | "source-all"
   | "view-full"
   | "view-compact"
-  | "copy";
+  | "copy"
+  | "provider-google"
+  | "provider-voicebox"
+  | "provider-minimax"
+  | "provider-add"
+  | "provider-profiles"
+  | "tab-tts"
+  | "tab-roleplay"
+  | "tab-history"
+  | "tab-minimax"
+  | "tab-extensions"
+  | "tab-chat"
+  | "tab-settings";
 
 export const ICON_SRC: Record<IconSlug, string> = {
   play: playUrl,
@@ -94,4 +118,16 @@ export const ICON_SRC: Record<IconSlug, string> = {
   "view-full": viewFullUrl,
   "view-compact": viewCompactUrl,
   copy: copyUrl,
+  "provider-google": providerGoogleUrl,
+  "provider-voicebox": providerVoiceboxUrl,
+  "provider-minimax": providerMinimaxUrl,
+  "provider-add": providerAddUrl,
+  "provider-profiles": providerProfilesUrl,
+  "tab-tts": tabTtsUrl,
+  "tab-roleplay": tabRoleplayUrl,
+  "tab-history": tabHistoryUrl,
+  "tab-minimax": tabMinimaxUrl,
+  "tab-extensions": tabExtensionsUrl,
+  "tab-chat": tabChatUrl,
+  "tab-settings": tabSettingsUrl,
 };

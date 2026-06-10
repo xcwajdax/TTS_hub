@@ -3,6 +3,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
 import TitleBarAudioOutput from "./TitleBarAudioOutput";
+import TitleBarSafeModeToggle from "./TitleBarSafeModeToggle";
 import TitleBarSkinSwitcher from "./TitleBarSkinSwitcher";
 import { isTauriApp } from "../lib/tauriEnv";
 import { appExit, appRestart } from "../api/tauri";
@@ -13,6 +14,7 @@ type MenuId =
   | "save"
   | "save_as"
   | "settings"
+  | "minimax_voices"
   | "quick_setup"
   | "quick_hotkeys"
   | "soundboard"
@@ -24,6 +26,7 @@ interface MenuEntry {
   id?: MenuId;
   label: string;
   separator?: boolean;
+  disabled?: boolean;
 }
 
 const MENUS: { label: string; items: MenuEntry[] }[] = [
@@ -44,6 +47,7 @@ const MENUS: { label: string; items: MenuEntry[] }[] = [
     label: "Edycja",
     items: [
       { id: "settings", label: "Ustawienia…" },
+      { id: "minimax_voices", label: "Głosy Minimax…" },
       { id: "quick_setup", label: "Szybka konfiguracja…" },
       { id: "quick_hotkeys", label: "Szybkie skróty…" },
       { id: "soundboard", label: "Soundboard…" },
@@ -197,6 +201,7 @@ export default function TitleBar() {
       </div>
 
       <TitleBarAudioOutput />
+      <TitleBarSafeModeToggle />
       <TitleBarSkinSwitcher />
 
       <div className="title-bar__controls">

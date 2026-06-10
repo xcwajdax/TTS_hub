@@ -5,6 +5,7 @@ dist-ssr
 .vscode
 .idea
 src-tauri/target
+target/
 src-tauri/gen
 studios.env
 .env
@@ -12,3 +13,5 @@ studios.env
 *.mp4
 GITHUBSCREENS/
 scripts/dev/*.lnk
+maklowicz_*.mp3
+docs/samples/minimax-grzegorz-braun.mp3

@@ -3,16 +3,13 @@ import { generate, getAppSettings, setAppSettings, type VoiceBoxProfile } from "
 import { syncSaveFormatFromSettings } from "../audioFormats";
 import {
   appSettingsViewToPayload,
-  defaultEditorQuickGenSettings,
   defaultTextFiltersSettings,
   resolveActivePreset,
-  type EditorQuickGenSlot,
   type TextFilterPreset,
   type TextFiltersSettings,
 } from "../appSettings";
 import { usePlayback } from "../context/PlaybackContext";
 import { useJobs, useLatestJobProgress } from "../context/JobsContext";
-import { editorSlotToSettingsState } from "../lib/editorQuickGen";
 import {
   VOICE_PROFILE_GENERATE_EVENT,
   type VoiceProfileGenerateDetail,
@@ -29,7 +26,6 @@ import { isTauriApp } from "../lib/tauriEnv";
 import type { AudioFormat, Generation } from "../types";
 import type { BlockDoc } from "./editor/types";
 import { EMPTY_DOC } from "./editor/types";
-import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import GenerationCostHint from "./GenerationCostHint";
 import type { SettingsState } from "./Settings";
 import GenerationProgressBar from "./GenerationProgress";
@@ -40,29 +36,15 @@ import BlockEditorPane, {
 } from "./textFilters/BlockEditorPane";
 import SynthTextPreview from "./textFilters/SynthTextPreview";
 import TextFiltersBar, { type SettingsTab } from "./textFilters/TextFiltersBar";
-
-type AdvancedTab =
-  | "general"
-  | "usage"
-  | "cursor"
-  | "appearance"
-  | "avatars"
-  | "filters"
-  | "quick_hotkeys"
-  | "organization";
+import { useAppView } from "../context/AppViewContext";
 
 interface Props {
   onGenerated: (g: Generation) => void;
   onError: (e: string) => void;
   settings: SettingsState;
   voiceboxProfiles: VoiceBoxProfile[];
-  settingsOpen?: boolean;
-  onSettingsOpenChange?: (open: boolean) => void;
-  settingsInitialTab?: AdvancedTab;
-  onSettingsInitialTabConsumed?: () => void;
-  onSettingsSuccess?: (message: string) => void;
-  onOrganizationChanged?: () => void;
-  onLocalDataCleared?: () => void;
+  activeVoiceProfileId: string | null;
+  onVoiceProfileChange: (profileId: string | null) => void;
 }
 
 export default function MainPanel({
@@ -70,38 +52,32 @@ export default function MainPanel({
   onError,
   settings,
   voiceboxProfiles,
-  settingsOpen: settingsOpenProp,
-  onSettingsOpenChange,
-  settingsInitialTab,
-  onSettingsInitialTabConsumed,
-  onSettingsSuccess,
-  onOrganizationChanged,
-  onLocalDataCleared,
+  activeVoiceProfileId,
+  onVoiceProfileChange,
 }: Props) {
   const { editorText, setEditorText } = usePlayback();
   const { trackEnqueued, activeJobs, jobs, latestId } = useJobs();
   const progress = useLatestJobProgress();
   const lastReportedJobErrorRef = useRef<string | null>(null);
-  const [advancedOpenLocal, setAdvancedOpenLocal] = useState(false);
-  const advancedOpen = settingsOpenProp ?? advancedOpenLocal;
-  const setAdvancedOpen = onSettingsOpenChange ?? setAdvancedOpenLocal;
-  const [advancedTab, setAdvancedTab] = useState<AdvancedTab>("general");
   const [enqueuing, setEnqueuing] = useState(false);
   const [blockDoc, setBlockDoc] = useState<BlockDoc>(EMPTY_DOC);
   const initialPlainSyncedRef = useRef(false);
+  const { openSettingsTab, goToView } = useAppView();
 
   const [textFilters, setTextFilters] = useState<TextFiltersSettings>(defaultTextFiltersSettings);
   const [filterSession] = useState<TextFiltersSession>(() => loadTextFiltersSession());
   const [appSettingsSnapshot, setAppSettingsSnapshot] = useState<Awaited<
     ReturnType<typeof getAppSettings>
   > | null>(null);
+  const [toast, setLocalToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setLocalToast(null), 3500);
+    return () => window.clearTimeout(id);
+  }, [toast]);
 
   const activePreset = useMemo(() => resolveActivePreset(textFilters), [textFilters]);
-
-  const editorQuickGen = useMemo(
-    () => appSettingsSnapshot?.editor_quick_gen ?? defaultEditorQuickGenSettings(),
-    [appSettingsSnapshot],
-  );
 
   const sourceText = useMemo(
     () => blockDocToFilteredBase(blockDoc, activePreset, filterSession.builtinOverrides),
@@ -142,19 +118,12 @@ export default function MainPanel({
   };
 
   const openSettings = (tab: SettingsTab) => {
-    const map: Record<SettingsTab, AdvancedTab> = {
-      general: "general",
-      quick_hotkeys: "quick_hotkeys",
-      organization: "organization",
-      filters: "filters",
-    };
-    setAdvancedTab(map[tab]);
-    setAdvancedOpen(true);
+    openSettingsTab(tab);
   };
 
   const toggleSaveMode = async () => {
     if (!appSettingsSnapshot) {
-      openSettings("general");
+      goToView("settings");
       return;
     }
     const nextMode = appSettingsSnapshot.save_mode === "auto" ? "manual" : "auto";
@@ -164,7 +133,7 @@ export default function MainPanel({
         save_mode: nextMode,
       });
       setAppSettingsSnapshot(view);
-      onSettingsSuccess?.(
+      setLocalToast(
         nextMode === "auto" ? "Autozapis włączony." : "Tryb ręcznego zapisu włączony.",
       );
     } catch (e) {
@@ -218,22 +187,6 @@ export default function MainPanel({
     window.addEventListener(EDITOR_TEXT_LOAD_EVENT, onLoad);
     return () => window.removeEventListener(EDITOR_TEXT_LOAD_EVENT, onLoad);
   }, [setEditorText]);
-
-  const resolvePresetForGen = (slot: EditorQuickGenSlot): TextFilterPreset => {
-    if (slot.filter_preset_id) {
-      const found = textFilters.presets.find((p) => p.id === slot.filter_preset_id);
-      if (found) {
-        return {
-          ...found,
-          builtins: { ...found.builtins, ...filterSession.builtinOverrides },
-        };
-      }
-    }
-    return {
-      ...activePreset,
-      builtins: { ...activePreset.builtins, ...filterSession.builtinOverrides },
-    };
-  };
 
   const enqueueGeneration = async (
     tts: SettingsState,
@@ -339,16 +292,6 @@ export default function MainPanel({
     });
   };
 
-  const onGenSlot = async (which: "slot1" | "slot2") => {
-    const slot = which === "slot1" ? editorQuickGen.slot1 : editorQuickGen.slot2;
-    const tts = editorSlotToSettingsState(
-      slot,
-      appSettingsSnapshot?.voice_profiles ?? [],
-    );
-    const preset = resolvePresetForGen(slot);
-    await enqueueGeneration(tts, slot.format, preset, slot.voice_profile_id);
-  };
-
   const showProgress = progress.active || progress.phase === "done" || progress.failed;
   const queuedCount = activeJobs.filter((j) => j.status === "queued").length;
   const runningCount = activeJobs.filter((j) => j.status === "running").length;
@@ -384,18 +327,6 @@ export default function MainPanel({
           )}
           <button
             type="button"
-            className="btn px-2.5"
-            onClick={() => {
-              setAdvancedTab("general");
-              setAdvancedOpen(true);
-            }}
-            title="Ustawienia zaawansowane"
-            aria-label="Ustawienia zaawansowane"
-          >
-            ⚙
-          </button>
-          <button
-            type="button"
             className="btn"
             onClick={resetEditor}
             disabled={!hasEditorContent}
@@ -406,43 +337,19 @@ export default function MainPanel({
         </div>
       </div>
 
-      <AdvancedSettingsModal
-        open={advancedOpen}
-        onClose={() => {
-          setAdvancedOpen(false);
-          onSettingsInitialTabConsumed?.();
-        }}
-        initialTab={settingsInitialTab ?? advancedTab}
-        onSaved={() => {
-          onSettingsInitialTabConsumed?.();
-          void syncSaveFormatFromSettings();
-          getAppSettings()
-            .then((view) => {
-              setAppSettingsSnapshot(view);
-              setTextFilters(
-                ensureTextFiltersWithFactory(view.text_filters ?? defaultTextFiltersSettings()),
-              );
-            })
-            .catch((e) => onError(String(e)));
-        }}
-        onError={onError}
-        onSuccess={onSettingsSuccess}
-        onOrganizationChanged={onOrganizationChanged}
-        onLocalDataCleared={onLocalDataCleared}
-      />
-
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-4 gap-2">
         <div className="shrink-0">
           <TextFiltersBar
             settings={textFilters}
             activePreset={activePreset}
-            editorQuickGen={editorQuickGen}
+            ttsSettings={settings}
+            activeVoiceProfileId={activeVoiceProfileId}
             saveMode={appSettingsSnapshot?.save_mode ?? "manual"}
             saveFormat={appSettingsSnapshot?.save_format ?? "wav"}
             onSettingsChange={(next) => void persistTextFilters(next)}
             onPresetUpdate={onPresetUpdate}
             onOpenSettings={openSettings}
-            onGenSlot={(slot) => void onGenSlot(slot)}
+            onVoiceProfileChange={onVoiceProfileChange}
             onSaveModeToggle={() => void toggleSaveMode()}
           />
         </div>
@@ -467,24 +374,31 @@ export default function MainPanel({
             blockDoc={blockDoc}
             onBlockDocChange={setBlockDoc}
             onEnterWithCtrl={() => void onGenerate()}
-            floatingAction={
+            footerAction={
               <button
+                type="button"
                 className="btn-primary"
                 onClick={() => void onGenerate()}
                 disabled={enqueuing || !canGenerate}
-                title="Dodaje do kolejki"
+                title="Dodaje do kolejki (Ctrl+Enter)"
               >
                 {enqueuing ? "Dodawanie..." : "Generuj"}
               </button>
             }
-            placeholder={
-              settings.multiSpeaker
-                ? "Tekst dialogu w blokach (Markdown)…"
-                : "Wklej lub wpisz tekst — widok bogaty z listą bloków…"
-            }
+            placeholder="Wklej lub wpisz tekst do syntezy mowy…"
           />
         </div>
       </div>
+
+      {toast && (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 max-w-md bg-emerald-900/80 border border-emerald-700 text-emerald-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+          onClick={() => setLocalToast(null)}
+          title="Kliknij aby zamknac"
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

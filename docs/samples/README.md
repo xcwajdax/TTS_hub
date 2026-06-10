@@ -8,7 +8,6 @@ Ten sam tekst demo we wszystkich plikach:
 
 | Plik | Provider | Głos |
 |------|----------|------|
-| [minimax-grzegorz-braun.mp3](minimax-grzegorz-braun.mp3) | MiniMax | `grzegorz_braun` (klon — agent Buch) |
 | [minimax-polish-female.mp3](minimax-polish-female.mp3) | MiniMax | `Polish_female_1_sample1` |
 | [minimax-polish-male.mp3](minimax-polish-male.mp3) | MiniMax | `Polish_male_1_sample4` |
 | [google-kore.wav](google-kore.wav) | Google Gemini TTS | `Kore` |
