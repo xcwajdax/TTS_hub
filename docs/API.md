@@ -45,6 +45,7 @@ Serwer startuje automatycznie z aplikacją desktopową.
 ## Soundboard (agent)
 
 Indeksy slotów: `0`–`7`. Domyślne skróty globalne: `Ctrl+Shift+1` … `Ctrl+Shift+8`.
+Stan, pliki i typowe błędy: [VOICE_WORKFLOWS.md](VOICE_WORKFLOWS.md#soundboard).
 
 ```powershell
 # Przypisz generację do slotu 0
