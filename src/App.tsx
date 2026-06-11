@@ -21,8 +21,7 @@ import { syncSaveFormatFromSettings } from "./audioFormats";
 import { useAppMenu } from "./hooks/useAppMenu";
 import { useBroadcastPlaybackViz } from "./hooks/useBroadcastPlaybackViz";
 import { useCursorIntegration } from "./hooks/useCursorIntegration";
-import { usePlaybackToastRemote } from "./hooks/usePlaybackToastRemote";
-import { usePlaybackToastWindow } from "./hooks/usePlaybackToastWindow";
+import { usePlaybackToastBridge } from "./hooks/usePlaybackToastBridge";
 import AppStatusBar from "./components/AppStatusBar";
 import BrowserOnlyBanner from "./components/BrowserOnlyBanner";
 import TitleBar from "./components/TitleBar";
@@ -77,8 +76,6 @@ function AppInner({
   const { current, playing, playNonce, select, audioRef, setEditorText, playClip } = usePlayback();
   const { onDone } = useJobs();
   useBroadcastPlaybackViz();
-  usePlaybackToastWindow();
-  usePlaybackToastRemote();
   const [showRecovery, setShowRecovery] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const {
@@ -94,6 +91,13 @@ function AppInner({
     refreshInterrupted,
   } = useGenerationsHistory(setError);
   const [toast, setToast] = useState<string | null>(null);
+  usePlaybackToastBridge({
+    onHistoryChanged: refresh,
+    onReminder: (title) => {
+      setToast(`Przypomnienie: ${title}`);
+      window.setTimeout(() => setToast(null), 3500);
+    },
+  });
   const [showQuickSetupPrompt, setShowQuickSetupPrompt] = useState(false);
   const [plugins, setPlugins] = useState<PluginManifest[]>(BUILTIN_PLUGIN_STUBS);
   const [enabledProviders, setEnabledProviders] = useState<TtsProviderId[] | undefined>();
@@ -365,6 +369,8 @@ function AppInner({
           onOrganizationChanged={() => void refresh()}
           onLocalDataCleared={() => void refresh()}
           initialTab={settingsTab}
+          activeVoiceProfileId={activeVoiceProfileId}
+          onSelectVoiceProfile={applyVoiceProfile}
         />
         {error && (
           <div

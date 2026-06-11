@@ -8,6 +8,7 @@ import { isTauriApp } from "../lib/tauriEnv";
 import { providerDisplayName } from "../lib/jobProgressUi";
 import type { Generation } from "../types";
 import JobProgressCard from "./JobProgressCard";
+import ToastWindowPanel from "./toast/ToastWindowPanel";
 
 interface CaptureState {
   presetId: string;
@@ -34,53 +35,48 @@ function ToastPanel({
   doneFlash: TrackedJob | null;
   onCancel: (id: string) => void;
 }) {
+  const headerSuffix =
+    quickActive.length > 0 ? ` (${quickActive.length})` : capture ? " (1)" : "";
+
   return (
-    <div className="w-full flex flex-col gap-2 pointer-events-auto">
-      <div className="rounded-lg border border-border/80 bg-panel/95 shadow-2xl shadow-black/50 backdrop-blur-md overflow-hidden">
-        <header className="px-2.5 py-1.5 border-b border-border/60 bg-panel2/80">
-          <h3 className="text-[10px] uppercase tracking-wide text-muted font-medium">
-            Szybki TTS
-            {quickActive.length > 0 ? ` (${quickActive.length})` : capture ? " (1)" : ""}
-          </h3>
-        </header>
-        <div className="p-2 flex flex-col gap-1.5 max-h-[360px] overflow-y-auto">
-          {capture && (
-            <JobProgressCard
-              title={capture.presetName}
-              subtitle="Kopiowanie zaznaczenia (Ctrl+C)"
-              status="capturing"
-              elapsedMs={captureElapsed}
-              etaMs={1200}
-            />
-          )}
-          {quickActive.map((job) => (
-            <JobProgressCard
-              key={job.id}
-              title={job.title?.trim() || job.text.split("\n")[0] || "(bez tytułu)"}
-              subtitle={providerDisplayName(job.provider)}
-              status={job.status}
-              phase={job.phase}
-              provider={job.provider}
-              elapsedMs={job.elapsedMs}
-              etaMs={job.etaMs}
-              error={job.error}
-              onCancel={() => onCancel(job.id)}
-            />
-          ))}
-          {doneFlash && quickActive.length === 0 && !capture && (
-            <JobProgressCard
-              title={doneFlash.title?.trim() || doneFlash.text.split("\n")[0] || "Gotowe"}
-              subtitle={providerDisplayName(doneFlash.provider)}
-              status="done"
-              phase="done"
-              provider={doneFlash.provider}
-              elapsedMs={doneFlash.elapsedMs}
-              etaMs={doneFlash.etaMs}
-            />
-          )}
-        </div>
+    <ToastWindowPanel title={`Szybki TTS${headerSuffix}`}>
+      <div className="flex flex-col gap-1.5 max-h-[360px] overflow-y-auto -m-0.5 p-0.5">
+        {capture && (
+          <JobProgressCard
+            title={capture.presetName}
+            subtitle="Kopiowanie zaznaczenia (Ctrl+C)"
+            status="capturing"
+            elapsedMs={captureElapsed}
+            etaMs={1200}
+          />
+        )}
+        {quickActive.map((job) => (
+          <JobProgressCard
+            key={job.id}
+            title={job.title?.trim() || job.text.split("\n")[0] || "(bez tytułu)"}
+            subtitle={providerDisplayName(job.provider)}
+            status={job.status}
+            phase={job.phase}
+            provider={job.provider}
+            elapsedMs={job.elapsedMs}
+            etaMs={job.etaMs}
+            error={job.error}
+            onCancel={() => onCancel(job.id)}
+          />
+        ))}
+        {doneFlash && quickActive.length === 0 && !capture && (
+          <JobProgressCard
+            title={doneFlash.title?.trim() || doneFlash.text.split("\n")[0] || "Gotowe"}
+            subtitle={providerDisplayName(doneFlash.provider)}
+            status="done"
+            phase="done"
+            provider={doneFlash.provider}
+            elapsedMs={doneFlash.elapsedMs}
+            etaMs={doneFlash.etaMs}
+          />
+        )}
       </div>
-    </div>
+    </ToastWindowPanel>
   );
 }
 

@@ -396,6 +396,17 @@ export async function syncMinimaxVoices(): Promise<MinimaxSyncVoicesResult> {
   return invoke<MinimaxSyncVoicesResult>("sync_minimax_voices");
 }
 
+export interface MinimaxCloneOptions {
+  need_noise_reduction: boolean;
+  need_volume_normalization: boolean;
+  language?: string | null;
+}
+
+export interface MinimaxVoiceDesignResult {
+  voice_id: string;
+  trial_audio_bytes: number[];
+}
+
 export async function minimaxCloneVoice(params: {
   sourcePath: string;
   voiceId: string;
@@ -404,6 +415,7 @@ export async function minimaxCloneVoice(params: {
   previewText: string;
   promptPath?: string | null;
   promptText?: string | null;
+  cloneOptions?: MinimaxCloneOptions | null;
 }): Promise<MinimaxClonedVoice> {
   return invoke<MinimaxClonedVoice>("minimax_clone_voice", {
     source_path: params.sourcePath,
@@ -413,7 +425,28 @@ export async function minimaxCloneVoice(params: {
     preview_text: params.previewText,
     prompt_path: params.promptPath ?? null,
     prompt_text: params.promptText ?? null,
+    clone_options: params.cloneOptions ?? null,
   });
+}
+
+export async function minimaxDesignVoice(params: {
+  prompt: string;
+  previewText: string;
+  voiceId?: string | null;
+}): Promise<MinimaxVoiceDesignResult> {
+  return invoke<MinimaxVoiceDesignResult>("minimax_design_voice", {
+    prompt: params.prompt,
+    preview_text: params.previewText,
+    voice_id: params.voiceId ?? null,
+  });
+}
+
+export async function minimaxDeleteVoice(voiceId: string): Promise<void> {
+  return invoke<void>("minimax_delete_voice", { voice_id: voiceId });
+}
+
+export async function minimaxUploadTextFile(filePath: string): Promise<number> {
+  return invoke<number>("minimax_upload_text_file", { file_path: filePath });
 }
 
 export interface VoiceSampleInfo {

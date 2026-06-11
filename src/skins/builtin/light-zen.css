@@ -129,13 +129,13 @@ html[data-skin="light-zen"] .tts-playback-viz__shade {
   );
 }
 
-html[data-skin="light-zen"] .playback-toast-toolbar__btn {
+html[data-skin="light-zen"] .toast-toolbar__btn {
   border-color: rgb(var(--color-border));
   background-color: rgb(var(--color-panel));
   color: rgb(var(--color-text));
 }
 
-html[data-skin="light-zen"] .playback-toast-toolbar__btn:hover {
+html[data-skin="light-zen"] .toast-toolbar__btn:hover {
   border-color: rgb(var(--color-accent));
   color: rgb(var(--color-accent));
   background: rgb(var(--color-accent-soft));

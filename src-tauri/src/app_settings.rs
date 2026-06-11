@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::editor_quick_gen::EditorQuickGenSettings;
 use crate::minimax::{
-    self, MinimaxClonedVoice, MinimaxPresetVoice, DEFAULT_MINIMAX_LANGUAGE,
-    DEFAULT_MINIMAX_VOICE_ID,
+    self, MinimaxClonedVoice, MinimaxPresetVoice, MinimaxProviderSettings,
+    MinimaxSynthesisOptions, DEFAULT_MINIMAX_LANGUAGE, DEFAULT_MINIMAX_VOICE_ID,
 };
 use crate::quick_hotkeys::QuickHotkeysSettings;
 use crate::text_filters::TextFiltersSettings;
@@ -62,6 +62,8 @@ pub struct CursorIntegration {
     pub minimax_vol: Option<f32>,
     #[serde(default)]
     pub minimax_pitch: Option<i32>,
+    #[serde(default)]
+    pub minimax_options: Option<MinimaxSynthesisOptions>,
     #[serde(default = "default_true")]
     pub use_summary_markers: bool,
     #[serde(default)]
@@ -183,6 +185,7 @@ impl Default for CursorIntegration {
             minimax_speed: Some(1.0),
             minimax_vol: Some(1.0),
             minimax_pitch: Some(0),
+            minimax_options: None,
             use_summary_markers: true,
             dnd_until_ts: None,
             last_install_ts: None,
@@ -236,6 +239,8 @@ pub struct AppSettings {
     pub minimax_enabled_languages: Vec<String>,
     pub voicebox_base_url: Option<String>,
     pub minimax_api_key: Option<String>,
+    #[serde(default)]
+    pub minimax_provider_settings: MinimaxProviderSettings,
     /// Max non-archived temp history rows from prior app sessions (current session always kept).
     #[serde(default = "default_temp_history_max")]
     pub temp_history_max: u32,
@@ -318,6 +323,7 @@ impl Default for AppSettings {
             minimax_enabled_languages: default_minimax_enabled_languages(),
             voicebox_base_url: None,
             minimax_api_key: None,
+            minimax_provider_settings: MinimaxProviderSettings::default(),
             temp_history_max: default_temp_history_max(),
             timeline_view: default_timeline_view(),
             safe_mode: false,

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { minimaxCloneVoice, type MinimaxClonedVoice } from "../api/tauri";
+import { defaultMinimaxCloneOptions } from "../lib/minimaxOptions";
+import { MINIMAX_LANGUAGE_CATALOG } from "../lib/minimaxLanguages";
 
 interface Props {
   model: string;
@@ -18,6 +20,9 @@ export default function MinimaxVoiceClone({ model, onCloned, onError }: Props) {
   const [promptPath, setPromptPath] = useState<string | null>(null);
   const [promptText, setPromptText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [needNoiseReduction, setNeedNoiseReduction] = useState(false);
+  const [needVolumeNormalization, setNeedVolumeNormalization] = useState(false);
+  const [cloneLanguage, setCloneLanguage] = useState("");
 
   const pickAudio = async (kind: "source" | "prompt") => {
     const picked = await open({
@@ -41,6 +46,12 @@ export default function MinimaxVoiceClone({ model, onCloned, onError }: Props) {
         previewText: previewText.trim() || "Podgląd sklonowanego głosu.",
         promptPath,
         promptText: promptText.trim() || null,
+        cloneOptions: {
+          ...defaultMinimaxCloneOptions(),
+          need_noise_reduction: needNoiseReduction,
+          need_volume_normalization: needVolumeNormalization,
+          language: cloneLanguage.trim() || null,
+        },
       });
       onCloned(entry);
       setVoiceId("");
@@ -107,6 +118,33 @@ export default function MinimaxVoiceClone({ model, onCloned, onError }: Props) {
           </span>
         </div>
       </div>
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        language_boost (klon)
+        <select className="field" value={cloneLanguage} onChange={(e) => setCloneLanguage(e.target.value)}>
+          <option value="">— domyślny —</option>
+          {MINIMAX_LANGUAGE_CATALOG.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.display_name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input
+          type="checkbox"
+          checked={needNoiseReduction}
+          onChange={(e) => setNeedNoiseReduction(e.target.checked)}
+        />
+        Redukcja szumu
+      </label>
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input
+          type="checkbox"
+          checked={needVolumeNormalization}
+          onChange={(e) => setNeedVolumeNormalization(e.target.checked)}
+        />
+        Normalizacja głośności
+      </label>
       <label className="flex flex-col gap-1 text-xs text-muted col-span-2">
         Tekst promptu (opc.)
         <input

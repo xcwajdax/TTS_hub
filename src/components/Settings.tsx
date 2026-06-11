@@ -29,6 +29,8 @@ import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
 import VoiceSamplePlayButton from "./VoiceSamplePlayButton";
 import VoiceSamples from "./VoiceSamples";
 import { PROVIDER_TABS } from "../lib/providerSwitch";
+import type { MinimaxSynthesisOptions } from "../lib/minimaxOptions";
+import MinimaxAdvancedOptions from "./MinimaxAdvancedOptions";
 
 export interface SettingsState {
   provider: TtsProvider;
@@ -42,6 +44,7 @@ export interface SettingsState {
   minimaxSpeed: number;
   minimaxVol: number;
   minimaxPitch: number;
+  minimaxOptions: MinimaxSynthesisOptions;
 }
 
 interface Props {
@@ -412,6 +415,11 @@ export default function Settings({
               onError={onError}
             />
           )}
+          <MinimaxAdvancedOptions
+            model={state.model}
+            options={state.minimaxOptions}
+            onChange={(minimaxOptions) => onChange({ ...state, minimaxOptions })}
+          />
         </>
       )}
 

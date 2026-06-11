@@ -1,6 +1,7 @@
 import type { CursorIntegration } from "../appSettings";
 import type { SettingsState } from "../components/Settings";
 import type { AudioFormat, GenerateRequest, TtsProvider } from "../types";
+import { defaultMinimaxSynthesisOptions } from "./minimaxOptions";
 
 export function cursorToSettingsState(cfg: CursorIntegration): SettingsState {
   return {
@@ -18,6 +19,9 @@ export function cursorToSettingsState(cfg: CursorIntegration): SettingsState {
     minimaxSpeed: cfg.minimax_speed ?? 1,
     minimaxVol: cfg.minimax_vol ?? 1,
     minimaxPitch: cfg.minimax_pitch ?? 0,
+    minimaxOptions: cfg.minimax_options
+      ? { ...defaultMinimaxSynthesisOptions(), ...cfg.minimax_options }
+      : defaultMinimaxSynthesisOptions(),
   };
 }
 

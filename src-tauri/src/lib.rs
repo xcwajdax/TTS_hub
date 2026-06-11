@@ -23,6 +23,7 @@ mod state;
 mod text_filters;
 mod voice_samples;
 mod minimax;
+mod minimax_options;
 mod voice_profiles;
 mod voicebox;
 mod roleplay;
@@ -118,6 +119,9 @@ pub fn run() {
             commands::list_minimax_cloned_voices,
             commands::sync_minimax_voices,
             commands::minimax_clone_voice,
+            commands::minimax_design_voice,
+            commands::minimax_delete_voice,
+            commands::minimax_upload_text_file,
             commands::list_voice_samples,
             commands::ensure_voice_sample,
             commands::generate_all_voice_samples,

@@ -12,7 +12,7 @@ import {
   type VoiceBoxHealth,
   type VoiceBoxProfile,
 } from "../api/tauri";
-import type { TtsProviderId, TtsVoiceProfile } from "../appSettings";
+import { isProviderEnabled, type TtsProviderId, type TtsVoiceProfile } from "../appSettings";
 import { isTauriApp } from "../lib/tauriEnv";
 import type { TtsModelInfo } from "../ttsModels";
 import { useAppView } from "../context/AppViewContext";
@@ -63,7 +63,7 @@ export default function SettingsSidebar({
 }: Props) {
   const [enabledProviders, setEnabledProviders] = useState<TtsProviderId[] | undefined>();
   const [activeTab, setActiveTab] = useState<ActiveTab>("provider");
-  const { goToView } = useAppView();
+  const { openSettingsTab } = useAppView();
 
   useEffect(() => {
     if (!isTauriApp()) return;
@@ -72,8 +72,8 @@ export default function SettingsSidebar({
     });
   }, []);
 
-  const visibleProviderTabs = PROVIDER_TABS.filter((t) =>
-    settings.provider === t.id ? true : true,
+  const visibleProviderTabs = PROVIDER_TABS.filter(
+    (t) => isProviderEnabled(enabledProviders, t.id) || settings.provider === t.id,
   );
 
   const handleSelectProvider = (id: TtsProviderId) => {
@@ -165,15 +165,28 @@ export default function SettingsSidebar({
       </nav>
 
       {activeTab === "profiles" ? (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <VoiceProfilesListPanel
-            recentGenerations={recentGenerations}
-            activeProfileId={activeVoiceProfileId}
-            onSelectProfile={handleSelectProfile}
-            onEditProfile={handleEditProfile}
-            onError={onError}
-            onSuccess={onProfileEdited}
-          />
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <header className="shrink-0 flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
+            <h2 className="text-xs uppercase tracking-wide text-muted">Profile głosu</h2>
+            <button
+              type="button"
+              className="btn text-[11px] py-0.5 px-2"
+              onClick={() => openSettingsTab("voice_profiles")}
+              title="Otwórz pełne ustawienia profili"
+            >
+              Zarządzaj →
+            </button>
+          </header>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <VoiceProfilesListPanel
+              recentGenerations={recentGenerations}
+              activeProfileId={activeVoiceProfileId}
+              onSelectProfile={handleSelectProfile}
+              onEditProfile={handleEditProfile}
+              onError={onError}
+              onSuccess={onProfileEdited}
+            />
+          </div>
         </div>
       ) : (
         <>
@@ -182,10 +195,10 @@ export default function SettingsSidebar({
             <button
               type="button"
               className="btn text-[11px] py-0.5 px-2"
-              onClick={() => goToView("settings")}
-              title="Otwórz pełne ustawienia"
+              onClick={() => openSettingsTab("providers")}
+              title="Otwórz ustawienia providerów"
             >
-              Ustawienia →
+              Providery →
             </button>
           </header>
           <div className="flex-1 min-h-0 overflow-y-auto">

@@ -1,4 +1,5 @@
 import type { AudioFormat } from "./types";
+import type { MinimaxProviderSettings, MinimaxSynthesisOptions } from "./lib/minimaxOptions";
 import type { TextFiltersSettings } from "./lib/textFiltersTypes";
 import {
   DEFAULT_TIMELINE_VIEW,
@@ -50,6 +51,7 @@ export interface CursorIntegration {
   minimax_speed: number | null;
   minimax_vol: number | null;
   minimax_pitch: number | null;
+  minimax_options?: MinimaxSynthesisOptions | null;
   use_summary_markers: boolean;
   dnd_until_ts: number | null;
   last_install_ts: number | null;
@@ -110,36 +112,7 @@ export interface TtsVoiceProfile {
   minimax_speed: number | null;
   minimax_vol: number | null;
   minimax_pitch: number | null;
-  multi_speaker: boolean;
-  speakers: VoiceProfileSpeaker[];
-  /** Jedna linia ostatniego tekstu wygenerowanego tym profilem. */
-  last_preview?: string | null;
-  last_preview_at?: number | null;
-  /** Skrót szybkiej generacji (synchronizowany z quick_hotkeys). */
-  shortcut?: string | null;
-  shortcut_enabled?: boolean;
-}
-
-export interface VoiceProfileSpeaker {
-  speaker: string;
-  voice: string;
-}
-
-/** Zapisany zestaw parametrów TTS (provider, model, głos, styl itd.). */
-export interface TtsVoiceProfile {
-  id: string;
-  name: string;
-  provider: string;
-  model: string;
-  voice: string;
-  style: string | null;
-  /** Voice Box — id profilu serwera. */
-  profile_id: string | null;
-  language: string | null;
-  engine: string | null;
-  minimax_speed: number | null;
-  minimax_vol: number | null;
-  minimax_pitch: number | null;
+  minimax_options?: MinimaxSynthesisOptions | null;
   multi_speaker: boolean;
   speakers: VoiceProfileSpeaker[];
   /** Jedna linia ostatniego tekstu wygenerowanego tym profilem. */
@@ -165,6 +138,7 @@ export interface QuickHotkeyPreset {
   minimax_speed: number | null;
   minimax_vol: number | null;
   minimax_pitch: number | null;
+  minimax_options?: MinimaxSynthesisOptions | null;
   load_editor: boolean;
   autoplay: boolean;
   filter_preset_id: string | null;
@@ -222,6 +196,7 @@ export interface EditorQuickGenSlot {
   minimax_speed: number | null;
   minimax_vol: number | null;
   minimax_pitch: number | null;
+  minimax_options?: MinimaxSynthesisOptions | null;
   filter_preset_id: string | null;
   format: string | null;
   voice_profile_id?: string | null;
@@ -284,6 +259,7 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     minimax_enabled_languages: view.minimax_enabled_languages,
     voicebox_base_url: view.voicebox_base_url ?? null,
     minimax_api_key: view.minimax_api_key ?? null,
+    minimax_provider_settings: view.minimax_provider_settings,
     temp_history_max: view.temp_history_max ?? DEFAULT_TEMP_HISTORY_MAX,
     timeline_view: normalizeTimelineViewMode(view.timeline_view),
     safe_mode: view.safe_mode ?? false,
@@ -317,6 +293,7 @@ export interface AppSettings {
   minimax_enabled_languages?: string[];
   voicebox_base_url?: string | null;
   minimax_api_key?: string | null;
+  minimax_provider_settings?: MinimaxProviderSettings;
   /** Max temp history from prior app sessions; current session always kept in full. */
   temp_history_max?: number;
   /** Main playback bar waveform style: bars | bars-detailed | line */

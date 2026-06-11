@@ -821,28 +821,47 @@ textarea:focus, input:focus, select:focus { outline: none; }
   );
 }
 
-.playback-toast-toolbar__btn {
+.toast-toolbar__btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.25rem;
   min-width: 2rem;
   height: 1.75rem;
   padding: 0 0.5rem;
   border-radius: 0.375rem;
-  border: 1px solid #2a3140;
-  background-color: #1a1e26;
-  color: #e6e8ee;
-  transition: border-color 0.15s, color 0.15s;
+  border: 1px solid rgb(var(--color-border));
+  background-color: rgb(var(--color-panel2));
+  color: rgb(var(--color-foreground));
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
 }
 
-.playback-toast-toolbar__btn:hover {
-  border-color: #7c5cff;
-  color: #c4b5fd;
+.toast-toolbar__btn:hover {
+  border-color: rgb(var(--color-accent));
+  color: rgb(var(--color-accent));
+  background-color: rgb(var(--color-accent-soft) / 0.35);
 }
 
-.playback-toast-toolbar__btn--danger:hover {
-  border-color: #f87171;
-  color: #fca5a5;
+.toast-toolbar__btn--icon {
+  min-width: 1.75rem;
+  padding: 0;
+}
+
+.toast-toolbar__btn--text {
+  padding: 0 0.625rem;
+  font-size: 0.625rem;
+  font-weight: 500;
+}
+
+.toast-toolbar__btn--danger:hover {
+  border-color: rgb(248 113 113);
+  color: rgb(252 165 165);
+  background-color: rgb(248 113 113 / 0.12);
+}
+
+.toast-toolbar__btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 /* Osobne okno powiadomienia quick-hotkey (przezroczyste, always-on-top) */

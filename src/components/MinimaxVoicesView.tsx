@@ -15,10 +15,12 @@ import {
 } from "../appSettings";
 import { MINIMAX_LANGUAGE_CATALOG } from "../lib/minimaxLanguages";
 import MinimaxVoiceClone from "./MinimaxVoiceClone";
+import MinimaxVoiceDesign from "./MinimaxVoiceDesign";
+import { minimaxDeleteVoice } from "../api/tauri";
 import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
 import { useAppView } from "../context/AppViewContext";
 
-type Section = "cloning" | "presets" | "languages";
+type Section = "cloning" | "design" | "presets" | "languages";
 
 interface Props {
   onError: (m: string) => void;
@@ -117,6 +119,7 @@ export default function MinimaxVoicesView({
 
       <nav className="shrink-0 flex border-b border-border bg-panel2/40">
         <SubTab active={section === "cloning"} onClick={() => setSection("cloning")} label="Klonowanie" />
+        <SubTab active={section === "design"} onClick={() => setSection("design")} label="Voice Design" />
         <SubTab
           active={section === "presets"}
           onClick={() => setSection("presets")}
@@ -179,6 +182,23 @@ export default function MinimaxVoicesView({
                               {c.voice_id} · {new Date(c.created_at * 1000).toLocaleString("pl-PL")}
                             </div>
                           </div>
+                          <button
+                            type="button"
+                            className="btn-ghost text-[10px] text-red-300/90 shrink-0"
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  await minimaxDeleteVoice(c.voice_id);
+                                  setCloned((prev) => prev.filter((x) => x.voice_id !== c.voice_id));
+                                  onSuccess?.(`Usunięto głos „${c.voice_id}" z konta MiniMax.`);
+                                } catch (e) {
+                                  onError(String(e));
+                                }
+                              })();
+                            }}
+                          >
+                            Usuń z API
+                          </button>
                         </div>
                         <MinimaxCloneVolumeControl
                           voiceId={c.voice_id}
@@ -196,6 +216,25 @@ export default function MinimaxVoicesView({
                   </ul>
                 )}
               </section>
+            </>
+          )}
+
+          {section === "design" && (
+            <>
+              <header className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold">Voice Design</h2>
+                <p className="text-xs text-muted">
+                  Zaprojektuj głos z opisu tekstowego (API voice_design). Wynikowy voice_id możesz
+                  użyć w syntezie jak klon.
+                </p>
+              </header>
+              <MinimaxVoiceDesign
+                onDesigned={(v) => {
+                  setCloned((prev) => [...prev.filter((c) => c.voice_id !== v.voice_id), v]);
+                  onSuccess?.(`Utworzono głos „${v.voice_id}".`);
+                }}
+                onError={onError}
+              />
             </>
           )}
 

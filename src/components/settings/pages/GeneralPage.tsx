@@ -1,8 +1,6 @@
-import { useState } from "react";
 import { AUDIO_FORMATS } from "../../../audioFormats";
 import {
   getAppSettings,
-  openQuickSetupWindow,
   pickArchiveFolderSettings,
   pickTempFolder,
 } from "../../../api/tauri";
@@ -13,11 +11,11 @@ import {
   MAX_TEMP_HISTORY_MAX,
   MIN_CONCURRENT_JOBS,
   MIN_TEMP_HISTORY_MAX,
-  newApiProfile,
-  type ApiProfile,
   type SaveMode,
 } from "../../../appSettings";
 import type { AudioFormat } from "../../../types";
+import SettingsPageHeader from "../components/SettingsPageHeader";
+import SettingsSection from "../components/SettingsSection";
 import type { SettingsView, SettingsUpdater } from "../useSettingsView";
 
 interface Props {
@@ -56,68 +54,7 @@ function PathRow({
   );
 }
 
-function ApiProfileCard({
-  profile,
-  expanded,
-  onToggle,
-  onChange,
-  onRemove,
-}: {
-  profile: ApiProfile;
-  expanded: boolean;
-  onToggle: () => void;
-  onChange: (patch: Partial<ApiProfile>) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="border border-border rounded-md bg-panel2/50 overflow-hidden">
-      <div className="flex items-center gap-2 px-2 py-1.5">
-        <button
-          type="button"
-          className="flex-1 text-left text-sm hover:text-accent2"
-          onClick={onToggle}
-        >
-          {profile.name}
-          <span className="text-muted text-xs ml-2">{expanded ? "▾" : "▸"}</span>
-        </button>
-        <button
-          type="button"
-          className="btn text-xs hover:!bg-red-900/40"
-          onClick={onRemove}
-        >
-          Usuń
-        </button>
-      </div>
-      {expanded && (
-        <div className="px-2 pb-2 flex flex-col gap-2 border-t border-border">
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            Nazwa
-            <input
-              className="field"
-              value={profile.name}
-              onChange={(e) => onChange({ name: e.target.value })}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            Klucz API
-            <input
-              className="field font-mono text-[11px]"
-              type="password"
-              value={profile.api_key}
-              onChange={(e) => onChange({ api_key: e.target.value })}
-              placeholder="AIza…"
-              autoComplete="off"
-            />
-          </label>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function GeneralPage({ view, update, onError, onSuccess }: Props) {
-  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
-
   const reloadEffectivePaths = async () => {
     try {
       const fresh = await getAppSettings();
@@ -154,60 +91,14 @@ export default function GeneralPage({ view, update, onError, onSuccess }: Props)
     }
   };
 
-  const addProfile = () => {
-    const profile = newApiProfile(`Profil ${view.api_profiles.length + 1}`);
-    update("api_profiles", [...view.api_profiles, profile]);
-    update("active_api_id", profile.id);
-    setEditingProfileId(profile.id);
-  };
-
-  const removeProfile = (id: string) => {
-    const next = view.api_profiles.filter((p) => p.id !== id);
-    update("api_profiles", next);
-    if (view.active_api_id === id) {
-      update("active_api_id", next[0]?.id ?? null);
-    }
-    if (editingProfileId === id) setEditingProfileId(null);
-  };
-
-  const updateProfile = (id: string, patch: Partial<ApiProfile>) => {
-    update(
-      "api_profiles",
-      view.api_profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-    );
-  };
-
   return (
     <div className="flex flex-col gap-8 text-sm">
-      <header className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold">Ogólne</h2>
-        <p className="text-xs text-muted">
-          Providery, kolejka generacji, tryb zapisu, ścieżki, profile API. Zmiany zapisują się
-          automatycznie.
-        </p>
-      </header>
+      <SettingsPageHeader
+        title="Ogólne"
+        description="Kolejka generacji, tryb zapisu i ścieżki plików. Providery i profile głosu są w osobnych zakładkach. Zmiany zapisują się automatycznie."
+      />
 
-      <section className="flex flex-col gap-3">
-        <h3 className="text-xs uppercase tracking-wide text-muted">Providery TTS</h3>
-        <p className="text-[11px] text-muted">
-          Kreator: wybór providerów, klucze API, adres Voice Box i testy połączenia.
-          {view.enabled_providers && view.enabled_providers.length > 0 && (
-            <> Aktywne: {view.enabled_providers.join(", ")}.</>
-          )}
-        </p>
-        <button
-          type="button"
-          className="btn-primary text-xs self-start"
-          onClick={() => {
-            void openQuickSetupWindow().catch((e) => onError(String(e)));
-          }}
-        >
-          Szybka konfiguracja…
-        </button>
-      </section>
-
-      <section className="flex flex-col gap-3 border-t border-border pt-5">
-        <h3 className="text-xs uppercase tracking-wide text-muted">Kolejka generacji</h3>
+      <SettingsSection title="Kolejka generacji">
         <label className="flex flex-col gap-1 text-xs text-muted max-w-xs">
           Maksymalna liczba równoległych generacji
           <input
@@ -253,10 +144,9 @@ export default function GeneralPage({ view, update, onError, onSuccess }: Props)
           W trybie bezpiecznym wszystkie źródła (edytor, Cursor, skróty, HTTP, roleplay) trafiają do
           zakładki „Zatwierdź”. Odrzucone pozycje pozostają w bazie ze statusem odrzuconym.
         </p>
-      </section>
+      </SettingsSection>
 
-      <section className="flex flex-col gap-3 border-t border-border pt-5">
-        <h3 className="text-xs uppercase tracking-wide text-muted">Historia</h3>
+      <SettingsSection title="Historia" borderTop>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -270,10 +160,9 @@ export default function GeneralPage({ view, update, onError, onSuccess }: Props)
           timeline i tekst do edytora bez auto-odtwarzania. Akcje na pliku (archiwum, folder,
           eksplorator, kolor, tagi) są w menu panelu timeline.
         </p>
-      </section>
+      </SettingsSection>
 
-      <section className="flex flex-col gap-3 border-t border-border pt-5">
-        <h3 className="text-xs uppercase tracking-wide text-muted">Tryb zapisu</h3>
+      <SettingsSection title="Tryb zapisu" borderTop>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="radio"
@@ -306,10 +195,9 @@ export default function GeneralPage({ view, update, onError, onSuccess }: Props)
             ))}
           </select>
         </label>
-      </section>
+      </SettingsSection>
 
-      <section className="flex flex-col gap-3 border-t border-border pt-5">
-        <h3 className="text-xs uppercase tracking-wide text-muted">Ścieżki</h3>
+      <SettingsSection title="Ścieżki" borderTop>
         <PathRow
           label="Folder tymczasowy (sesja)"
           value={view.effective_temp_path}
@@ -350,57 +238,7 @@ export default function GeneralPage({ view, update, onError, onSuccess }: Props)
             Limit dotyczy poprzednich uruchomień; bieżąca sesja jest zawsze zachowana w całości.
           </span>
         </label>
-      </section>
-
-      <section className="flex flex-col gap-3 border-t border-border pt-5">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs uppercase tracking-wide text-muted">Profile API (Google)</h3>
-          <button type="button" className="btn text-xs" onClick={addProfile}>
-            Dodaj profil
-          </button>
-        </div>
-        <p className="text-[11px] text-muted">
-          {view.env_api_key_available
-            ? "Wykryto GOOGLE_API_KEY w pliku env."
-            : "Brak GOOGLE_API_KEY w env — dodaj profil z kluczem."}
-          {view.active_api_id ? " Wybrany jest profil z listy." : " Używany jest klucz z env."}
-        </p>
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Aktywny klucz API
-          <select
-            className="field"
-            value={view.active_api_id ?? ""}
-            onChange={(e) => update("active_api_id", e.target.value || null)}
-          >
-            <option value="">Domyślny z studios.env / .env</option>
-            {view.api_profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex flex-col gap-2">
-          {view.api_profiles.length === 0 ? (
-            <p className="text-xs text-muted">
-              Brak dodatkowych profili — używany jest klucz z pliku env.
-            </p>
-          ) : (
-            view.api_profiles.map((profile) => (
-              <ApiProfileCard
-                key={profile.id}
-                profile={profile}
-                expanded={editingProfileId === profile.id}
-                onToggle={() =>
-                  setEditingProfileId((id) => (id === profile.id ? null : profile.id))
-                }
-                onChange={(patch) => updateProfile(profile.id, patch)}
-                onRemove={() => removeProfile(profile.id)}
-              />
-            ))
-          )}
-        </div>
-      </section>
+      </SettingsSection>
     </div>
   );
 }

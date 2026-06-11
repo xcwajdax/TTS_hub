@@ -1,21 +1,13 @@
 //! Always-on-top popup with generation info + live viz when main window is not in focus.
 
-use crate::db::Generation;
-use serde::Serialize;
-use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
 
 pub const PLAYBACK_TOAST_WINDOW_LABEL: &str = "playback-toast";
 
 const MARGIN_X: f64 = 16.0;
 const MARGIN_Y: f64 = 56.0;
 
-#[derive(Debug, Clone, Serialize)]
-struct PlaybackToastShowPayload {
-    generation: Generation,
-}
-
-pub fn show(app: &AppHandle, generation: Generation) -> Result<(), String> {
+pub fn show(app: &AppHandle) -> Result<(), String> {
     let window = playback_toast_window(app)?;
     position_bottom_right(&window)?;
     window
@@ -24,17 +16,6 @@ pub fn show(app: &AppHandle, generation: Generation) -> Result<(), String> {
     window
         .show()
         .map_err(|e| format!("show playback toast: {e}"))?;
-
-    // Webview ładuje się po show(); krótkie opóźnienie, żeby listener w React zdążył.
-    let handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        let _ = handle.emit(
-            "playback-toast:show",
-            PlaybackToastShowPayload { generation },
-        );
-    });
-
     Ok(())
 }
 

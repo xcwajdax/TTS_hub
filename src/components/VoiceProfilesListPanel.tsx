@@ -15,6 +15,7 @@ import VoiceProfileContextMenu from "./VoiceProfileContextMenu";
 import VoiceProfileShortcutFooter from "./VoiceProfileShortcutFooter";
 
 interface Props {
+  variant?: "sidebar" | "settings";
   recentGenerations: Generation[];
   activeProfileId: string | null;
   onSelectProfile: (profile: TtsVoiceProfile) => void;
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export default function VoiceProfilesListPanel({
+  variant = "sidebar",
   recentGenerations,
   activeProfileId,
   onSelectProfile,
@@ -72,11 +74,16 @@ export default function VoiceProfilesListPanel({
 
   if (sorted.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+      <div
+        className={`flex flex-col items-center justify-center gap-2 text-center ${
+          variant === "settings" ? "px-6 py-16" : "px-4 py-10"
+        }`}
+      >
         <p className="text-sm text-muted">Brak zapisanych profili głosu</p>
-        <p className="text-[11px] text-muted/80 leading-relaxed">
-          W zakładce Ustawienia ustaw parametry TTS i użyj przycisku „Zapisz profil głosu” na dole
-          panelu.
+        <p className="text-[11px] text-muted/80 leading-relaxed max-w-sm">
+          {variant === "settings"
+            ? "Przejdź do widoku TTS, ustaw parametry syntezy i użyj przycisku „Zapisz profil głosu” na dole panelu bocznego."
+            : "Ustaw parametry TTS i użyj przycisku „Zapisz profil głosu” na dole panelu."}
         </p>
       </div>
     );
@@ -84,7 +91,13 @@ export default function VoiceProfilesListPanel({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <p className="shrink-0 px-3 py-1.5 text-[10px] text-muted border-b border-border/50 leading-snug">
+      <p
+        className={`shrink-0 text-muted border-b border-border/50 leading-snug ${
+          variant === "settings"
+            ? "px-4 py-2 text-[11px]"
+            : "px-3 py-1.5 text-[10px]"
+        }`}
+      >
         Kliknij profil, aby go wybrać. Prawy przycisk — edycja lub reroute globalny (wymusza profil
         dla Cursor, API HTTP i innych klientów).
         {rerouteProfileId ? (
@@ -94,7 +107,11 @@ export default function VoiceProfilesListPanel({
           </>
         ) : null}
       </p>
-      <div className="voice-profile-chat-list flex-1 min-h-0 overflow-y-auto">
+      <div
+        className={`voice-profile-chat-list flex-1 min-h-0 overflow-y-auto ${
+          variant === "settings" ? "px-1" : ""
+        }`}
+      >
         {sorted.map((profile) => {
           const preview = previewTextForProfile(profile, recentGenerations);
           const selected = profile.id === activeProfileId;

@@ -6,6 +6,7 @@ import {
 import { resolveTtsFromVoiceProfileId } from "./voiceProfiles";
 import type { EditorQuickGenSlot } from "../appSettings";
 import type { TtsProvider } from "../types";
+import { defaultMinimaxSynthesisOptions } from "./minimaxOptions";
 
 const DEFAULT_SPEAKERS = [
   { speaker: "Mowca1", voice: "Kore" },
@@ -40,6 +41,9 @@ function presetInlineSettingsState(preset: QuickHotkeyPreset): SettingsState {
     minimaxSpeed: preset.minimax_speed ?? 1,
     minimaxVol: preset.minimax_vol ?? 1,
     minimaxPitch: preset.minimax_pitch ?? 0,
+    minimaxOptions: preset.minimax_options
+      ? { ...defaultMinimaxSynthesisOptions(), ...preset.minimax_options }
+      : defaultMinimaxSynthesisOptions(),
   };
 }
 
