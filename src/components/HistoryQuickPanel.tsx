@@ -3,6 +3,7 @@ import { getAppSettings } from "../api/tauri";
 import type { TtsVoiceProfile } from "../appSettings";
 import type { ArchiveFolder, Generation } from "../types";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
+import { groupGenerationsByCalendarDay } from "../lib/historyDateGroups";
 import GenerationQueuePanel from "./GenerationQueuePanel";
 import HistoryQuickItem from "./HistoryQuickItem";
 
@@ -12,6 +13,7 @@ interface Props {
   interrupted: Generation[];
   currentId: string | null;
   onSelect: (g: Generation) => void;
+  onPlay?: (g: Generation) => void;
   onChanged: () => void;
   onError: (e: string) => void;
   voiceProfiles?: TtsVoiceProfile[];
@@ -23,6 +25,7 @@ export default function HistoryQuickPanel({
   interrupted,
   currentId,
   onSelect,
+  onPlay,
   onChanged,
   onError,
   voiceProfiles: voiceProfilesProp,
@@ -54,19 +57,21 @@ export default function HistoryQuickPanel({
     };
   }, [voiceProfilesProp]);
 
-  const sortedItems = useMemo(
-    () => [...items].sort((a, b) => b.created_at - a.created_at),
-    [items],
-  );
+  const dayGroups = useMemo(() => groupGenerationsByCalendarDay(items), [items]);
 
   return (
-    <div className="history-quick-panel flex flex-col h-full min-w-0 overflow-hidden bg-panel">
-      <GenerationQueuePanel
-        interrupted={interrupted}
-        onChanged={onChanged}
-        onError={onError}
-        voiceProfiles={voiceProfiles}
-      />
+    <div
+      className="history-quick-panel flex flex-col h-full min-w-0 overflow-hidden bg-panel"
+      data-tour="history-panel"
+    >
+      <div data-tour="queue">
+        <GenerationQueuePanel
+          interrupted={interrupted}
+          onChanged={onChanged}
+          onError={onError}
+          voiceProfiles={voiceProfiles}
+        />
+      </div>
 
       <div className="px-2 py-1.5 border-b border-border shrink-0">
         <h2 className="text-[10px] uppercase tracking-wide text-muted font-semibold">
@@ -74,23 +79,32 @@ export default function HistoryQuickPanel({
         </h2>
       </div>
 
-      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto gap-1 p-1.5 history-list history-list--compact">
-        {sortedItems.length === 0 ? (
+      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto py-1.5 px-0 history-list history-list--compact gap-0">
+        {dayGroups.length === 0 ? (
           <p className="p-3 text-xs text-muted text-center">
             Brak generacji. Wygeneruj coś po lewej lub sprawdź zakładkę Historia.
           </p>
         ) : (
-          sortedItems.map((gen) => (
-            <HistoryQuickItem
-              key={gen.id}
-              gen={gen}
-              folders={folders}
-              isCurrent={currentId === gen.id}
-              onSelect={onSelect}
-              onChanged={onChanged}
-              onError={onError}
-              voiceProfiles={voiceProfiles}
-            />
+          dayGroups.map((group) => (
+            <section
+              key={group.dayKey}
+              className="flex flex-col min-w-0 history-list__section gap-0.5"
+            >
+              <h3 className="history-list__heading">{group.label}</h3>
+              {group.items.map((gen) => (
+                <HistoryQuickItem
+                  key={gen.id}
+                  gen={gen}
+                  folders={folders}
+                  isCurrent={currentId === gen.id}
+                  onSelect={onSelect}
+                  onPlay={onPlay}
+                  onChanged={onChanged}
+                  onError={onError}
+                  voiceProfiles={voiceProfiles}
+                />
+              ))}
+            </section>
           ))
         )}
       </div>

@@ -303,7 +303,7 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
                 .source
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string());
-            crate::chat::db::create_session(&conn, &source_name, None).map_err(err)?;
+            crate::chat::db::create_session(&conn, &source_name, None, None).map_err(err)?;
         }
         // User message: the original prompt that produced this reply.
         if let Some(prompt) = req.original_prompt.as_deref() {
@@ -2148,6 +2148,11 @@ pub async fn pick_skin_export_path(
 #[tauri::command]
 pub fn get_clear_local_data_confirmation_word() -> String {
     crate::local_storage::confirmation_word()
+}
+
+#[tauri::command]
+pub fn get_local_storage_stats(state: State<'_, AppArc>) -> Result<crate::local_storage::LocalStorageStats, String> {
+    crate::local_storage::compute_stats(state.inner()).map_err(err)
 }
 
 #[tauri::command]

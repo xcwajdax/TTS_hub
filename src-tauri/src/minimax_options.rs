@@ -358,13 +358,6 @@ pub fn language_boost_from_hub_or_api(code: Option<&str>) -> String {
     raw.to_string()
 }
 
-pub fn hub_code_from_language_boost(boost: &str) -> Option<&'static str> {
-    MINIMAX_LANGUAGE_CATALOG
-        .iter()
-        .find(|(_, api, _)| *api == boost)
-        .map(|(hub, _, _)| *hub)
-}
-
 pub fn normalize_enabled_language_codes(codes: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for code in codes {
@@ -608,5 +601,4 @@ pub fn t2a_http_base_url(region: &MinimaxHttpRegion) -> &'static str {
     }
 }
 
-pub const ASYNC_TEXT_CHAR_LIMIT: usize = 10_000;
 pub const SYNC_TEXT_CHAR_LIMIT: usize = 10_000;

@@ -246,16 +246,9 @@ fn normalize_shortcut_part(part: &str) -> String {
     }
 }
 
-pub fn new_quick_hotkey_preset(name: impl Into<String>) -> QuickHotkeyPreset {
-    QuickHotkeyPreset {
-        name: name.into(),
-        ..QuickHotkeyPreset::default()
-    }
-}
-
 use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 use crate::app_settings::AppSettings;
 use crate::commands::{enqueue_request, GenerateReq};

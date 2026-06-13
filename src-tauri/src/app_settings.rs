@@ -233,6 +233,9 @@ pub struct AppSettings {
     pub reroute_voice_profile_id: Option<String>,
     #[serde(default)]
     pub quick_setup_completed: bool,
+    /// First-run interactive tutorial (Quick Setup → TTS tour → README summary).
+    #[serde(default)]
+    pub ui_tutorial_completed: bool,
     #[serde(default)]
     pub enabled_providers: Vec<String>,
     #[serde(default = "default_minimax_enabled_languages")]
@@ -319,6 +322,7 @@ impl Default for AppSettings {
             voice_profiles: Vec::new(),
             reroute_voice_profile_id: None,
             quick_setup_completed: false,
+            ui_tutorial_completed: false,
             enabled_providers: Vec::new(),
             minimax_enabled_languages: default_minimax_enabled_languages(),
             voicebox_base_url: None,
@@ -415,13 +419,6 @@ impl AppSettings {
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
             .unwrap_or_else(|| env_key.trim().to_string())
-    }
-
-    pub fn is_provider_enabled(&self, id: &str) -> bool {
-        if self.enabled_providers.is_empty() {
-            return true;
-        }
-        self.enabled_providers.iter().any(|p| p == id)
     }
 
     pub fn normalize(&mut self) {
@@ -521,12 +518,4 @@ fn normalize_optional_path(value: Option<String>) -> Option<String> {
     value
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-}
-
-pub fn new_api_profile(name: impl Into<String>, api_key: impl Into<String>) -> ApiProfile {
-    ApiProfile {
-        id: Uuid::new_v4().to_string(),
-        name: name.into(),
-        api_key: api_key.into(),
-    }
 }

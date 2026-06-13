@@ -58,7 +58,9 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     )?;
 
     let about = MenuItem::with_id(app, "about", "O TTS Hub", true, None::<&str>)?;
-    let help = Submenu::with_items(app, "Pomoc", true, &[&about])?;
+    let product_tour =
+        MenuItem::with_id(app, "product_tour", "Samouczek…", true, None::<&str>)?;
+    let help = Submenu::with_items(app, "Pomoc", true, &[&product_tour, &about])?;
 
     #[cfg(target_os = "macos")]
     {

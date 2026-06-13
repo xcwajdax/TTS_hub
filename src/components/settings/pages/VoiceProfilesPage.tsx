@@ -8,6 +8,7 @@ interface Props {
   onSelectVoiceProfile: (profile: TtsVoiceProfile) => void;
   onError: (m: string) => void;
   onSuccess?: (m: string) => void;
+  onProfileDeleted?: (profileId: string) => void;
 }
 
 export default function VoiceProfilesPage({
@@ -15,20 +16,21 @@ export default function VoiceProfilesPage({
   onSelectVoiceProfile,
   onError,
   onSuccess,
+  onProfileDeleted,
 }: Props) {
-  const { goToView } = useAppView();
+  const { openMinimaxVoices } = useAppView();
 
   const handleEditProfile = (profile: TtsVoiceProfile) => {
     onSelectVoiceProfile(profile);
-    goToView("tts");
-    onSuccess?.(`Załadowano profil „${profile.name}” do edycji w widoku TTS.`);
+    openMinimaxVoices("profile");
+    onSuccess?.(`Załadowano profil „${profile.name}" do edycji w Głosach Minimax.`);
   };
 
   return (
     <div className="flex flex-col gap-6 text-sm min-h-0">
       <SettingsPageHeader
         title="Profile głosu"
-        description="Profil głosu to zapisany preset TTS: provider, model, głos i opcjonalny skrót klawiszowy. Nie myl z kluczem API (zakładka Providery) ani z profilem serwera Voice Box. Nowy profil zapiszesz w widoku TTS przyciskiem na dole panelu bocznego."
+        description="Profil głosu to zapisany preset TTS: provider, model, głos i opcjonalny skrót klawiszowy. Nie myl z kluczem API (zakładka Providery) ani z profilem serwera Voice Box. Nowy profil tworzysz w zakładce Głosy Minimax → Profil TTS albo przyciskiem na dole panelu w widoku TTS."
       />
       <div className="border border-border rounded-md overflow-hidden min-h-[24rem] flex flex-col">
         <VoiceProfilesListPanel
@@ -39,6 +41,7 @@ export default function VoiceProfilesPage({
           onEditProfile={handleEditProfile}
           onError={onError}
           onSuccess={onSuccess}
+          onProfileDeleted={onProfileDeleted}
         />
       </div>
     </div>

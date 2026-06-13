@@ -10,14 +10,14 @@ use tokio_tungstenite::{
 };
 
 pub use crate::minimax_options::{
-    effective_enabled_language_codes, hub_code_from_language_boost, is_known_language_code,
-    language_boost_from_hub_or_api, language_boost_from_hub_or_api as hub_language_to_boost,
-    normalize_api_format, normalize_enabled_language_codes, t2a_http_base_url, validate_voice_id,
-    MinimaxAudioSettingOptions, MinimaxCloneOptions, MinimaxEmotion, MinimaxHttpRegion,
-    MinimaxOutputFormat, MinimaxPronunciationDict, MinimaxProviderSettings, MinimaxSoundEffect,
-    MinimaxStreamOptions, MinimaxSubtitleType, MinimaxSynthesisOptions, MinimaxTimbreWeight,
-    MinimaxTransport, MinimaxVoiceModify, MinimaxVoiceSettingOptions, DEFAULT_MINIMAX_LANGUAGE,
-    MINIMAX_LANGUAGE_CATALOG, SYNC_TEXT_CHAR_LIMIT,
+    effective_enabled_language_codes, is_known_language_code, MinimaxCloneOptions,
+    MinimaxProviderSettings, MinimaxSynthesisOptions, DEFAULT_MINIMAX_LANGUAGE,
+    MINIMAX_LANGUAGE_CATALOG,
+};
+
+use crate::minimax_options::{
+    language_boost_from_hub_or_api, normalize_api_format, t2a_http_base_url, validate_voice_id,
+    MinimaxOutputFormat, SYNC_TEXT_CHAR_LIMIT,
 };
 
 const WS_URL: &str = "wss://api.minimax.io/ws/v1/t2a_v2";
@@ -135,7 +135,7 @@ pub struct MinimaxSyncVoicesResult {
 }
 
 #[derive(Debug, Deserialize)]
-struct GetVoiceResponse {
+pub(crate) struct GetVoiceResponse {
     #[serde(default)]
     system_voice: Vec<SystemVoiceApi>,
     #[serde(default)]
@@ -180,27 +180,6 @@ struct BaseRespApi {
     status_msg: Option<String>,
 }
 
-/// Legacy voice setting used when building from speed/vol/pitch only.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MinimaxVoiceSetting {
-    pub voice_id: String,
-    #[serde(default = "default_speed")]
-    pub speed: f32,
-    #[serde(default = "default_vol")]
-    pub vol: f32,
-    #[serde(default)]
-    pub pitch: i32,
-    #[serde(default)]
-    pub english_normalization: bool,
-}
-
-fn default_speed() -> f32 {
-    1.0
-}
-fn default_vol() -> f32 {
-    1.0
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct MinimaxGenerateParams<'a> {
     pub model: &'a str,
@@ -214,8 +193,6 @@ pub struct MinimaxAudio {
     pub bytes: Vec<u8>,
     pub format: String,
     pub subtitle_bytes: Option<Vec<u8>>,
-    pub subtitle_url: Option<String>,
-    pub usage_characters: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -712,7 +689,6 @@ impl MinimaxClient {
 
         let mut audio_data = Vec::new();
         let mut subtitle_url: Option<String> = None;
-        let mut usage_characters: Option<i64> = None;
         loop {
             let msg = read
                 .next()
@@ -762,13 +738,6 @@ impl MinimaxClient {
                 subtitle_url = Some(url.to_string());
             }
 
-            if let Some(uc) = response
-                .pointer("/extra_info/usage_characters")
-                .and_then(|v| v.as_i64())
-            {
-                usage_characters = Some(uc);
-            }
-
             if response.get("is_final").and_then(|v| v.as_bool()) == Some(true) {
                 break;
             }
@@ -794,8 +763,6 @@ impl MinimaxClient {
             bytes: audio_data,
             format: format.to_string(),
             subtitle_bytes,
-            subtitle_url: None,
-            usage_characters,
         })
     }
 
@@ -870,35 +837,23 @@ impl MinimaxClient {
         }
 
         let format = normalize_api_format(&options.audio.format);
-        let usage_characters = response
-            .pointer("/extra_info/usage_characters")
-            .and_then(|v| v.as_i64());
-
         let hex = response
             .pointer("/data/audio")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| anyhow!("Minimax returned no audio data"))?;
         let bytes = hex::decode(hex).context("decode audio hex")?;
-        let subtitle_url = response
-            .pointer("/data/subtitle_file")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
 
         Ok(MinimaxAudio {
             bytes,
             format,
             subtitle_bytes: None,
-            subtitle_url,
-            usage_characters,
         })
     }
 
     fn parse_http_stream_response(&self, raw: &str, audio_format: &str) -> Result<MinimaxAudio> {
         let format = normalize_api_format(audio_format);
         let mut audio_data = Vec::new();
-        let mut usage_characters: Option<i64> = None;
-        let mut subtitle_url: Option<String> = None;
 
         for line in raw.lines() {
             let line = line.trim();
@@ -927,18 +882,6 @@ impl MinimaxClient {
                 let part = hex::decode(hex).context("decode stream hex")?;
                 audio_data.extend_from_slice(&part);
             }
-            if let Some(uc) = chunk
-                .pointer("/extra_info/usage_characters")
-                .and_then(|v| v.as_i64())
-            {
-                usage_characters = Some(uc);
-            }
-            if let Some(url) = chunk
-                .pointer("/data/subtitle_file")
-                .and_then(|v| v.as_str())
-            {
-                subtitle_url = Some(url.to_string());
-            }
         }
 
         if audio_data.is_empty() {
@@ -965,8 +908,6 @@ impl MinimaxClient {
             bytes: audio_data,
             format,
             subtitle_bytes: None,
-            subtitle_url,
-            usage_characters,
         })
     }
 
@@ -1046,10 +987,6 @@ impl MinimaxClient {
                 bytes,
                 format: normalize_api_format(&options.audio.format),
                 subtitle_bytes,
-                subtitle_url,
-                usage_characters: parsed
-                    .pointer("/extra_info/usage_characters")
-                    .and_then(|v| v.as_i64()),
             });
         }
 
@@ -1124,8 +1061,6 @@ impl MinimaxClient {
             bytes,
             format,
             subtitle_bytes: None,
-            subtitle_url: None,
-            usage_characters: None,
         })
     }
 

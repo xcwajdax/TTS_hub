@@ -255,6 +255,7 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     voice_profiles: view.voice_profiles ?? [],
     reroute_voice_profile_id: view.reroute_voice_profile_id ?? null,
     quick_setup_completed: view.quick_setup_completed,
+    ui_tutorial_completed: view.ui_tutorial_completed,
     enabled_providers: view.enabled_providers,
     minimax_enabled_languages: view.minimax_enabled_languages,
     voicebox_base_url: view.voicebox_base_url ?? null,
@@ -288,6 +289,8 @@ export interface AppSettings {
   /** Gdy ustawione — wszystkie żądania generacji (poza roleplay / skrótami) idą tym profilem. */
   reroute_voice_profile_id?: string | null;
   quick_setup_completed?: boolean;
+  /** First-run interactive tutorial (Quick Setup → TTS tour → README summary). */
+  ui_tutorial_completed?: boolean;
   enabled_providers?: TtsProviderId[];
   /** Hub codes (`pl`, `en`). Empty = all catalog languages. */
   minimax_enabled_languages?: string[];

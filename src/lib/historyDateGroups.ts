@@ -77,6 +77,76 @@ export interface HistoryDateGroup {
   items: Generation[];
 }
 
+function calendarDayKey(createdAtMs: number, now = new Date()): string {
+  const todayStart = startOfDay(now).getTime();
+  const yesterdayStart = addDays(startOfDay(now), -1).getTime();
+  const itemDayStart = startOfDay(new Date(createdAtMs)).getTime();
+
+  if (itemDayStart >= todayStart) return "today";
+  if (itemDayStart >= yesterdayStart) return "yesterday";
+
+  const d = new Date(createdAtMs);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function formatCalendarDayLabel(dayKey: string, now = new Date()): string {
+  if (dayKey === "today") return "Dziś";
+  if (dayKey === "yesterday") return "Wczoraj";
+
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  const label = date.toLocaleDateString("pl-PL", {
+    day: "numeric",
+    month: "long",
+    ...(year !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+export interface CalendarDayGroup {
+  dayKey: string;
+  label: string;
+  items: Generation[];
+}
+
+/** Grupowanie po dniach kalendarzowych: Dziś, Wczoraj, potem konkretne daty. */
+export function groupGenerationsByCalendarDay(items: Generation[], now = new Date()): CalendarDayGroup[] {
+  const sorted = [...items].sort((a, b) => b.created_at - a.created_at);
+  const map = new Map<string, Generation[]>();
+
+  for (const gen of sorted) {
+    const key = calendarDayKey(gen.created_at, now);
+    const list = map.get(key);
+    if (list) list.push(gen);
+    else map.set(key, [gen]);
+  }
+
+  const groups: CalendarDayGroup[] = [];
+
+  for (const fixed of ["today", "yesterday"] as const) {
+    const dayItems = map.get(fixed);
+    if (dayItems?.length) {
+      groups.push({
+        dayKey: fixed,
+        label: formatCalendarDayLabel(fixed, now),
+        items: dayItems,
+      });
+      map.delete(fixed);
+    }
+  }
+
+  const dateKeys = [...map.keys()].sort((a, b) => b.localeCompare(a));
+  for (const key of dateKeys) {
+    groups.push({
+      dayKey: key,
+      label: formatCalendarDayLabel(key, now),
+      items: map.get(key)!,
+    });
+  }
+
+  return groups;
+}
+
 export function groupGenerationsByDate(items: Generation[], now = new Date()): HistoryDateGroup[] {
   const sorted = [...items].sort((a, b) => b.created_at - a.created_at);
   const map = new Map<string, Generation[]>();

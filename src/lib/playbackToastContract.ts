@@ -2,11 +2,13 @@ import type { IconSlug } from "./icons";
 import type { Generation } from "../types";
 
 export const PLAYBACK_TOAST_WINDOW_LABEL = "playback-toast";
+export const MAIN_WINDOW_LABEL = "main";
 
 export const PlaybackToastEvents = {
   show: "playback-toast:show",
   hide: "playback-toast:hide",
   ready: "playback-toast:ready",
+  ping: "playback-toast:ping",
   modelPatch: "playback-toast:model-patch",
   vizFrame: "playback-viz:frame",
   togglePlay: "playback-toast:toggle-play",

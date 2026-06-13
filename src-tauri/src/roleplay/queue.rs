@@ -38,7 +38,6 @@ pub struct RoleplayQueueEvent {
 }
 
 struct QueueRunner {
-    project_id: String,
     paused: bool,
     cancelled: bool,
     current_generation_id: Option<String>,
@@ -119,7 +118,6 @@ impl RoleplayQueue {
             runners.insert(
                 project_id.clone(),
                 QueueRunner {
-                    project_id: project_id.clone(),
                     paused: false,
                     cancelled: false,
                     current_generation_id: None,

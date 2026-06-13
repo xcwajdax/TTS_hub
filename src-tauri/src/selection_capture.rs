@@ -34,7 +34,6 @@ pub fn ensure_foreground_tracker(app: tauri::AppHandle) {
 #[cfg(windows)]
 pub fn capture_selection_text(app: &tauri::AppHandle) -> Result<String, String> {
     use std::{thread, time::Duration};
-    use windows::Win32::Foundation::HWND;
 
     let target = resolve_target_hwnd(app)?;
     focus_window(target)?;

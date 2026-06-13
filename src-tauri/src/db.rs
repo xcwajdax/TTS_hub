@@ -449,18 +449,6 @@ impl Db {
         Ok(())
     }
 
-    /// Visible "history" rows: only completed generations. Queued/running/interrupted/failed/cancelled
-    /// are surfaced via the jobs API.
-    pub fn list_session(&self, session_id: &str) -> Result<Vec<Generation>> {
-        let c = self.conn.lock().unwrap();
-        let sql = format!(
-            "SELECT {GEN_SELECT} FROM generations WHERE session_id = ?1 AND status = 'done' AND is_archived = 0 AND folder_id IS NULL ORDER BY created_at DESC"
-        );
-        let mut stmt = c.prepare(&sql)?;
-        let rows = stmt.query_map([session_id], row_to_gen)?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
-    }
-
     /// Tab „Sesja”: all completed generations (temp, archived, and in folders).
     pub fn list_temp_history(&self) -> Result<Vec<Generation>> {
         let c = self.conn.lock().unwrap();
@@ -552,7 +540,7 @@ impl Db {
         let now = chrono::Utc::now().timestamp_millis();
         let c = self.conn.lock().unwrap();
         c.execute(
-            "UPDATE generations SET status = 'running', attempts = attempts + 1, error = NULL, updated_at = ?1 WHERE id = ?2",
+            &format!("UPDATE generations SET status = '{STATUS_RUNNING}', attempts = attempts + 1, error = NULL, updated_at = ?1 WHERE id = ?2"),
             params![now, id],
         )?;
         Ok(())
@@ -619,7 +607,9 @@ impl Db {
     pub fn mark_orphans_interrupted(&self) -> Result<Vec<String>> {
         let c = self.conn.lock().unwrap();
         let mut stmt =
-            c.prepare("SELECT id FROM generations WHERE status IN ('queued','running')")?;
+            c.prepare(&format!(
+                "SELECT id FROM generations WHERE status IN ('{STATUS_QUEUED}','{STATUS_RUNNING}')"
+            ))?;
         let ids: Vec<String> = stmt
             .query_map([], |row| row.get::<_, String>(0))?
             .filter_map(|r| r.ok())
@@ -627,7 +617,9 @@ impl Db {
         if !ids.is_empty() {
             let now = chrono::Utc::now().timestamp_millis();
             c.execute(
-                "UPDATE generations SET status = 'interrupted', updated_at = ?1 WHERE status IN ('queued','running')",
+                &format!(
+                    "UPDATE generations SET status = 'interrupted', updated_at = ?1 WHERE status IN ('{STATUS_QUEUED}','{STATUS_RUNNING}')"
+                ),
                 params![now],
             )?;
         }
@@ -668,18 +660,9 @@ impl Db {
         Ok(())
     }
 
-    pub fn set_folder_id(&self, id: &str, folder_id: Option<&str>) -> Result<()> {
-        let c = self.conn.lock().unwrap();
-        c.execute(
-            "UPDATE generations SET folder_id = ?1 WHERE id = ?2",
-            params![folder_id, id],
-        )?;
-        Ok(())
-    }
-
     pub fn list_generations_in_folder(&self, folder_id: Option<&str>) -> Result<Vec<Generation>> {
         let c = self.conn.lock().unwrap();
-        let sql = if let Some(fid) = folder_id {
+        let sql = if folder_id.is_some() {
             format!(
                 "SELECT {GEN_SELECT} FROM generations WHERE is_archived = 1 AND folder_id = ?1 ORDER BY created_at DESC"
             )
@@ -980,15 +963,32 @@ impl Db {
         Ok(n as usize)
     }
 
-    /// Removes all history, folders, tags and rules. Settings file is not touched.
+    pub fn count_chat_sessions(&self) -> Result<usize> {
+        let c = self.conn.lock().unwrap();
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM chat_sessions", [], |row| row.get(0))?;
+        Ok(n as usize)
+    }
+
+    pub fn count_roleplay_projects(&self) -> Result<usize> {
+        let c = self.conn.lock().unwrap();
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM roleplay_projects", [], |row| row.get(0))?;
+        Ok(n as usize)
+    }
+
+    /// Removes all history, folders, tags, chat, roleplay and rules. Settings file is not touched.
     pub fn clear_all_user_data(&self) -> Result<()> {
         let c = self.conn.lock().unwrap();
         c.execute_batch(
             "DELETE FROM generation_tags;
+             DELETE FROM chat_messages;
+             DELETE FROM roleplay_segments;
              DELETE FROM generations;
              DELETE FROM folder_rules;
              DELETE FROM folders;
-             DELETE FROM tags;",
+             DELETE FROM tags;
+             DELETE FROM chat_sessions;
+             DELETE FROM roleplay_projects;
+             VACUUM;",
         )?;
         Ok(())
     }
@@ -1313,19 +1313,6 @@ impl Db {
             params![project_id, status, now],
         )?;
         Ok(())
-    }
-
-    pub fn roleplay_segment_by_generation(
-        &self,
-        generation_id: &str,
-    ) -> Result<Option<crate::roleplay::RoleplaySegment>> {
-        let c = self.conn.lock().unwrap();
-        let mut stmt = c.prepare(
-            "SELECT id, project_id, order_index, text, voice_profile_id, color, generation_id, status, retry_count, error
-             FROM roleplay_segments WHERE generation_id = ?1 LIMIT 1",
-        )?;
-        let mut rows = stmt.query_map([generation_id], row_to_roleplay_segment)?;
-        Ok(rows.next().transpose()?)
     }
 
     pub fn roleplay_update_segment(

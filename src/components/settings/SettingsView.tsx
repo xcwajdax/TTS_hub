@@ -30,6 +30,7 @@ interface Props {
   initialTab?: SettingsTabId;
   activeVoiceProfileId?: string | null;
   onSelectVoiceProfile?: (profile: TtsVoiceProfile) => void;
+  onVoiceProfileDeleted?: (profileId: string) => void;
 }
 
 export default function SettingsView({
@@ -40,6 +41,7 @@ export default function SettingsView({
   initialTab,
   activeVoiceProfileId = null,
   onSelectVoiceProfile,
+  onVoiceProfileDeleted,
 }: Props) {
   const settings = useSettingsView({ onError, onSuccess });
   const { onBackToTts } = useAppView();
@@ -108,6 +110,7 @@ export default function SettingsView({
                 onSelectVoiceProfile={onSelectVoiceProfile}
                 onError={onError}
                 onSuccess={onSuccess}
+                onProfileDeleted={onVoiceProfileDeleted}
               />
             ) : null}
             {tab === "audio_output" && <AudioOutputPage />}

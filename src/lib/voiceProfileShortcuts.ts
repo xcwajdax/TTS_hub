@@ -29,7 +29,10 @@ export function syncQuickHotkeysFromVoiceProfiles(
   quickHotkeys: QuickHotkeysSettings,
   profiles: TtsVoiceProfile[],
 ): QuickHotkeysSettings {
-  let presets = [...quickHotkeys.presets];
+  const profileIds = new Set(profiles.map((p) => p.id));
+  let presets = quickHotkeys.presets.filter(
+    (p) => !p.voice_profile_id?.trim() || profileIds.has(p.voice_profile_id),
+  );
 
   for (const profile of profiles) {
     const shortcut = migrateLegacyShortcut(profile.shortcut?.trim() ?? "");

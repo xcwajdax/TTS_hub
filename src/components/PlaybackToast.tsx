@@ -1,13 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  MAIN_WINDOW_LABEL,
   PlaybackToastEvents,
   type PlaybackToastModelPatch,
   type PlaybackToastViewModel,
   type PlaybackVizFramePayload,
 } from "../lib/playbackToastContract";
 import { isTauriApp } from "../lib/tauriEnv";
+import ToastWindowPanel from "./toast/ToastWindowPanel";
 import PlaybackToastPanel, {
   applyModelPatch,
   emitClose,
@@ -22,8 +24,12 @@ export default function PlaybackToast({ standalone = false }: Props) {
   const [model, setModel] = useState<PlaybackToastViewModel | null>(null);
   const [frame, setFrame] = useState<PlaybackVizFramePayload | null>(null);
   const [visible, setVisible] = useState(false);
+  const [shellVisible, setShellVisible] = useState(false);
   const wasVisibleRef = useRef(false);
-  const readyEmittedRef = useRef(false);
+
+  const emitReady = useCallback(() => {
+    void emitTo(MAIN_WINDOW_LABEL, PlaybackToastEvents.ready, {});
+  }, []);
 
   useEffect(() => {
     if (!isTauriApp()) return;
@@ -34,6 +40,7 @@ export default function PlaybackToast({ standalone = false }: Props) {
       listen<PlaybackToastViewModel>(PlaybackToastEvents.show, (e) => {
         setModel(e.payload);
         setVisible(true);
+        setShellVisible(true);
       }),
     );
 
@@ -52,52 +59,74 @@ export default function PlaybackToast({ standalone = false }: Props) {
     unsubs.push(
       listen(PlaybackToastEvents.hide, () => {
         setVisible(false);
+        setShellVisible(false);
         setFrame(null);
+      }),
+    );
+
+    unsubs.push(
+      listen(PlaybackToastEvents.ping, () => {
+        setShellVisible(true);
+        emitReady();
       }),
     );
 
     return () => {
       void Promise.all(unsubs).then((fns) => fns.forEach((fn) => fn()));
     };
-  }, []);
-
-  useEffect(() => {
-    if (!standalone || !isTauriApp() || readyEmittedRef.current) return;
-    readyEmittedRef.current = true;
-    void emit(PlaybackToastEvents.ready);
-  }, [standalone]);
+  }, [emitReady]);
 
   useEffect(() => {
     if (!standalone || !isTauriApp()) return;
-    if (wasVisibleRef.current && !visible) {
+    emitReady();
+  }, [standalone, emitReady]);
+
+  useEffect(() => {
+    if (!standalone || !isTauriApp()) return;
+    if (wasVisibleRef.current && !visible && !shellVisible) {
       const t = window.setTimeout(() => void invoke("hide_playback_toast"), 400);
       wasVisibleRef.current = false;
       return () => window.clearTimeout(t);
     }
-    wasVisibleRef.current = visible;
-  }, [visible, standalone]);
+    wasVisibleRef.current = visible || shellVisible;
+  }, [visible, shellVisible, standalone]);
 
   const onHide = useCallback(() => {
-    void emit(PlaybackToastEvents.userHide);
     setVisible(false);
+    setShellVisible(false);
     void emitUserHide();
   }, []);
 
   const onClose = useCallback(() => {
     void emitClose();
     setVisible(false);
+    setShellVisible(false);
   }, []);
 
-  if (!isTauriApp() || !visible || !model) return null;
+  if (!isTauriApp()) return null;
 
-  return (
-    <div
-      className="w-full min-h-0 p-1 box-border"
-      role="status"
-      aria-live="polite"
-      aria-label="Odtwarzanie TTS"
-    >
-      <PlaybackToastPanel model={model} frame={frame} onHide={onHide} onClose={onClose} />
-    </div>
-  );
+  if (visible && model) {
+    return (
+      <div
+        className="w-full min-h-0 p-1 box-border"
+        role="status"
+        aria-live="polite"
+        aria-label="Odtwarzanie TTS"
+      >
+        <PlaybackToastPanel model={model} frame={frame} onHide={onHide} onClose={onClose} />
+      </div>
+    );
+  }
+
+  if (shellVisible) {
+    return (
+      <div className="w-full min-h-0 p-1 box-border" role="status" aria-live="polite">
+        <ToastWindowPanel title="Odtwarzanie">
+          <p className="text-xs text-muted py-4 text-center">Ładowanie…</p>
+        </ToastWindowPanel>
+      </div>
+    );
+  }
+
+  return null;
 }

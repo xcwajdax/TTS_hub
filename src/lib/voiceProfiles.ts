@@ -219,6 +219,25 @@ export function isRerouteProfile(
   return !!rerouteVoiceProfileId?.trim() && rerouteVoiceProfileId === profileId;
 }
 
+export async function deleteVoiceProfile(profileId: string): Promise<TtsVoiceProfile[]> {
+  const view = await getAppSettings();
+  const profiles = view.voice_profiles ?? [];
+  const next = profiles.filter((p) => p.id !== profileId);
+  if (next.length === profiles.length) return next;
+
+  const rerouteId =
+    view.reroute_voice_profile_id === profileId ? null : (view.reroute_voice_profile_id ?? null);
+  const { persistVoiceProfilesWithHotkeySync } = await import("./voiceProfileShortcuts");
+  await persistVoiceProfilesWithHotkeySync(
+    {
+      ...view,
+      reroute_voice_profile_id: rerouteId,
+    },
+    next,
+  );
+  return next;
+}
+
 export async function touchVoiceProfilePreviews(
   tts: SettingsState,
   text: string,

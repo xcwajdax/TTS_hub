@@ -24,7 +24,7 @@ use crate::db::STATUS_PENDING_APPROVAL;
 use crate::cursor_integration::{self, TtsHubExportedConfig};
 use crate::db::{Folder, FolderRule, FolderRuleInput, Generation};
 use crate::google::VOICES;
-use crate::minimax::{MinimaxClient, MinimaxCloneOptions};
+use crate::minimax::MinimaxClient;
 use crate::state::AppState;
 use crate::text_filters::{self, TextFilterPreset};
 use crate::voice_samples;
@@ -1103,7 +1103,7 @@ async fn chat_create_session_http(
     Json(req): Json<CreateSessionReq>,
 ) -> Response {
     let conn = state.db.conn();
-    match crate::chat::db::create_session(&conn, &req.source, req.title.as_deref()) {
+    match crate::chat::db::create_session(&conn, &req.source, req.title.as_deref(), req.metadata.as_ref()) {
         Ok(s) => Json(s).into_response(),
         Err(e) => chat_err(e),
     }

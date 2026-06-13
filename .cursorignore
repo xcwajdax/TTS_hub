@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-ssr/
+src-tauri/target/
+target/
+src-tauri/gen/
+GITHUBSCREENS/
+*.mp4
+Gemini_Generated_*.png

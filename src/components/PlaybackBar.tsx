@@ -95,68 +95,83 @@ export default function PlaybackBar({
     current?.voice?.trim() ??
     (ttsSettings ? effectiveVoiceId(ttsSettings) || ttsSettings.voice : "Profil");
 
+  const avatarCol = (
+    <div className="playback-bar__avatar-col shrink-0 flex flex-col items-center gap-1.5 w-[88px]">
+      <AvatarImage
+        filePath={voiceAvatar?.path ?? null}
+        fallbackLabel={avatarLabel}
+        size={PLAYBACK_AVATAR_SIZE}
+        className="playback-bar__avatar ring-[3px] ring-accent/50 shadow-lg"
+        title={avatarLabel}
+      />
+      <span
+        className="text-[11px] font-semibold text-heading text-center leading-tight line-clamp-2 w-full"
+        title={avatarLabel}
+      >
+        {avatarLabel}
+      </span>
+    </div>
+  );
+
   return (
-    <div className="playback-bar shrink-0 border-t border-border bg-panel px-4 py-3 overflow-hidden">
-      <div className="playback-bar__layout flex gap-4 min-w-0">
-        <div className="playback-bar__avatar-col shrink-0 flex flex-col items-center gap-1.5 w-[88px]">
-          <AvatarImage
-            filePath={voiceAvatar?.path ?? null}
-            fallbackLabel={avatarLabel}
-            size={PLAYBACK_AVATAR_SIZE}
-            className="playback-bar__avatar ring-[3px] ring-accent/50 shadow-lg"
-            title={avatarLabel}
-          />
-          <span
-            className="text-[11px] font-semibold text-heading text-center leading-tight line-clamp-2 w-full"
-            title={avatarLabel}
-          >
-            {avatarLabel}
-          </span>
-        </div>
-
-        <div className="playback-bar__content flex-1 min-w-0 flex flex-col gap-2">
-          {current ? (
+    <div
+      className="playback-bar shrink-0 border-t border-border bg-panel overflow-hidden flex flex-col"
+      data-tour="playback"
+    >
+      {current ? (
+        <WaveformPlayer
+          key={`${current.id}-${playNonce}`}
+          src={playbackAudioSrc(current.id)}
+          current={current}
+          folders={folders}
+          tags={tags}
+          onHistoryChanged={onHistoryChanged}
+          onError={onError}
+          renderLayout={({ controls, timeline, modals, headerCorner }) => (
             <>
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(140px,220px)] items-start gap-3">
-                <div className="flex flex-col min-w-0">
-                  <div className="text-sm font-medium truncate" title={current.text}>
-                    {displayTitle(current)}
+              <div className="playback-bar__layout flex gap-4 min-w-0 px-4 pt-3 pb-2">
+                {avatarCol}
+                <div className="playback-bar__content relative flex-1 min-w-0 flex flex-col gap-1 pr-8">
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(140px,220px)] items-start gap-3">
+                    <div className="flex flex-col min-w-0">
+                      <div className="text-sm font-medium truncate" title={current.text}>
+                        {displayTitle(current)}
+                      </div>
+                      <div className="text-[10px] text-muted flex flex-wrap items-center gap-2 mt-1">
+                        <span className="tag" title={current.model}>
+                          {formatModelLabel(current.model)}
+                        </span>
+                        <span className="tag">{current.voice}</span>
+                        <span className="tag">{current.format.toUpperCase()}</span>
+                        <TokenCostLabel gen={current} />
+                      </div>
+                    </div>
+
+                    <PlaybackBarDetails
+                      gen={current}
+                      sessionIndex={sessionIndex}
+                      sessionTotal={sessionTotal}
+                    />
                   </div>
-                  <div className="text-[10px] text-muted flex flex-wrap items-center gap-2 mt-1">
-                    <span className="tag" title={current.model}>
-                      {formatModelLabel(current.model)}
-                    </span>
-                    <span className="tag">{current.voice}</span>
-                    <span className="tag">{current.format.toUpperCase()}</span>
-                    <TokenCostLabel gen={current} />
-                  </div>
+                  {headerCorner && (
+                    <div className="absolute top-0 right-0 z-10">{headerCorner}</div>
+                  )}
+                  {controls}
                 </div>
-
-                <PlaybackBarDetails
-                  gen={current}
-                  sessionIndex={sessionIndex}
-                  sessionTotal={sessionTotal}
-                />
               </div>
-
-              <WaveformPlayer
-                key={`${current.id}-${playNonce}`}
-                src={playbackAudioSrc(current.id)}
-                className="w-full"
-                current={current}
-                folders={folders}
-                tags={tags}
-                onHistoryChanged={onHistoryChanged}
-                onError={onError}
-              />
+              {timeline}
+              {modals}
             </>
-          ) : (
-            <div className="flex flex-col justify-center min-h-[72px] text-sm text-muted">
-              Brak aktywnej generacji. Wybierz profil i wygeneruj tekst powyżej.
-            </div>
           )}
+        />
+      ) : (
+        <div className="playback-bar__layout flex gap-4 min-w-0 px-4 py-3">
+          {avatarCol}
+          <div className="flex flex-col justify-center min-h-[72px] text-sm text-muted">
+            Brak aktywnej generacji. Wybierz profil i wygeneruj tekst powyżej.
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -7,10 +7,16 @@ import Icon from "./Icon";
 
 interface Props {
   compact?: boolean;
+  /** Płaski wygląd bez ramek — belka odtwarzania. */
+  flat?: boolean;
   className?: string;
 }
 
-export default function AudioOutputSelect({ compact = true, className = "" }: Props) {
+export default function AudioOutputSelect({
+  compact = true,
+  flat = false,
+  className = "",
+}: Props) {
   const {
     outputDeviceId,
     setOutputDeviceId,
@@ -24,19 +30,33 @@ export default function AudioOutputSelect({ compact = true, className = "" }: Pr
     lastSinkError,
   } = usePlayback();
 
+  const labelClass = flat
+    ? "flex h-8 shrink-0 items-center gap-1 text-muted"
+    : `flex h-8 shrink-0 items-center gap-1.5 px-2 rounded-lg border border-border bg-panel2 text-muted ${
+        lastSinkError ? "border-amber-600/60" : ""
+      }`;
+
+  const selectClass = flat
+    ? "text-[10px] bg-transparent px-0 py-0.5 text-foreground cursor-pointer outline-none w-[4.75rem] truncate"
+    : "text-[10px] bg-panel border border-border rounded px-1 py-0.5 text-foreground cursor-pointer hover:border-accent focus:border-accent outline-none max-w-[min(280px,45vw)]";
+
+  const refreshClass = flat
+    ? "w-7 h-7 shrink-0 flex items-center justify-center text-muted hover:text-accent transition-colors disabled:opacity-40"
+    : "w-8 h-8 shrink-0 rounded-lg border border-border bg-panel2 flex items-center justify-center text-muted hover:border-accent hover:text-accent transition-colors disabled:opacity-40";
+
   if (!audioOutputSupported) {
     return (
       <label
-        className={`flex h-8 shrink-0 items-center gap-1.5 px-2 rounded-lg border border-border bg-panel2 text-muted opacity-60 ${className}`}
+        className={`${labelClass} opacity-60 ${className}`}
         title="Wybór wyjścia wymaga nowszego WebView2 Runtime (Chromium 110+)."
       >
-        <span className="text-[10px] whitespace-nowrap">Wyjście</span>
+        {compact && <span className="text-[10px] whitespace-nowrap">Wyjście</span>}
         <select
           disabled
-          className="text-[10px] bg-panel border border-border rounded px-1 py-0.5 max-w-[140px]"
+          className={selectClass}
           aria-label="Urządzenie wyjściowe (niedostępne)"
         >
-          <option>Domyślne</option>
+          <option>Domyślny</option>
         </select>
       </label>
     );
@@ -45,26 +65,28 @@ export default function AudioOutputSelect({ compact = true, className = "" }: Pr
   const hasExplicitDefault = audioOutputDevices.some((d) => d.deviceId === "default");
 
   return (
-    <div className={`flex shrink-0 items-center gap-1 ${className}`}>
+    <div className={`flex shrink-0 items-center gap-0.5 ${className}`}>
       <label
-        className={`flex h-8 shrink-0 items-center gap-1.5 px-2 rounded-lg border border-border bg-panel2 text-muted ${
-          lastSinkError ? "border-amber-600/60" : ""
-        }`}
+        className={labelClass}
         title={
           lastSinkError ??
           audioOutputEnumerationNotice ??
           "Wszystkie wykryte wyjścia audio w systemie"
         }
       >
-        <span className="text-[10px] whitespace-nowrap">{compact ? "Wyjście" : "Urządzenie wyjściowe"}</span>
+        {compact && (
+          <span className="text-[10px] whitespace-nowrap">
+            {flat ? "Wyj." : compact ? "Wyjście" : "Urządzenie wyjściowe"}
+          </span>
+        )}
         <select
           value={outputDeviceId}
           onChange={(e) => setOutputDeviceId(e.currentTarget.value)}
           disabled={audioOutputLoading && audioOutputDevices.length === 0}
-          className="text-[10px] bg-panel border border-border rounded px-1 py-0.5 text-foreground cursor-pointer hover:border-accent focus:border-accent outline-none max-w-[min(280px,45vw)]"
+          className={selectClass}
           aria-label="Urządzenie wyjściowe"
         >
-          {!hasExplicitDefault && <option value="">Domyślne systemowe</option>}
+          {!hasExplicitDefault && <option value="">Domyślny</option>}
           {audioOutputDevices.map((d, index) => (
             <option key={deviceOptionKey(d, index)} value={d.deviceId}>
               {formatDeviceOptionLabel(d)}
@@ -72,12 +94,12 @@ export default function AudioOutputSelect({ compact = true, className = "" }: Pr
           ))}
           {audioOutputDevices.length === 0 && !audioOutputLoading && (
             <option value="" disabled>
-              Brak wykrytych wyjść — odśwież listę
+              Brak wyjść
             </option>
           )}
         </select>
       </label>
-      {canPickSystemAudioOutput && (
+      {canPickSystemAudioOutput && !flat && (
         <button
           type="button"
           className="h-8 shrink-0 px-2 rounded-lg border border-border bg-panel2 text-[10px] text-muted hover:border-accent hover:text-accent transition-colors disabled:opacity-40 whitespace-nowrap"
@@ -90,7 +112,7 @@ export default function AudioOutputSelect({ compact = true, className = "" }: Pr
       )}
       <button
         type="button"
-        className="w-8 h-8 shrink-0 rounded-lg border border-border bg-panel2 flex items-center justify-center text-muted hover:border-accent hover:text-accent transition-colors disabled:opacity-40"
+        className={refreshClass}
         onClick={() => void refreshAudioOutputDevices(true)}
         disabled={audioOutputLoading}
         title="Odśwież listę wszystkich urządzeń wyjściowych"

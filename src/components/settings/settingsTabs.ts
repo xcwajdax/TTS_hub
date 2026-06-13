@@ -116,7 +116,7 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     id: "memory",
     label: "Pamięć",
     icon: "trash",
-    description: "Czyszczenie lokalnych plików (historia, archiwum, cache)",
+    description: "Wykorzystanie dysku i czyszczenie lokalnych plików",
     group: "system",
   },
   {

@@ -3,18 +3,12 @@ import {
   clearLocalAppData,
   getClearLocalDataConfirmationWord,
 } from "../api/tauri";
+import { formatBytes } from "../lib/formatBytes";
 
 interface Props {
   onError: (message: string) => void;
   onSuccess?: (message: string) => void;
   onCleared?: () => void;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 export default function ClearLocalDataPanel({ onError, onSuccess, onCleared }: Props) {
@@ -56,8 +50,9 @@ export default function ClearLocalDataPanel({ onError, onSuccess, onCleared }: P
     <section className="flex flex-col gap-3 border border-red-500/30 rounded-md p-3 bg-red-950/20">
       <h3 className="text-xs uppercase tracking-wide text-red-300/90">Pamięć lokalna</h3>
       <p className="text-[11px] text-muted">
-        Usuwa całą historię generacji, archiwum audio, próbki głosów, własne skórki i cache —
-        zwalnia miejsce na dysku. Plik ustawień (klucze API, ścieżki, preferencje) pozostaje.
+        Usuwa całą historię generacji, archiwum audio, sesje czatu, projekty roleplay, soundboard,
+        próbki głosów, własne skórki i cache — zwalnia miejsce na dysku. Plik ustawień (klucze API,
+        ścieżki, preferencje) pozostaje.
       </p>
       {!armed ? (
         <button
@@ -86,6 +81,12 @@ export default function ClearLocalDataPanel({ onError, onSuccess, onCleared }: P
             type="text"
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && matches && !clearing) {
+                e.preventDefault();
+                void runClear();
+              }
+            }}
             placeholder={confirmationWord ?? "nazwa komputera"}
             autoComplete="off"
             spellCheck={false}

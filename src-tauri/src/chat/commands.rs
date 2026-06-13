@@ -31,7 +31,7 @@ pub fn chat_create_session(
 ) -> Result<ChatSession, String> {
     let s = {
         let conn = lock_db(&state)?;
-        db::create_session(&conn, &source, title.as_deref()).map_err(|e| e.to_string())?
+        db::create_session(&conn, &source, title.as_deref(), None).map_err(|e| e.to_string())?
     };
     let _ = app.emit("chat:session_changed", &serde_json::json!({"id": s.id}));
     Ok(s)

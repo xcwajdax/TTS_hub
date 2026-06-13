@@ -87,19 +87,6 @@ pub struct ApplyFiltersResult {
     pub warnings: Vec<String>,
 }
 
-pub fn resolve_active_preset(settings: &TextFiltersSettings) -> TextFilterPreset {
-    if let Some(id) = &settings.active_preset_id {
-        if let Some(p) = settings.presets.iter().find(|p| p.id == *id) {
-            return p.clone();
-        }
-    }
-    settings
-        .presets
-        .first()
-        .cloned()
-        .unwrap_or_else(default_preset)
-}
-
 pub fn apply_text_filters(input: &str, preset: &TextFilterPreset) -> ApplyFiltersResult {
     let original_len = input.chars().count();
     let mut out = input.to_string();
