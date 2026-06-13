@@ -74,6 +74,7 @@ export default function AppViewTabs({ view, onViewChange, showMinimaxVoices }: P
       className="flex border-b border-border shrink-0 bg-panel overflow-x-auto"
       role="tablist"
       aria-label="Widok aplikacji"
+      data-tour="app-tabs"
     >
       {tabs
         .filter((t) => !t.hidden)

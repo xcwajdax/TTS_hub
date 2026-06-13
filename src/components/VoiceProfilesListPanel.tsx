@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { getAppSettings } from "../api/tauri";
 import type { TtsVoiceProfile } from "../appSettings";
 import {
+  deleteVoiceProfile,
   isRerouteProfile,
   previewTextForProfile,
   setRerouteVoiceProfile,
   sortProfilesForChatList,
-} from "../lib/voiceProfiles";
-import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
+} from "../lib/voiceProfiles";import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import { shortcutDisplayLabel } from "../lib/quickHotkeyPreset";
 import type { Generation } from "../types";
 import VoiceProfileChatRow from "./VoiceProfileChatRow";
@@ -15,21 +16,25 @@ import VoiceProfileContextMenu from "./VoiceProfileContextMenu";
 import VoiceProfileShortcutFooter from "./VoiceProfileShortcutFooter";
 
 interface Props {
+  variant?: "sidebar" | "settings";
   recentGenerations: Generation[];
   activeProfileId: string | null;
   onSelectProfile: (profile: TtsVoiceProfile) => void;
   onEditProfile: (profile: TtsVoiceProfile) => void;
   onError: (message: string) => void;
   onSuccess?: (message: string) => void;
+  onProfileDeleted?: (profileId: string) => void;
 }
 
 export default function VoiceProfilesListPanel({
+  variant = "sidebar",
   recentGenerations,
   activeProfileId,
   onSelectProfile,
   onEditProfile,
   onError,
   onSuccess,
+  onProfileDeleted,
 }: Props) {
   const [profiles, setProfiles] = useState<TtsVoiceProfile[]>([]);
   const [rerouteProfileId, setRerouteProfileId] = useState<string | null>(null);
@@ -70,13 +75,39 @@ export default function VoiceProfilesListPanel({
     }
   }, [sorted, activeProfileId]);
 
+  const handleDeleteProfile = useCallback(
+    (profile: TtsVoiceProfile) => {
+      void (async () => {
+        const ok = await confirm(
+          `Usunąć profil „${profile.name}"? Skrót i reroute globalny zostaną usunięte. Historia generacji pozostaje.`,
+          { title: "Usuń profil głosu", kind: "warning" },
+        );
+        if (!ok) return;
+        try {
+          await deleteVoiceProfile(profile.id);
+          setContextMenu(null);
+          onProfileDeleted?.(profile.id);
+          onSuccess?.(`Usunięto profil „${profile.name}".`);
+        } catch (e) {
+          onError(String(e));
+        }
+      })();
+    },
+    [onError, onProfileDeleted, onSuccess],
+  );
+
   if (sorted.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+      <div
+        className={`flex flex-col items-center justify-center gap-2 text-center ${
+          variant === "settings" ? "px-6 py-16" : "px-4 py-10"
+        }`}
+      >
         <p className="text-sm text-muted">Brak zapisanych profili głosu</p>
-        <p className="text-[11px] text-muted/80 leading-relaxed">
-          W zakładce Ustawienia ustaw parametry TTS i użyj przycisku „Zapisz profil głosu” na dole
-          panelu.
+        <p className="text-[11px] text-muted/80 leading-relaxed max-w-sm">
+          {variant === "settings"
+            ? "Użyj przycisku „Dodaj nowy profil” w widoku TTS albo przejdź do zakładki Głosy Minimax → Profil TTS."
+            : "Kliknij „Dodaj nowy profil” na dole panelu — otworzy się edytor w zakładce Głosy Minimax."}
         </p>
       </div>
     );
@@ -84,9 +115,14 @@ export default function VoiceProfilesListPanel({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <p className="shrink-0 px-3 py-1.5 text-[10px] text-muted border-b border-border/50 leading-snug">
-        Kliknij profil, aby go wybrać. Prawy przycisk — edycja lub reroute globalny (wymusza profil
-        dla Cursor, API HTTP i innych klientów).
+      <p
+        className={`shrink-0 text-muted border-b border-border/50 leading-snug ${
+          variant === "settings"
+            ? "px-4 py-2 text-[11px]"
+            : "px-3 py-1.5 text-[10px]"
+        }`}
+      >
+        Kliknij profil, aby go wybrać. Prawy przycisk — edycja, reroute globalny lub usunięcie.
         {rerouteProfileId ? (
           <>
             {" "}
@@ -94,7 +130,11 @@ export default function VoiceProfilesListPanel({
           </>
         ) : null}
       </p>
-      <div className="voice-profile-chat-list flex-1 min-h-0 overflow-y-auto">
+      <div
+        className={`voice-profile-chat-list flex-1 min-h-0 overflow-y-auto ${
+          variant === "settings" ? "px-1" : ""
+        }`}
+      >
         {sorted.map((profile) => {
           const preview = previewTextForProfile(profile, recentGenerations);
           const selected = profile.id === activeProfileId;
@@ -126,10 +166,11 @@ export default function VoiceProfilesListPanel({
           profile={selectedProfile}
           onError={onError}
           onSuccess={onSuccess}
+          onDelete={() => handleDeleteProfile(selectedProfile)}
         />
       ) : (
         <p className="shrink-0 border-t border-border px-3 py-2 text-[10px] text-muted text-center leading-snug">
-          Wybierz profil z listy — ustawienia załadują się w panelu TTS.
+          Wybierz profil z listy — ustawienia załadują się do syntezy w edytorze.
         </p>
       )}
       {contextMenu ? (
@@ -155,6 +196,7 @@ export default function VoiceProfilesListPanel({
               })
               .catch((e) => onError(String(e)));
           }}
+          onDelete={() => handleDeleteProfile(contextMenu.profile)}
           onClose={() => setContextMenu(null)}
         />
       ) : null}

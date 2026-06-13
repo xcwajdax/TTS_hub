@@ -658,6 +658,63 @@ textarea:focus, input:focus, select:focus { outline: none; }
   @apply gap-0.5;
 }
 
+.history-quick-item__rail {
+  @apply ml-0;
+}
+
+.history-quick-item__hover-actions {
+  @apply flex items-stretch shrink-0 overflow-hidden gap-0;
+  max-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  border-left-width: 0;
+  transition:
+    max-width 160ms ease,
+    opacity 120ms ease,
+    border-color 160ms ease;
+}
+
+.group:hover .history-quick-item__hover-actions,
+.group:focus-within .history-quick-item__hover-actions {
+  max-width: 3rem;
+  opacity: 1;
+  pointer-events: auto;
+  @apply border-l border-border/40;
+}
+
+.history-quick-item__action-btn {
+  @apply inline-flex items-center justify-center self-stretch w-6 shrink-0;
+  @apply rounded-sm bg-transparent text-muted transition-colors;
+  @apply hover:bg-panel2/90 hover:text-ink;
+  @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted;
+}
+
+.history-quick-item__action-btn .vl-icon {
+  @apply block m-auto;
+}
+
+.history-quick-item__status {
+  @apply flex items-center justify-center self-stretch w-[1.125rem] shrink-0 border-l border-border/40;
+  @apply -my-1.5 text-[7px] font-semibold uppercase tracking-wide transition-colors;
+}
+
+.history-quick-item__status-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-size: 7px;
+}
+
+.history-quick-item__status--temp {
+  @apply bg-amber-500/10 text-amber-200/90 cursor-pointer;
+  @apply hover:bg-amber-500/20 hover:text-amber-100;
+}
+
+.history-quick-item__status--archived {
+  @apply bg-indigo-500/15 text-indigo-200/90;
+}
+
 /* Full-window Historia browse layout */
 .history-browse-view__body {
   grid-template-columns: 200px minmax(0, 1fr);
@@ -672,7 +729,22 @@ textarea:focus, input:focus, select:focus { outline: none; }
   background: rgb(16 18 24);
 }
 .history-quick-panel .history-list {
-  background: rgb(16 18 24 / 0.55);
+  background: transparent;
+}
+.history-quick-panel .history-list.history-list--compact {
+  gap: 0;
+}
+.history-quick-panel .history-list__section {
+  gap: 0;
+}
+.history-quick-panel .history-list__heading {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  border-radius: 0;
+}
+.history-quick-item {
+  border-radius: 0;
+  border-right-width: 0;
 }
 .history-browse-view .history-item--current,
 .history-quick-panel .history-item--current {
@@ -763,6 +835,40 @@ textarea:focus, input:focus, select:focus { outline: none; }
   padding-top: 2px;
 }
 
+.playback-bar {
+  --playback-pad-x: 1rem;
+  --playback-avatar-col-w: 88px;
+  --playback-layout-gap: 1rem;
+}
+
+.playback-timeline {
+  @apply w-full min-w-0 shrink-0;
+}
+
+.playback-timeline__ruler {
+  @apply absolute inset-x-0 top-0 z-10 pointer-events-none;
+  height: 0.875rem;
+  padding: 0 0.125rem;
+}
+
+.generation-text-modal__body {
+  @apply flex flex-col min-h-0 flex-1 overflow-hidden;
+}
+
+.generation-text-modal__body .history-text-preview {
+  flex: 1;
+  height: auto;
+  min-height: 120px;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.generation-text-modal__body .history-text-preview:not(.history-text-preview--scrolling) .history-text-preview__inner {
+  overflow: visible;
+  display: block;
+  -webkit-line-clamp: unset;
+}
+
 .history-item-playback {
   @apply shrink-0 w-full;
 }
@@ -821,28 +927,62 @@ textarea:focus, input:focus, select:focus { outline: none; }
   );
 }
 
-.playback-toast-toolbar__btn {
+.toast-toolbar__btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.25rem;
   min-width: 2rem;
   height: 1.75rem;
   padding: 0 0.5rem;
   border-radius: 0.375rem;
-  border: 1px solid #2a3140;
-  background-color: #1a1e26;
-  color: #e6e8ee;
-  transition: border-color 0.15s, color 0.15s;
+  border: 1px solid rgb(var(--color-border));
+  background-color: rgb(var(--color-panel2));
+  color: rgb(var(--color-foreground));
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
 }
 
-.playback-toast-toolbar__btn:hover {
-  border-color: #7c5cff;
-  color: #c4b5fd;
+.toast-toolbar__btn:hover {
+  border-color: rgb(var(--color-accent));
+  color: rgb(var(--color-accent));
+  background-color: rgb(var(--color-accent-soft) / 0.35);
 }
 
-.playback-toast-toolbar__btn--danger:hover {
-  border-color: #f87171;
-  color: #fca5a5;
+.toast-toolbar__btn--icon {
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+}
+
+.toast-toolbar__btn--text {
+  padding: 0 0.625rem;
+  font-size: 0.625rem;
+  font-weight: 500;
+}
+
+.toast-toolbar__btn--danger:hover {
+  border-color: rgb(248 113 113);
+  color: rgb(252 165 165);
+  background-color: rgb(248 113 113 / 0.12);
+}
+
+.toast-toolbar__btn--sm {
+  height: 1.5rem;
+  padding: 0 0.45rem;
+  font-size: 0.5625rem;
+}
+
+.toast-toolbar__btn--bare {
+  border: none;
+  background: transparent;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+}
+
+.toast-toolbar__btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 /* Osobne okno powiadomienia quick-hotkey (przezroczyste, always-on-top) */

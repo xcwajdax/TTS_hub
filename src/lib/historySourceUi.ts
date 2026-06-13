@@ -110,6 +110,22 @@ export function historyItemSurfaceStyle(
   };
 }
 
+/** Flat sidebar row — solid fill, wide accent rail, no gradient. */
+export function historyQuickItemSurfaceStyle(
+  accentColor: string,
+  isCurrent: boolean,
+): Record<string, string | number> {
+  const base = {
+    borderLeftWidth: 6,
+    borderLeftColor: accentColor,
+  };
+  if (isCurrent) return base;
+  return {
+    ...base,
+    backgroundColor: "rgb(var(--color-panel2))",
+  };
+}
+
 export function sourceLabelForGeneration(gen: Generation): string {
   return getSourceUi(gen.source).label;
 }

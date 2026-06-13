@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { usePlayback } from "../context/PlaybackContext";
 import { usePlaybackAnalyser } from "./usePlaybackAnalyser";
 import { isTauriApp } from "../lib/tauriEnv";
+import { PLAYBACK_TOAST_WINDOW_LABEL, PlaybackToastEvents } from "../lib/playbackToastContract";
 import type { PlaybackVizFramePayload } from "../lib/playbackToastTypes";
 
 const BAR_COUNT = 32;
@@ -43,7 +44,7 @@ export function useBroadcastPlaybackViz() {
         loading,
       };
 
-      void emitTo("playback-toast", "playback-viz:frame", payload).catch(() => {
+      void emitTo(PLAYBACK_TOAST_WINDOW_LABEL, PlaybackToastEvents.vizFrame, payload).catch(() => {
         /* okno może być ukryte */
       });
     };

@@ -100,9 +100,10 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/plugins/soundboard/slots/0/play" -
 | `profile_id` | string \| null | nie | Voice Box — id profilu (alternatywa: `voice`). |
 | `language` | string \| null | nie | Voice Box — np. `pl`. Minimax — kod hub (`pl`, `en`) mapowany na API `language_boost` (`Polish`, `English`). Domyślnie `pl`. |
 | `engine` | string \| null | nie | Voice Box — silnik z prefiksu modelu. |
-| `minimax_speed` | number \| null | nie | MiniMax — 0.5–2.0 (domyślnie 1.0). |
+| `minimax_speed` | number \| null | nie | MiniMax — 0.5–2.0 (domyślnie 1.0). Legacy; nadpisywane przez `minimax_options.voice`. |
 | `minimax_vol` | number \| null | nie | MiniMax — 0–10 (domyślnie 1.0). |
 | `minimax_pitch` | number \| null | nie | MiniMax — -12–12 (domyślnie 0). |
+| `minimax_options` | object \| null | nie | Pełne opcje T2A MiniMax (voice, audio, voice_modify, pronunciation_dict, timbre_weights, language, subtitles, transport HTTP/WS, async `text_file_id`). Tekst >10 000 znaków → async T2A. |
 
 ### Multi-speaker
 
@@ -156,6 +157,18 @@ curl -X POST http://127.0.0.1:8765/minimax/clone-voice `
   -d '{"source_path":"C:/path/sample-voice.mp3","voice_id":"my_custom_voice","name":"Mój głos","model":"minimax:speech-2.8-hd"}'
 
 curl -X POST http://127.0.0.1:8765/minimax/sync-voices
+
+curl http://127.0.0.1:8765/minimax/languages
+
+curl -X POST http://127.0.0.1:8765/minimax/voice-design `
+  -H "Content-Type: application/json" `
+  -d '{"prompt":"Calm Polish narrator","preview_text":"Podgląd głosu."}'
+
+curl -X DELETE http://127.0.0.1:8765/minimax/voices/my_custom_voice
+
+curl -X POST http://127.0.0.1:8765/minimax/upload-text `
+  -H "Content-Type: application/json" `
+  -d '{"file_path":"C:/path/long-text.txt"}'
 ```
 
 ### MiniMax (skill / Cursor)

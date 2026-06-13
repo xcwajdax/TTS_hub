@@ -6,7 +6,10 @@ import { useTimelineView } from "../../context/TimelineViewContext";
 import SettingsRail from "./SettingsRail";
 import type { SettingsTabId } from "./settingsTabs";
 import { useSettingsView } from "./useSettingsView";
+import type { TtsVoiceProfile } from "../../appSettings";
 import GeneralPage from "./pages/GeneralPage";
+import ProvidersPage from "./pages/ProvidersPage";
+import VoiceProfilesPage from "./pages/VoiceProfilesPage";
 import AudioOutputPage from "./pages/AudioOutputPage";
 import UsagePage from "./pages/UsagePage";
 import FiltersPage from "./pages/FiltersPage";
@@ -25,6 +28,9 @@ interface Props {
   onOrganizationChanged?: () => void;
   onLocalDataCleared?: () => void;
   initialTab?: SettingsTabId;
+  activeVoiceProfileId?: string | null;
+  onSelectVoiceProfile?: (profile: TtsVoiceProfile) => void;
+  onVoiceProfileDeleted?: (profileId: string) => void;
 }
 
 export default function SettingsView({
@@ -33,6 +39,9 @@ export default function SettingsView({
   onOrganizationChanged,
   onLocalDataCleared,
   initialTab,
+  activeVoiceProfileId = null,
+  onSelectVoiceProfile,
+  onVoiceProfileDeleted,
 }: Props) {
   const settings = useSettingsView({ onError, onSuccess });
   const { onBackToTts } = useAppView();
@@ -88,6 +97,22 @@ export default function SettingsView({
                 onSuccess={onSuccess}
               />
             )}
+            {tab === "providers" && (
+              <ProvidersPage
+                view={settings.view}
+                update={settings.update}
+                onError={onError}
+              />
+            )}
+            {tab === "voice_profiles" && onSelectVoiceProfile ? (
+              <VoiceProfilesPage
+                activeVoiceProfileId={activeVoiceProfileId}
+                onSelectVoiceProfile={onSelectVoiceProfile}
+                onError={onError}
+                onSuccess={onSuccess}
+                onProfileDeleted={onVoiceProfileDeleted}
+              />
+            ) : null}
             {tab === "audio_output" && <AudioOutputPage />}
             {tab === "usage" && <UsagePage />}
             {tab === "filters" && (

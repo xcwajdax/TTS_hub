@@ -42,7 +42,6 @@ pub fn reload_all(app: &AppHandle, state: &AppArc) -> Result<(), String> {
     crate::selection_capture::ensure_foreground_tracker(app.clone());
 
     for (shortcut, target) in bindings {
-        let app = app.clone();
         gs.on_shortcut(shortcut.as_str(), move |app, _shortcut, event| {
             if event.state != ShortcutState::Pressed {
                 return;

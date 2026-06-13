@@ -14,7 +14,7 @@
 // which is the MiniMax rule of thumb for Polish text (≈3 chars/token).
 
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use rusqlite::params;
 use serde::Serialize;
 
 /// Per-provider rollup of generations, character count, and estimated tokens.
@@ -127,6 +127,7 @@ pub fn compute_all_providers(db: &crate::db::Db, now: i64) -> Result<Vec<Provide
 }
 
 /// Format `tokens` as a compact "4.1k" / "1.2M" badge string for the UI.
+#[cfg(test)]
 pub fn format_token_badge(tokens: i64) -> String {
     let abs = tokens.unsigned_abs() as f64;
     if abs >= 1_000_000.0 {
@@ -159,15 +160,4 @@ mod tests {
         assert_eq!(u.total_generations, 0);
         assert_eq!(u.provider, "google");
     }
-}
-
-/// Convenience: list providers that have at least one generation in the table.
-/// Used by the HTTP layer to know which providers to include in a `/usage`
-/// response when the caller did not specify a `provider` filter.
-pub fn list_seen_providers(conn: &Connection) -> Result<Vec<String>> {
-    let mut stmt =
-        conn.prepare("SELECT DISTINCT COALESCE(provider, '(unset)') FROM generations ORDER BY 1")?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-    let v: Vec<String> = rows.filter_map(|r| r.ok()).collect();
-    Ok(v)
 }

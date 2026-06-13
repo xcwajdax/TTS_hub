@@ -1,0 +1,99 @@
+/** Nadpisania driver.js pod skórki TTS Hub */
+.driver-popover.tts-hub-tour-popover {
+  background-color: var(--color-panel, #1a1a2e);
+  color: var(--color-fg, #e8e8f0);
+  border: 1px solid var(--color-border, #3a3a5c);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.45);
+  max-width: 340px;
+}
+
+.driver-popover.tts-hub-tour-popover .driver-popover-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-heading, #f0f0f8);
+}
+
+.driver-popover.tts-hub-tour-popover .driver-popover-description {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-muted, #a0a0b8);
+}
+
+.driver-popover.tts-hub-tour-popover .driver-popover-progress-text {
+  font-size: 0.6875rem;
+  color: var(--color-muted, #a0a0b8);
+}
+
+.driver-popover.tts-hub-tour-popover button {
+  font-size: 0.75rem;
+  border-radius: 0.375rem;
+  text-shadow: none;
+}
+
+.driver-popover.tts-hub-tour-popover .driver-popover-next-btn,
+.driver-popover.tts-hub-tour-popover .driver-popover-done-btn {
+  background-color: var(--color-accent, #7c6cf0);
+  color: #fff;
+  border: none;
+}
+
+.driver-popover.tts-hub-tour-popover .driver-popover-prev-btn,
+.driver-popover.tts-hub-tour-popover .driver-popover-close-btn {
+  background-color: transparent;
+  color: var(--color-muted, #a0a0b8);
+  border: 1px solid var(--color-border, #3a3a5c);
+}
+
+.driver-popover.tts-hub-tour-popover .driver-popover-arrow-side-left.driver-popover-arrow,
+.driver-popover.tts-hub-tour-popover .driver-popover-arrow-side-right.driver-popover-arrow,
+.driver-popover.tts-hub-tour-popover .driver-popover-arrow-side-top.driver-popover-arrow,
+.driver-popover.tts-hub-tour-popover .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-color: var(--color-panel, #1a1a2e);
+}
+
+.driver-overlay {
+  z-index: 75 !important;
+}
+
+.driver-popover {
+  z-index: 76 !important;
+}
+
+.tutorial-readme-content h2 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-heading, #f0f0f8);
+  margin: 0 0 0.5rem;
+}
+
+.tutorial-readme-content h3 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-heading, #f0f0f8);
+  margin: 1rem 0 0.375rem;
+}
+
+.tutorial-readme-content p {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-muted, #a0a0b8);
+  margin: 0 0 0.5rem;
+}
+
+.tutorial-readme-content ol {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-muted, #a0a0b8);
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.tutorial-readme-content li {
+  margin-bottom: 0.25rem;
+}
+
+.tutorial-readme-content code {
+  font-size: 0.75rem;
+  color: var(--color-ink, #d0d0e0);
+}

@@ -18,6 +18,7 @@ pub fn create_session(
     conn: &Connection,
     source: &str,
     title: Option<&str>,
+    metadata: Option<&serde_json::Value>,
 ) -> Result<ChatSession> {
     let id = format!("sess_{}", uuid::Uuid::new_v4());
     let now = chrono::Utc::now().timestamp_millis();
@@ -31,10 +32,11 @@ pub fn create_session(
     let title_for_db = title.map(String::from).unwrap_or_else(|| {
         format!("{source} {default_title}")
     });
+    let metadata_json = metadata.map(|v| v.to_string());
     conn.execute(
-        "INSERT INTO chat_sessions (id, source, title, created_at, last_active_at, is_saved, message_count)
-         VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)",
-        params![id, source, title_for_db, now, now],
+        "INSERT INTO chat_sessions (id, source, title, created_at, last_active_at, is_saved, message_count, metadata_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6)",
+        params![id, source, title_for_db, now, now, metadata_json],
     )?;
     Ok(ChatSession {
         id,
@@ -44,7 +46,7 @@ pub fn create_session(
         last_active_at: now,
         is_saved: false,
         message_count: 0,
-        metadata_json: None,
+        metadata_json,
     })
 }
 

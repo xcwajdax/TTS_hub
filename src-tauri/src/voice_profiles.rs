@@ -34,6 +34,8 @@ pub struct TtsVoiceProfile {
     #[serde(default)]
     pub minimax_pitch: Option<i32>,
     #[serde(default)]
+    pub minimax_options: Option<crate::minimax::MinimaxSynthesisOptions>,
+    #[serde(default)]
     pub multi_speaker: bool,
     #[serde(default)]
     pub speakers: Vec<VoiceProfileSpeaker>,
@@ -70,6 +72,7 @@ impl Default for TtsVoiceProfile {
             minimax_speed: None,
             minimax_vol: None,
             minimax_pitch: None,
+            minimax_options: None,
             multi_speaker: false,
             speakers: Vec::new(),
             last_preview: None,
@@ -195,6 +198,7 @@ pub fn apply_voice_profile_tts_params(req: &mut GenerateReq, profile: &TtsVoiceP
     req.minimax_speed = profile.minimax_speed;
     req.minimax_vol = profile.minimax_vol;
     req.minimax_pitch = profile.minimax_pitch;
+    req.minimax_options = profile.minimax_options.clone();
     req.multi_speaker = if profile.multi_speaker && !profile.speakers.is_empty() {
         Some(
             profile
@@ -296,6 +300,7 @@ mod tests {
             minimax_speed: None,
             minimax_vol: None,
             minimax_pitch: None,
+            minimax_options: None,
             original_prompt: None,
             chat_session_id: None,
             chat_role: None,
@@ -343,6 +348,7 @@ mod tests {
             minimax_speed: None,
             minimax_vol: None,
             minimax_pitch: None,
+            minimax_options: None,
             original_prompt: None,
             chat_session_id: None,
             chat_role: None,

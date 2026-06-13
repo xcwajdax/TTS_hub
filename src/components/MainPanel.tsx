@@ -245,6 +245,19 @@ export default function MainPanel({
         minimax_speed: tts.provider === "minimax" ? tts.minimaxSpeed : null,
         minimax_vol: tts.provider === "minimax" ? tts.minimaxVol : null,
         minimax_pitch: tts.provider === "minimax" ? tts.minimaxPitch : null,
+        minimax_options:
+          tts.provider === "minimax"
+            ? {
+                ...tts.minimaxOptions,
+                voice: {
+                  ...tts.minimaxOptions.voice,
+                  speed: tts.minimaxSpeed,
+                  vol: tts.minimaxVol,
+                  pitch: tts.minimaxPitch,
+                },
+                language: tts.language,
+              }
+            : null,
       });
       trackEnqueued(g);
       void touchVoiceProfilePreviews(tts, filtered, voiceProfileId).catch(() => undefined);
@@ -369,7 +382,7 @@ export default function MainPanel({
             <GenerationProgressBar progress={progress} />
           </div>
         </div>
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden" data-tour="editor">
           <BlockEditorPane
             blockDoc={blockDoc}
             onBlockDocChange={setBlockDoc}

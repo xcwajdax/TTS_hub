@@ -24,6 +24,7 @@ use crate::db::STATUS_PENDING_APPROVAL;
 use crate::cursor_integration::{self, TtsHubExportedConfig};
 use crate::db::{Folder, FolderRule, FolderRuleInput, Generation};
 use crate::google::VOICES;
+use crate::minimax::MinimaxClient;
 use crate::state::AppState;
 use crate::text_filters::{self, TextFilterPreset};
 use crate::voice_samples;
@@ -108,6 +109,10 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         .route("/cursor/config", get(cursor_config))
         .route("/minimax/sync-voices", post(minimax_sync_voices_http))
         .route("/minimax/clone-voice", post(minimax_clone_voice_http))
+        .route("/minimax/voice-design", post(minimax_voice_design_http))
+        .route("/minimax/voices/:voice_id", delete(minimax_delete_voice_http))
+        .route("/minimax/languages", get(minimax_languages_http))
+        .route("/minimax/upload-text", post(minimax_upload_text_http))
         .route("/text/filter", post(text_filter))
         .route("/integration/status", get(integration_status))
         .route("/plugins", get(plugins_list))
@@ -501,6 +506,8 @@ struct MinimaxCloneVoiceBody {
     prompt_path: Option<String>,
     #[serde(default)]
     prompt_text: Option<String>,
+    #[serde(default)]
+    clone_options: Option<crate::minimax::MinimaxCloneOptions>,
 }
 
 async fn minimax_clone_voice_http(
@@ -538,6 +545,7 @@ async fn minimax_clone_voice_http(
         preview_text,
         body.prompt_path,
         body.prompt_text,
+        body.clone_options.unwrap_or_default(),
     )
     .await
     {
@@ -550,6 +558,69 @@ async fn minimax_sync_voices_http(State(state): State<AppArc>) -> Response {
     match sync_minimax_voices_impl(&state).await {
         Ok(result) => Json(result).into_response(),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn minimax_languages_http() -> Response {
+    Json(MinimaxClient::list_languages()).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct MinimaxVoiceDesignBody {
+    prompt: String,
+    preview_text: String,
+    #[serde(default)]
+    voice_id: Option<String>,
+}
+
+async fn minimax_voice_design_http(
+    State(state): State<AppArc>,
+    Json(body): Json<MinimaxVoiceDesignBody>,
+) -> Response {
+    match state
+        .minimax
+        .design_voice(&body.prompt, &body.preview_text, body.voice_id.as_deref())
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+async fn minimax_delete_voice_http(
+    State(state): State<AppArc>,
+    Path(voice_id): Path<String>,
+) -> Response {
+    match state.minimax.delete_voice(&voice_id).await {
+        Ok(()) => Json(serde_json::json!({ "ok": true, "voice_id": voice_id })).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MinimaxUploadTextBody {
+    file_path: String,
+}
+
+async fn minimax_upload_text_http(
+    State(state): State<AppArc>,
+    Json(body): Json<MinimaxUploadTextBody>,
+) -> Response {
+    let path = body.file_path.trim();
+    if path.is_empty() || !std::path::Path::new(path).is_file() {
+        return json_err(StatusCode::BAD_REQUEST, format!("file not found: {path}"));
+    }
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => return json_err(StatusCode::BAD_REQUEST, e.to_string()),
+    };
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("input.txt");
+    match state.minimax.upload_text_file(filename, bytes).await {
+        Ok(file_id) => Json(serde_json::json!({ "file_id": file_id })).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
 }
 
@@ -1032,7 +1103,7 @@ async fn chat_create_session_http(
     Json(req): Json<CreateSessionReq>,
 ) -> Response {
     let conn = state.db.conn();
-    match crate::chat::db::create_session(&conn, &req.source, req.title.as_deref()) {
+    match crate::chat::db::create_session(&conn, &req.source, req.title.as_deref(), req.metadata.as_ref()) {
         Ok(s) => Json(s).into_response(),
         Err(e) => chat_err(e),
     }

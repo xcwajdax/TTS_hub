@@ -14,15 +14,13 @@ import type { Generation } from "./types";
 import {
   getAppSettings,
   openQuickSetupWindow,
-  setAppSettings,
 } from "./api/tauri";
-import QuickSetupPrompt from "./components/quickSetup/QuickSetupPrompt";
+import OnboardingOrchestrator from "./components/tutorial/OnboardingOrchestrator";
 import { syncSaveFormatFromSettings } from "./audioFormats";
 import { useAppMenu } from "./hooks/useAppMenu";
 import { useBroadcastPlaybackViz } from "./hooks/useBroadcastPlaybackViz";
 import { useCursorIntegration } from "./hooks/useCursorIntegration";
-import { usePlaybackToastRemote } from "./hooks/usePlaybackToastRemote";
-import { usePlaybackToastWindow } from "./hooks/usePlaybackToastWindow";
+import { usePlaybackToastBridge } from "./hooks/usePlaybackToastBridge";
 import AppStatusBar from "./components/AppStatusBar";
 import BrowserOnlyBanner from "./components/BrowserOnlyBanner";
 import TitleBar from "./components/TitleBar";
@@ -43,6 +41,7 @@ import RoleplayView from "./roleplay/RoleplayView";
 import ChatView from "./chat/ChatView";
 import SettingsView from "./components/settings/SettingsView";
 import MinimaxVoicesView from "./components/MinimaxVoicesView";
+import { DEFAULT_MINIMAX_VOICES_SECTION, type MinimaxVoicesSection } from "./components/minimaxVoicesSections";
 import { AppViewContext, type AppViewNav } from "./context/AppViewContext";
 import type { SettingsTabId } from "./components/settings/settingsTabs";
 import type { TtsProviderId, TtsVoiceProfile } from "./appSettings";
@@ -60,6 +59,7 @@ interface AppInnerProps {
   setAppViewState: (v: AppView) => void;
   setSettingsTabState: (tab: SettingsTabId) => void;
   settingsTab: SettingsTabId;
+  onStartProductTour: () => void;
 }
 
 function AppInner({
@@ -73,12 +73,11 @@ function AppInner({
   setAppViewState,
   setSettingsTabState,
   settingsTab,
+  onStartProductTour,
 }: AppInnerProps) {
   const { current, playing, playNonce, select, audioRef, setEditorText, playClip } = usePlayback();
   const { onDone } = useJobs();
   useBroadcastPlaybackViz();
-  usePlaybackToastWindow();
-  usePlaybackToastRemote();
   const [showRecovery, setShowRecovery] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const {
@@ -94,7 +93,13 @@ function AppInner({
     refreshInterrupted,
   } = useGenerationsHistory(setError);
   const [toast, setToast] = useState<string | null>(null);
-  const [showQuickSetupPrompt, setShowQuickSetupPrompt] = useState(false);
+  usePlaybackToastBridge({
+    onHistoryChanged: refresh,
+    onReminder: (title) => {
+      setToast(`Przypomnienie: ${title}`);
+      window.setTimeout(() => setToast(null), 3500);
+    },
+  });
   const [plugins, setPlugins] = useState<PluginManifest[]>(BUILTIN_PLUGIN_STUBS);
   const [enabledProviders, setEnabledProviders] = useState<TtsProviderId[] | undefined>();
   const { cfg, lastCursor } = useCursorIntegration();
@@ -164,28 +169,6 @@ function AppInner({
     return () => window.removeEventListener(PLUGINS_CHANGED, sync);
   }, []);
 
-  useEffect(() => {
-    if (!isTauriApp()) return;
-    void getAppSettings().then((view) => {
-      if (!view.quick_setup_completed) setShowQuickSetupPrompt(true);
-    });
-  }, []);
-
-  const dismissQuickSetupPrompt = useCallback(async () => {
-    if (!isTauriApp()) {
-      setShowQuickSetupPrompt(false);
-      return;
-    }
-    try {
-      const view = await getAppSettings();
-      await setAppSettings({ ...view, quick_setup_completed: true });
-    } catch (e) {
-      setError(String(e));
-    }
-    setShowQuickSetupPrompt(false);
-  }, []);
-
-  // When any job finishes, refresh history and autoplay (queued if already playing).
   useEffect(() => {
     return onDone((g) => {
       void refresh();
@@ -301,6 +284,9 @@ function AppInner({
 
   const ttsSettings = useTtsSettings(setError);
   const [activeVoiceProfileId, setActiveVoiceProfileId] = useState<string | null>(null);
+  const [minimaxVoicesSection, setMinimaxVoicesSection] = useState<MinimaxVoicesSection>(
+    DEFAULT_MINIMAX_VOICES_SECTION,
+  );
 
   const applyVoiceProfile = useCallback(
     (profile: TtsVoiceProfile) => {
@@ -325,6 +311,10 @@ function AppInner({
     [applyVoiceProfile],
   );
 
+  const handleVoiceProfileDeleted = useCallback((profileId: string) => {
+    setActiveVoiceProfileId((current) => (current === profileId ? null : current));
+  }, []);
+
   const nav: AppViewNav = useMemo(
     () => ({
       goToView: (v) => setAppViewState(v),
@@ -332,7 +322,10 @@ function AppInner({
         setSettingsTabState(tab);
         setAppViewState("settings");
       },
-      openMinimaxVoices: () => setAppViewState("minimax_voices"),
+      openMinimaxVoices: (section = DEFAULT_MINIMAX_VOICES_SECTION) => {
+        setMinimaxVoicesSection(section);
+        setAppViewState("minimax_voices");
+      },
       onBackToTts: () => setAppViewState("tts"),
     }),
     [setAppViewState, setSettingsTabState],
@@ -347,9 +340,9 @@ function AppInner({
     onOpenMinimaxVoices: () => nav.openMinimaxVoices(),
     onOpenQuickHotkeys: () => nav.openSettingsTab("quick_hotkeys"),
     onOpenQuickSetup: () => {
-      setShowQuickSetupPrompt(false);
       void openQuickSetupWindow().catch((e) => setError(String(e)));
     },
+    onStartProductTour,
     onOpenSoundboard: onFocusSoundboard,
   });
 
@@ -365,6 +358,9 @@ function AppInner({
           onOrganizationChanged={() => void refresh()}
           onLocalDataCleared={() => void refresh()}
           initialTab={settingsTab}
+          activeVoiceProfileId={activeVoiceProfileId}
+          onSelectVoiceProfile={applyVoiceProfile}
+          onVoiceProfileDeleted={handleVoiceProfileDeleted}
         />
         {error && (
           <div
@@ -392,13 +388,24 @@ function AppInner({
     return (
       <AppViewContext.Provider value={nav}>
         <MinimaxVoicesView
+          initialSection={minimaxVoicesSection}
+          settings={ttsSettings.settings}
+          voices={ttsSettings.voices}
+          voiceboxProfiles={ttsSettings.voiceboxProfiles}
+          voiceboxModels={ttsSettings.voiceboxModels}
+          voiceboxHealth={ttsSettings.voiceboxStatus}
+          enabledProviders={enabledProviders}
+          onSettingsChange={ttsSettings.setSettings}
           onError={setError}
           onSuccess={(msg) => {
             setToast(msg);
             window.setTimeout(() => setToast(null), 2500);
           }}
+          onProfileSaved={(msg) => {
+            setToast(msg);
+            window.setTimeout(() => setToast(null), 3500);
+          }}
           onSettingsChanged={() => void refresh()}
-          enabledProviders={enabledProviders}
         />
         {error && (
           <div
@@ -577,35 +584,14 @@ function AppInner({
   return (
     <AppViewContext.Provider value={nav}>
       <div className="h-full w-full grid relative" style={{ gridTemplateColumns: "1fr 3fr 1fr" }}>
-        {showQuickSetupPrompt && (
-          <QuickSetupPrompt
-            onDismiss={() => void dismissQuickSetupPrompt()}
-            onSaved={() => setShowQuickSetupPrompt(false)}
-            onError={setError}
-          />
-        )}
         <SettingsSidebar
-          settings={ttsSettings.settings}
-          voices={ttsSettings.voices}
-          voiceboxProfiles={ttsSettings.voiceboxProfiles}
-          voiceboxModels={ttsSettings.voiceboxModels}
-          voiceboxHealth={ttsSettings.voiceboxStatus}
-          minimaxModels={ttsSettings.minimaxModels}
-          minimaxLanguages={ttsSettings.minimaxLanguages}
-          minimaxPresets={ttsSettings.minimaxPresets}
-          minimaxCloned={ttsSettings.minimaxCloned}
-          minimaxEnabledLangs={ttsSettings.minimaxEnabledLangs}
-          onChange={ttsSettings.setSettings}
           onError={setError}
-          onProfileSaved={(msg) => {
-            setToast(msg);
-            window.setTimeout(() => setToast(null), 3500);
-          }}
           recentGenerations={session}
           onProfileEdited={(msg) => {
             setToast(msg);
             window.setTimeout(() => setToast(null), 3500);
           }}
+          onProfileDeleted={handleVoiceProfileDeleted}
           activeVoiceProfileId={activeVoiceProfileId}
           onSelectVoiceProfile={applyVoiceProfile}
         />
@@ -641,6 +627,7 @@ function AppInner({
             interrupted={interrupted}
             currentId={current?.id ?? null}
             onSelect={handleSelectGeneration}
+            onPlay={handlePlayGeneration}
             onChanged={handleHistoryChanged}
             onError={setError}
           />
@@ -685,6 +672,8 @@ export default function App() {
     undefined,
   );
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
+  const [onboardingRestart, setOnboardingRestart] = useState(0);
+  const [onboardingError, setOnboardingError] = useState<string | null>(null);
 
   return (
     <SkinProvider>
@@ -724,8 +713,27 @@ export default function App() {
                   setAppViewState={setAppView}
                   setSettingsTabState={setSettingsTab}
                   settingsTab={settingsTab}
+                  onStartProductTour={() => setOnboardingRestart((n) => n + 1)}
                 />
               </div>
+              <OnboardingOrchestrator
+                restartToken={onboardingRestart}
+                goToView={setAppView}
+                openSettingsTab={(tab) => {
+                  setSettingsTab(tab);
+                  setAppView("settings");
+                }}
+                onError={setOnboardingError}
+              />
+              {onboardingError && (
+                <div
+                  className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer z-[80]"
+                  onClick={() => setOnboardingError(null)}
+                  title="Kliknij aby zamknac"
+                >
+                  {onboardingError}
+                </div>
+              )}
               <AppStatusBar />
             </JobsProvider>
           </div>

@@ -9,6 +9,7 @@ interface Props {
   onEditSettings: () => void;
   onSetReroute: () => void;
   onClearReroute: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }
 
@@ -20,6 +21,7 @@ export default function VoiceProfileContextMenu({
   onEditSettings,
   onSetReroute,
   onClearReroute,
+  onDelete,
   onClose,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -104,6 +106,18 @@ export default function VoiceProfileContextMenu({
           Użyj jako reroute globalny…
         </button>
       )}
+      <div className="border-t border-border/80 my-1" role="separator" />
+      <button
+        type="button"
+        role="menuitem"
+        className="w-full text-left px-3 py-2 hover:bg-red-900/30 text-red-300/95 transition-colors"
+        onClick={() => {
+          onDelete();
+          onClose();
+        }}
+      >
+        Usuń profil…
+      </button>
     </div>
   );
 }

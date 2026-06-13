@@ -13,9 +13,10 @@ interface Props {
   profile: TtsVoiceProfile;
   onError: (message: string) => void;
   onSuccess?: (message: string) => void;
+  onDelete?: () => void;
 }
 
-export default function VoiceProfileShortcutFooter({ profile, onError, onSuccess }: Props) {
+export default function VoiceProfileShortcutFooter({ profile, onError, onSuccess, onDelete }: Props) {
   const [shortcut, setShortcut] = useState(profile.shortcut ?? "");
   const [hotkeysEnabled, setHotkeysEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -100,6 +101,16 @@ export default function VoiceProfileShortcutFooter({ profile, onError, onSuccess
           />
           <span>Skrót aktywny</span>
         </label>
+      ) : null}
+      {onDelete ? (
+        <button
+          type="button"
+          className="btn-ghost text-[11px] text-red-300/90 self-start mt-1 hover:!bg-red-900/30"
+          disabled={saving}
+          onClick={onDelete}
+        >
+          Usuń profil
+        </button>
       ) : null}
     </div>
   );

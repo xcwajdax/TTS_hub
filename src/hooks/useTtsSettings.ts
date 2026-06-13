@@ -19,6 +19,7 @@ import {
 } from "../api/tauri";
 import { effectiveMinimaxEnabledLanguages } from "../lib/minimaxLanguages";
 import { DEFAULT_MINIMAX_LANGUAGE } from "../appSettings";
+import { defaultMinimaxSynthesisOptions } from "../lib/minimaxOptions";
 import type { SettingsState } from "../components/Settings";
 import { isTauriApp } from "../lib/tauriEnv";
 import { DEFAULT_TTS_MODEL, type TtsModelInfo } from "../ttsModels";
@@ -38,6 +39,7 @@ export const DEFAULT_TTS_SETTINGS: SettingsState = {
   minimaxSpeed: 1,
   minimaxVol: 1,
   minimaxPitch: 0,
+  minimaxOptions: defaultMinimaxSynthesisOptions(),
 };
 
 export function useTtsSettings(onError: (message: string) => void) {

@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { AppView } from "../components/AppViewTabs";
+import type { MinimaxVoicesSection } from "../components/minimaxVoicesSections";
 import type { SettingsTabId } from "../components/settings/settingsTabs";
 
 export interface AppViewNav {
@@ -7,8 +8,8 @@ export interface AppViewNav {
   goToView: (view: AppView) => void;
   /** Open the settings view on a specific tab. */
   openSettingsTab: (tab: SettingsTabId) => void;
-  /** Open the Minimax voices view. */
-  openMinimaxVoices: () => void;
+  /** Open the Minimax voices view (optional sub-section, e.g. profile editor). */
+  openMinimaxVoices: (section?: MinimaxVoicesSection) => void;
   /** Convenience: jump back to TTS view. */
   onBackToTts: () => void;
 }

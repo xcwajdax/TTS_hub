@@ -33,6 +33,8 @@ pub struct QuickHotkeyPreset {
     #[serde(default)]
     pub minimax_pitch: Option<i32>,
     #[serde(default)]
+    pub minimax_options: Option<crate::minimax::MinimaxSynthesisOptions>,
+    #[serde(default)]
     pub load_editor: bool,
     #[serde(default = "default_true")]
     pub autoplay: bool,
@@ -80,6 +82,7 @@ impl Default for QuickHotkeyPreset {
             minimax_speed: Some(1.0),
             minimax_vol: Some(1.0),
             minimax_pitch: Some(0),
+            minimax_options: None,
             load_editor: false,
             autoplay: true,
             filter_preset_id: None,
@@ -243,16 +246,9 @@ fn normalize_shortcut_part(part: &str) -> String {
     }
 }
 
-pub fn new_quick_hotkey_preset(name: impl Into<String>) -> QuickHotkeyPreset {
-    QuickHotkeyPreset {
-        name: name.into(),
-        ..QuickHotkeyPreset::default()
-    }
-}
-
 use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 use crate::app_settings::AppSettings;
 use crate::commands::{enqueue_request, GenerateReq};
@@ -366,6 +362,7 @@ pub fn build_generate_req(
         minimax_speed,
         minimax_vol,
         minimax_pitch,
+        minimax_options: saved.and_then(|p| p.minimax_options.clone()),
         original_prompt: None,
         chat_session_id: None,
         chat_role: None,

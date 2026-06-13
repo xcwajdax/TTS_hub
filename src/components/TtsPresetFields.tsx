@@ -59,6 +59,8 @@ import type { TtsProvider } from "../types";
 import type { SettingsState } from "./Settings";
 
 import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
+import MinimaxAdvancedOptions from "./MinimaxAdvancedOptions";
+import { defaultMinimaxSynthesisOptions } from "../lib/minimaxOptions";
 
 import VoiceSamples from "./VoiceSamples";
 
@@ -722,6 +724,13 @@ export default function TtsPresetFields({
               onError={onError}
             />
           )}
+
+          <MinimaxAdvancedOptions
+            model={state.model}
+            options={state.minimaxOptions ?? defaultMinimaxSynthesisOptions()}
+            compact={compact}
+            onChange={(minimaxOptions) => onChange({ ...state, minimaxOptions })}
+          />
 
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
 

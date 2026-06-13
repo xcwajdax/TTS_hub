@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::editor_quick_gen::EditorQuickGenSettings;
 use crate::minimax::{
-    self, MinimaxClonedVoice, MinimaxPresetVoice, DEFAULT_MINIMAX_LANGUAGE,
-    DEFAULT_MINIMAX_VOICE_ID,
+    self, MinimaxClonedVoice, MinimaxPresetVoice, MinimaxProviderSettings,
+    MinimaxSynthesisOptions, DEFAULT_MINIMAX_LANGUAGE, DEFAULT_MINIMAX_VOICE_ID,
 };
 use crate::quick_hotkeys::QuickHotkeysSettings;
 use crate::text_filters::TextFiltersSettings;
@@ -62,6 +62,8 @@ pub struct CursorIntegration {
     pub minimax_vol: Option<f32>,
     #[serde(default)]
     pub minimax_pitch: Option<i32>,
+    #[serde(default)]
+    pub minimax_options: Option<MinimaxSynthesisOptions>,
     #[serde(default = "default_true")]
     pub use_summary_markers: bool,
     #[serde(default)]
@@ -183,6 +185,7 @@ impl Default for CursorIntegration {
             minimax_speed: Some(1.0),
             minimax_vol: Some(1.0),
             minimax_pitch: Some(0),
+            minimax_options: None,
             use_summary_markers: true,
             dnd_until_ts: None,
             last_install_ts: None,
@@ -230,12 +233,17 @@ pub struct AppSettings {
     pub reroute_voice_profile_id: Option<String>,
     #[serde(default)]
     pub quick_setup_completed: bool,
+    /// First-run interactive tutorial (Quick Setup → TTS tour → README summary).
+    #[serde(default)]
+    pub ui_tutorial_completed: bool,
     #[serde(default)]
     pub enabled_providers: Vec<String>,
     #[serde(default = "default_minimax_enabled_languages")]
     pub minimax_enabled_languages: Vec<String>,
     pub voicebox_base_url: Option<String>,
     pub minimax_api_key: Option<String>,
+    #[serde(default)]
+    pub minimax_provider_settings: MinimaxProviderSettings,
     /// Max non-archived temp history rows from prior app sessions (current session always kept).
     #[serde(default = "default_temp_history_max")]
     pub temp_history_max: u32,
@@ -314,10 +322,12 @@ impl Default for AppSettings {
             voice_profiles: Vec::new(),
             reroute_voice_profile_id: None,
             quick_setup_completed: false,
+            ui_tutorial_completed: false,
             enabled_providers: Vec::new(),
             minimax_enabled_languages: default_minimax_enabled_languages(),
             voicebox_base_url: None,
             minimax_api_key: None,
+            minimax_provider_settings: MinimaxProviderSettings::default(),
             temp_history_max: default_temp_history_max(),
             timeline_view: default_timeline_view(),
             safe_mode: false,
@@ -409,13 +419,6 @@ impl AppSettings {
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
             .unwrap_or_else(|| env_key.trim().to_string())
-    }
-
-    pub fn is_provider_enabled(&self, id: &str) -> bool {
-        if self.enabled_providers.is_empty() {
-            return true;
-        }
-        self.enabled_providers.iter().any(|p| p == id)
     }
 
     pub fn normalize(&mut self) {
@@ -515,12 +518,4 @@ fn normalize_optional_path(value: Option<String>) -> Option<String> {
     value
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-}
-
-pub fn new_api_profile(name: impl Into<String>, api_key: impl Into<String>) -> ApiProfile {
-    ApiProfile {
-        id: Uuid::new_v4().to_string(),
-        name: name.into(),
-        api_key: api_key.into(),
-    }
 }

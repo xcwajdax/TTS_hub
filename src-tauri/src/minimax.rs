@@ -9,10 +9,27 @@ use tokio_tungstenite::{
     tungstenite::Message,
 };
 
+pub use crate::minimax_options::{
+    effective_enabled_language_codes, is_known_language_code, MinimaxCloneOptions,
+    MinimaxProviderSettings, MinimaxSynthesisOptions, DEFAULT_MINIMAX_LANGUAGE,
+    MINIMAX_LANGUAGE_CATALOG,
+};
+
+use crate::minimax_options::{
+    language_boost_from_hub_or_api, normalize_api_format, t2a_http_base_url, validate_voice_id,
+    MinimaxOutputFormat, SYNC_TEXT_CHAR_LIMIT,
+};
+
 const WS_URL: &str = "wss://api.minimax.io/ws/v1/t2a_v2";
 const UPLOAD_URL: &str = "https://api.minimax.io/v1/files/upload";
 const CLONE_URL: &str = "https://api.minimax.io/v1/voice_clone";
 const GET_VOICE_URL: &str = "https://api.minimax.io/v1/get_voice";
+const VOICE_DESIGN_URL: &str = "https://api.minimax.io/v1/voice_design";
+const DELETE_VOICE_URL: &str = "https://api.minimax.io/v1/delete_voice";
+const T2A_ASYNC_URL: &str = "https://api.minimax.io/v1/t2a_async_v2";
+const T2A_ASYNC_QUERY_URL: &str = "https://api.minimax.io/v1/t2a_async_v2";
+const FILE_RETRIEVE_URL: &str = "https://api.minimax.io/v1/files/retrieve";
+const FILE_RETRIEVE_CONTENT_URL: &str = "https://api.minimax.io/v1/files/retrieve_content";
 
 // IMPORTANT (verified 2026-06-07 against platform.minimax.io/docs):
 // MiniMax API does NOT expose any endpoint to check quota, usage, balance, or
@@ -77,13 +94,7 @@ pub struct MinimaxPresetVoice {
     pub language: String,
 }
 
-pub const DEFAULT_MINIMAX_LANGUAGE: &str = "pl";
 pub const DEFAULT_MINIMAX_VOICE_ID: &str = "Polish_female_1_sample1";
-
-const MINIMAX_LANGUAGES: &[(&str, &str, &str)] = &[
-    ("pl", "Polish", "Polski"),
-    ("en", "English", "Angielski"),
-];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MinimaxClonedVoice {
@@ -124,7 +135,7 @@ pub struct MinimaxSyncVoicesResult {
 }
 
 #[derive(Debug, Deserialize)]
-struct GetVoiceResponse {
+pub(crate) struct GetVoiceResponse {
     #[serde(default)]
     system_voice: Vec<SystemVoiceApi>,
     #[serde(default)]
@@ -169,39 +180,37 @@ struct BaseRespApi {
     status_msg: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MinimaxVoiceSetting {
-    pub voice_id: String,
-    #[serde(default = "default_speed")]
-    pub speed: f32,
-    #[serde(default = "default_vol")]
-    pub vol: f32,
-    #[serde(default)]
-    pub pitch: i32,
-    #[serde(default)]
-    pub english_normalization: bool,
-}
-
-fn default_speed() -> f32 {
-    1.0
-}
-fn default_vol() -> f32 {
-    1.0
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct MinimaxGenerateParams<'a> {
     pub model: &'a str,
     pub text: &'a str,
-    pub voice: &'a MinimaxVoiceSetting,
-    pub format: &'a str,
-    /// MiniMax API `language_boost` (e.g. `Polish`, `English`, `auto`).
-    pub language_boost: Option<&'a str>,
+    pub voice_id: &'a str,
+    pub hub_format: &'a str,
+    pub options: &'a MinimaxSynthesisOptions,
 }
 
 pub struct MinimaxAudio {
     pub bytes: Vec<u8>,
     pub format: String,
+    pub subtitle_bytes: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinimaxVoiceDesignResult {
+    pub voice_id: String,
+    pub trial_audio_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinimaxCloneResult {
+    pub demo_audio_url: Option<String>,
+    pub usage_characters: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinimaxAsyncTaskResult {
+    pub task_id: String,
+    pub file_id: Option<i64>,
 }
 
 pub struct MinimaxClient {
@@ -263,11 +272,19 @@ impl MinimaxClient {
                 id: "speech-02-turbo".into(),
                 display_name: "Speech 02 Turbo".into(),
             },
+            MinimaxModelInfo {
+                id: "speech-01-hd".into(),
+                display_name: "Speech 01 HD".into(),
+            },
+            MinimaxModelInfo {
+                id: "speech-01-turbo".into(),
+                display_name: "Speech 01 Turbo".into(),
+            },
         ]
     }
 
     pub fn list_languages() -> Vec<MinimaxLanguageInfo> {
-        MINIMAX_LANGUAGES
+        MINIMAX_LANGUAGE_CATALOG
             .iter()
             .map(|(code, boost, label)| MinimaxLanguageInfo {
                 code: (*code).to_string(),
@@ -573,9 +590,38 @@ impl MinimaxClient {
         if !self.is_configured() {
             return Err(anyhow!("MINIMAX_API_KEY is not set"));
         }
-        let format = normalize_format(params.format);
-        let sample_rate = 32000u32;
-        let bitrate = 128000u32;
+        let mut options = params.options.clone();
+        options.resolve(params.voice_id, params.hub_format, params.model);
+
+        if params.text.chars().count() > SYNC_TEXT_CHAR_LIMIT || options.text_file_id.is_some() {
+            return self
+                .generate_audio_async(params.model, params.text, params.voice_id, &options)
+                .await;
+        }
+
+        if options.needs_http_transport() || options.output_format == MinimaxOutputFormat::Url {
+            return self
+                .generate_audio_http_resolved(
+                    params.model,
+                    params.text,
+                    params.voice_id,
+                    &options,
+                )
+                .await;
+        }
+
+        self.generate_audio_ws(params.model, params.text, params.voice_id, &options)
+            .await
+    }
+
+    async fn generate_audio_ws(
+        &self,
+        model: &str,
+        text: &str,
+        voice_id: &str,
+        options: &MinimaxSynthesisOptions,
+    ) -> Result<MinimaxAudio> {
+        let format = normalize_api_format(&options.audio.format);
 
         let mut request = WS_URL.into_client_request().context("ws request")?;
         request
@@ -604,30 +650,16 @@ impl MinimaxClient {
             ));
         }
 
-        let mut start_msg = serde_json::json!({
-            "event": "task_start",
-            "model": params.model,
-            "voice_setting": {
-                "voice_id": params.voice.voice_id,
-                "speed": params.voice.speed,
-                "vol": params.voice.vol,
-                "pitch": params.voice.pitch,
-                "english_normalization": params.voice.english_normalization,
-            },
-            "audio_setting": {
-                "sample_rate": sample_rate,
-                "bitrate": bitrate,
-                "format": format,
-                "channel": 1,
-            }
-        });
-        if let Some(boost) = params
-            .language_boost
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            start_msg["language_boost"] = serde_json::Value::String(boost.to_string());
-        }
+        let mut start_obj = serde_json::Map::new();
+        start_obj.insert("event".into(), serde_json::json!("task_start"));
+        start_obj.insert("model".into(), serde_json::json!(model));
+        start_obj.insert(
+            "voice_setting".into(),
+            options.build_voice_setting_json(voice_id),
+        );
+        start_obj.insert("audio_setting".into(), options.build_audio_setting_json());
+        options.append_optional_fields(&mut start_obj);
+        let start_msg = serde_json::Value::Object(start_obj);
         write
             .send(Message::Text(start_msg.to_string()))
             .await
@@ -648,7 +680,7 @@ impl MinimaxClient {
 
         let continue_msg = serde_json::json!({
             "event": "task_continue",
-            "text": params.text,
+            "text": text,
         });
         write
             .send(Message::Text(continue_msg.to_string()))
@@ -656,6 +688,7 @@ impl MinimaxClient {
             .context("task_continue send")?;
 
         let mut audio_data = Vec::new();
+        let mut subtitle_url: Option<String> = None;
         loop {
             let msg = read
                 .next()
@@ -697,6 +730,14 @@ impl MinimaxClient {
                 audio_data.extend_from_slice(&chunk);
             }
 
+            if let Some(url) = response
+                .pointer("/data/subtitle_file")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
+                subtitle_url = Some(url.to_string());
+            }
+
             if response.get("is_final").and_then(|v| v.as_bool()) == Some(true) {
                 break;
             }
@@ -712,10 +753,429 @@ impl MinimaxClient {
             return Err(anyhow!("Minimax returned no audio data"));
         }
 
+        let subtitle_bytes = if let Some(url) = subtitle_url {
+            self.download_url_bytes(&url).await.ok()
+        } else {
+            None
+        };
+
         Ok(MinimaxAudio {
             bytes: audio_data,
             format: format.to_string(),
+            subtitle_bytes,
         })
+    }
+
+    async fn generate_audio_http(
+        &self,
+        model: &str,
+        text: &str,
+        voice_id: &str,
+        options: &MinimaxSynthesisOptions,
+    ) -> Result<MinimaxAudio> {
+        let url = t2a_http_base_url(&options.http_region);
+        let mut body = serde_json::Map::new();
+        body.insert("model".into(), serde_json::json!(model));
+        body.insert("text".into(), serde_json::json!(text));
+        body.insert("stream".into(), serde_json::json!(options.stream));
+        body.insert(
+            "output_format".into(),
+            serde_json::json!(options.output_format.as_api_str()),
+        );
+        body.insert(
+            "voice_setting".into(),
+            options.build_voice_setting_json(voice_id),
+        );
+        body.insert("audio_setting".into(), options.build_audio_setting_json());
+        options.append_optional_fields(&mut body);
+        if options.stream {
+            body.insert(
+                "stream_options".into(),
+                serde_json::json!({
+                    "exclude_aggregated_audio": options.stream_options.exclude_aggregated_audio,
+                }),
+            );
+        }
+
+        let resp = self
+            .http
+            .post(url)
+            .header("Authorization", format!("Bearer {}", self.current_api_key()))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::Value::Object(body))
+            .send()
+            .await
+            .context("t2a http request")?;
+
+        let status = resp.status();
+        let raw = resp.text().await.context("t2a http body")?;
+
+        if options.stream {
+            return self.parse_http_stream_response(&raw, &options.audio.format);
+        }
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&raw).context("t2a http json")?;
+        if !status.is_success() {
+            return Err(anyhow!("Minimax HTTP T2A failed ({status}): {parsed}"));
+        }
+        self.parse_http_sync_response(&parsed, options)
+    }
+
+    fn parse_http_sync_response(
+        &self,
+        response: &serde_json::Value,
+        options: &MinimaxSynthesisOptions,
+    ) -> Result<MinimaxAudio> {
+        if let Some(code) = response.pointer("/base_resp/status_code").and_then(|v| v.as_i64()) {
+            if code != 0 {
+                return Err(anyhow!(
+                    "Minimax HTTP error ({code}): {}",
+                    minimax_error_message(response)
+                ));
+            }
+        }
+
+        let format = normalize_api_format(&options.audio.format);
+        let hex = response
+            .pointer("/data/audio")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("Minimax returned no audio data"))?;
+        let bytes = hex::decode(hex).context("decode audio hex")?;
+
+        Ok(MinimaxAudio {
+            bytes,
+            format,
+            subtitle_bytes: None,
+        })
+    }
+
+    fn parse_http_stream_response(&self, raw: &str, audio_format: &str) -> Result<MinimaxAudio> {
+        let format = normalize_api_format(audio_format);
+        let mut audio_data = Vec::new();
+
+        for line in raw.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with(':') {
+                continue;
+            }
+            let json_str = line.strip_prefix("data:").unwrap_or(line).trim();
+            if json_str.is_empty() || json_str == "[DONE]" {
+                continue;
+            }
+            let chunk: serde_json::Value =
+                serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
+            if let Some(code) = chunk.pointer("/base_resp/status_code").and_then(|v| v.as_i64()) {
+                if code != 0 {
+                    return Err(anyhow!(
+                        "Minimax HTTP stream error ({code}): {}",
+                        minimax_error_message(&chunk)
+                    ));
+                }
+            }
+            if let Some(hex) = chunk
+                .pointer("/data/audio")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
+                let part = hex::decode(hex).context("decode stream hex")?;
+                audio_data.extend_from_slice(&part);
+            }
+        }
+
+        if audio_data.is_empty() {
+            // Try parsing as JSON array (non-SSE)
+            if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(raw) {
+                for chunk in arr {
+                    if let Some(hex) = chunk
+                        .pointer("/data/audio")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    {
+                        let part = hex::decode(hex).context("decode array hex")?;
+                        audio_data.extend_from_slice(&part);
+                    }
+                }
+            }
+        }
+
+        if audio_data.is_empty() {
+            return Err(anyhow!("Minimax HTTP stream returned no audio data"));
+        }
+
+        Ok(MinimaxAudio {
+            bytes: audio_data,
+            format,
+            subtitle_bytes: None,
+        })
+    }
+
+    async fn download_url_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        let resp = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .context("download url")?;
+        if !resp.status().is_success() {
+            return Err(anyhow!("download failed ({})", resp.status()));
+        }
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .context("download bytes")
+    }
+
+    pub async fn generate_audio_http_resolved(
+        &self,
+        model: &str,
+        text: &str,
+        voice_id: &str,
+        options: &MinimaxSynthesisOptions,
+    ) -> Result<MinimaxAudio> {
+        let mut options = options.clone();
+        options.resolve(voice_id, "mp3", model);
+
+        if options.output_format == MinimaxOutputFormat::Url {
+            let mut body = serde_json::Map::new();
+            body.insert("model".into(), serde_json::json!(model));
+            body.insert("text".into(), serde_json::json!(text));
+            body.insert("stream".into(), serde_json::json!(false));
+            body.insert("output_format".into(), serde_json::json!("url"));
+            body.insert(
+                "voice_setting".into(),
+                options.build_voice_setting_json(voice_id),
+            );
+            body.insert("audio_setting".into(), options.build_audio_setting_json());
+            options.append_optional_fields(&mut body);
+
+            let url = t2a_http_base_url(&options.http_region);
+            let resp = self
+                .http
+                .post(url)
+                .header("Authorization", format!("Bearer {}", self.current_api_key()))
+                .header("Content-Type", "application/json")
+                .json(&serde_json::Value::Object(body))
+                .send()
+                .await
+                .context("t2a http url request")?;
+            let parsed: serde_json::Value = resp.json().await.context("t2a url json")?;
+            if let Some(code) = parsed.pointer("/base_resp/status_code").and_then(|v| v.as_i64()) {
+                if code != 0 {
+                    return Err(anyhow!(
+                        "Minimax HTTP error ({code}): {}",
+                        minimax_error_message(&parsed)
+                    ));
+                }
+            }
+            let audio_url = parsed
+                .pointer("/data/audio")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("missing audio url"))?;
+            let bytes = self.download_url_bytes(audio_url).await?;
+            let subtitle_url = parsed
+                .pointer("/data/subtitle_file")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let subtitle_bytes = if let Some(ref su) = subtitle_url {
+                self.download_url_bytes(su).await.ok()
+            } else {
+                None
+            };
+            return Ok(MinimaxAudio {
+                bytes,
+                format: normalize_api_format(&options.audio.format),
+                subtitle_bytes,
+            });
+        }
+
+        if options.stream {
+            let url = t2a_http_base_url(&options.http_region);
+            let mut body = serde_json::Map::new();
+            body.insert("model".into(), serde_json::json!(model));
+            body.insert("text".into(), serde_json::json!(text));
+            body.insert("stream".into(), serde_json::json!(true));
+            body.insert("output_format".into(), serde_json::json!("hex"));
+            body.insert(
+                "voice_setting".into(),
+                options.build_voice_setting_json(voice_id),
+            );
+            body.insert("audio_setting".into(), options.build_audio_setting_json());
+            options.append_optional_fields(&mut body);
+            body.insert(
+                "stream_options".into(),
+                serde_json::json!({
+                    "exclude_aggregated_audio": options.stream_options.exclude_aggregated_audio,
+                }),
+            );
+            let resp = self
+                .http
+                .post(url)
+                .header("Authorization", format!("Bearer {}", self.current_api_key()))
+                .header("Content-Type", "application/json")
+                .json(&serde_json::Value::Object(body))
+                .send()
+                .await
+                .context("t2a http stream")?;
+            let raw = resp.text().await.context("stream body")?;
+            return self.parse_http_stream_response(&raw, &options.audio.format);
+        }
+
+        self.generate_audio_http(model, text, voice_id, &options)
+            .await
+    }
+
+    pub async fn generate_audio_async(
+        &self,
+        model: &str,
+        text: &str,
+        voice_id: &str,
+        options: &MinimaxSynthesisOptions,
+    ) -> Result<MinimaxAudio> {
+        let mut options = options.clone();
+        options.resolve(voice_id, "mp3", model);
+
+        let task = self
+            .create_async_task(model, text, voice_id, &options)
+            .await?;
+        let file_id = task
+            .file_id
+            .ok_or_else(|| anyhow!("async task missing file_id"))?;
+
+        // Poll until complete (status Success = 2 per MiniMax async API)
+        for _ in 0..120 {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            let status = self.query_async_task(&task.task_id).await?;
+            if status == "Success" || status == "success" || status == "2" {
+                break;
+            }
+            if status == "Failed" || status == "failed" || status == "3" {
+                return Err(anyhow!("MiniMax async task failed"));
+            }
+        }
+
+        let bytes = self.retrieve_file_content(file_id).await?;
+        let format = normalize_api_format(&options.audio.format);
+        Ok(MinimaxAudio {
+            bytes,
+            format,
+            subtitle_bytes: None,
+        })
+    }
+
+    pub async fn create_async_task(
+        &self,
+        model: &str,
+        text: &str,
+        voice_id: &str,
+        options: &MinimaxSynthesisOptions,
+    ) -> Result<MinimaxAsyncTaskResult> {
+        if !self.is_configured() {
+            return Err(anyhow!("MINIMAX_API_KEY is not set"));
+        }
+        let mut body = serde_json::Map::new();
+        body.insert("model".into(), serde_json::json!(model));
+        if let Some(fid) = options.text_file_id {
+            body.insert("text_file_id".into(), serde_json::json!(fid));
+        } else {
+            body.insert("text".into(), serde_json::json!(text));
+        }
+        body.insert(
+            "voice_setting".into(),
+            options.build_voice_setting_json(voice_id),
+        );
+        let audio = serde_json::json!({
+            "audio_sample_rate": options.audio.sample_rate,
+            "bitrate": options.audio.bitrate,
+            "format": normalize_api_format(&options.audio.format),
+            "channel": options.audio.channel,
+        });
+        body.insert("audio_setting".into(), audio);
+        options.append_optional_fields(&mut body);
+
+        let resp = self
+            .http
+            .post(T2A_ASYNC_URL)
+            .header("Authorization", format!("Bearer {}", self.current_api_key()))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::Value::Object(body))
+            .send()
+            .await
+            .context("async create")?;
+        let parsed: serde_json::Value = resp.json().await.context("async create json")?;
+        if let Some(code) = parsed.pointer("/base_resp/status_code").and_then(|v| v.as_i64()) {
+            if code != 0 {
+                return Err(anyhow!(
+                    "MiniMax async create error ({code}): {}",
+                    minimax_error_message(&parsed)
+                ));
+            }
+        }
+        Ok(MinimaxAsyncTaskResult {
+            task_id: parsed
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            file_id: parsed.get("file_id").and_then(|v| v.as_i64()),
+        })
+    }
+
+    pub async fn query_async_task(&self, task_id: &str) -> Result<String> {
+        let resp = self
+            .http
+            .get(T2A_ASYNC_QUERY_URL)
+            .header("Authorization", format!("Bearer {}", self.current_api_key()))
+            .query(&[("task_id", task_id)])
+            .send()
+            .await
+            .context("async query")?;
+        let parsed: serde_json::Value = resp.json().await.context("async query json")?;
+        Ok(parsed
+            .pointer("/status")
+            .or_else(|| parsed.pointer("/data/status"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Processing")
+            .to_string())
+    }
+
+    pub async fn retrieve_file_content(&self, file_id: i64) -> Result<Vec<u8>> {
+        let resp = self
+            .http
+            .get(FILE_RETRIEVE_CONTENT_URL)
+            .header("Authorization", format!("Bearer {}", self.current_api_key()))
+            .query(&[("file_id", file_id.to_string())])
+            .send()
+            .await
+            .context("retrieve content")?;
+        if !resp.status().is_success() {
+            let meta = self
+                .http
+                .get(FILE_RETRIEVE_URL)
+                .header("Authorization", format!("Bearer {}", self.current_api_key()))
+                .query(&[("file_id", file_id.to_string())])
+                .send()
+                .await
+                .context("retrieve meta")?;
+            let meta_json: serde_json::Value = meta.json().await.context("retrieve meta json")?;
+            if let Some(url) = meta_json
+                .pointer("/file/download_url")
+                .and_then(|v| v.as_str())
+            {
+                return self.download_url_bytes(url).await;
+            }
+            return Err(anyhow!("retrieve file failed ({})", resp.status()));
+        }
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .context("retrieve bytes")
+    }
+
+    pub async fn upload_text_file(&self, filename: &str, bytes: Vec<u8>) -> Result<i64> {
+        self.upload_voice_file("t2a_async_input", filename, bytes)
+            .await
     }
 
     pub async fn upload_voice_file(
@@ -761,16 +1221,25 @@ impl MinimaxClient {
         preview_text: &str,
         prompt_file_id: Option<i64>,
         prompt_text: Option<&str>,
-    ) -> Result<serde_json::Value> {
+        clone_options: &MinimaxCloneOptions,
+    ) -> Result<(serde_json::Value, MinimaxCloneResult)> {
         if !self.is_configured() {
             return Err(anyhow!("MINIMAX_API_KEY is not set"));
         }
+        validate_voice_id(voice_id).map_err(|e| anyhow!("{e}"))?;
+
         let mut payload = serde_json::json!({
             "file_id": file_id,
             "voice_id": voice_id,
             "text": preview_text,
             "model": model,
+            "need_noise_reduction": clone_options.need_noise_reduction,
+            "need_volume_normalization": clone_options.need_volume_normalization,
         });
+        if let Some(lang) = clone_options.language.as_deref() {
+            let boost = language_boost_from_hub_or_api(Some(lang));
+            payload["language_boost"] = serde_json::Value::String(boost);
+        }
         if let Some(pid) = prompt_file_id {
             let mut clone_prompt = serde_json::json!({ "prompt_audio": pid });
             if let Some(t) = prompt_text.filter(|s| !s.trim().is_empty()) {
@@ -793,16 +1262,97 @@ impl MinimaxClient {
         if !status.is_success() {
             return Err(anyhow!("Minimax voice_clone failed ({status}): {body}"));
         }
-        Ok(body)
+        let meta = MinimaxCloneResult {
+            demo_audio_url: body
+                .get("demo_audio")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+            usage_characters: body
+                .pointer("/extra_info/usage_characters")
+                .and_then(|v| v.as_i64()),
+        };
+        Ok((body, meta))
     }
-}
 
-/// MiniMax WS accepts mp3, pcm, or flac — not wav/ogg. Hub may still export wav via ffmpeg.
-fn normalize_format(fmt: &str) -> &'static str {
-    match fmt.trim().to_ascii_lowercase().as_str() {
-        "pcm" => "pcm",
-        "flac" => "flac",
-        _ => "mp3",
+    pub async fn design_voice(
+        &self,
+        prompt: &str,
+        preview_text: &str,
+        voice_id: Option<&str>,
+    ) -> Result<MinimaxVoiceDesignResult> {
+        if !self.is_configured() {
+            return Err(anyhow!("MINIMAX_API_KEY is not set"));
+        }
+        let mut payload = serde_json::json!({
+            "prompt": prompt,
+            "preview_text": preview_text,
+        });
+        if let Some(vid) = voice_id.filter(|s| !s.trim().is_empty()) {
+            validate_voice_id(vid).map_err(|e| anyhow!("{e}"))?;
+            payload["voice_id"] = serde_json::Value::String(vid.to_string());
+        }
+
+        let resp = self
+            .http
+            .post(VOICE_DESIGN_URL)
+            .header("Authorization", format!("Bearer {}", self.current_api_key()))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .context("voice design request")?;
+        let body: serde_json::Value = resp.json().await.context("voice design json")?;
+        if let Some(code) = body.pointer("/base_resp/status_code").and_then(|v| v.as_i64()) {
+            if code != 0 {
+                return Err(anyhow!(
+                    "Minimax voice_design error ({code}): {}",
+                    minimax_error_message(&body)
+                ));
+            }
+        }
+        let vid = body
+            .get("voice_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing voice_id in voice_design response"))?;
+        let hex = body
+            .get("trial_audio")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let trial_audio_bytes = if hex.is_empty() {
+            Vec::new()
+        } else {
+            hex::decode(hex).context("decode trial_audio hex")?
+        };
+        Ok(MinimaxVoiceDesignResult {
+            voice_id: vid.to_string(),
+            trial_audio_bytes,
+        })
+    }
+
+    pub async fn delete_voice(&self, voice_id: &str) -> Result<()> {
+        if !self.is_configured() {
+            return Err(anyhow!("MINIMAX_API_KEY is not set"));
+        }
+        let resp = self
+            .http
+            .post(DELETE_VOICE_URL)
+            .header("Authorization", format!("Bearer {}", self.current_api_key()))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "voice_id": voice_id }))
+            .send()
+            .await
+            .context("delete voice request")?;
+        let body: serde_json::Value = resp.json().await.context("delete voice json")?;
+        if let Some(code) = body.pointer("/base_resp/status_code").and_then(|v| v.as_i64()) {
+            if code != 0 {
+                return Err(anyhow!(
+                    "Minimax delete_voice error ({code}): {}",
+                    minimax_error_message(&body)
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -842,43 +1392,27 @@ pub fn model_from_id(model: &str) -> &str {
         .unwrap_or(model)
 }
 
-pub fn is_known_language_code(code: &str) -> bool {
-    let c = code.trim().to_ascii_lowercase();
-    MINIMAX_LANGUAGES.iter().any(|(hub, _, _)| *hub == c)
-}
-
-/// Maps hub language code (`pl`, `en`) to MiniMax `language_boost` API value.
-pub fn hub_language_to_boost(code: Option<&str>) -> &'static str {
-    let c = code.unwrap_or(DEFAULT_MINIMAX_LANGUAGE).trim().to_ascii_lowercase();
-    MINIMAX_LANGUAGES
-        .iter()
-        .find(|(hub, _, _)| *hub == c)
-        .map(|(_, boost, _)| *boost)
-        .unwrap_or("auto")
-}
-
-pub fn normalize_enabled_language_codes(codes: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for code in codes {
-        let c = code.trim().to_ascii_lowercase();
-        if is_known_language_code(&c) && !out.iter().any(|x| x == &c) {
-            out.push(c);
-        }
+pub fn resolve_minimax_options(
+    req_options: Option<MinimaxSynthesisOptions>,
+    settings_default: Option<&MinimaxSynthesisOptions>,
+    legacy_speed: Option<f32>,
+    legacy_vol: Option<f32>,
+    legacy_pitch: Option<i32>,
+    language: Option<&str>,
+) -> MinimaxSynthesisOptions {
+    let had_req_options = req_options.is_some();
+    let mut opts = req_options
+        .or_else(|| settings_default.cloned())
+        .unwrap_or_default();
+    if !had_req_options && (legacy_speed.is_some() || legacy_vol.is_some() || legacy_pitch.is_some())
+    {
+        let legacy = MinimaxSynthesisOptions::merge_legacy(legacy_speed, legacy_vol, legacy_pitch);
+        opts.voice.speed = legacy.voice.speed;
+        opts.voice.vol = legacy.voice.vol;
+        opts.voice.pitch = legacy.voice.pitch;
     }
-    if out.is_empty() {
-        vec![DEFAULT_MINIMAX_LANGUAGE.to_string()]
-    } else {
-        out
+    if let Some(lang) = language {
+        opts.language = Some(lang.to_string());
     }
-}
-
-pub fn effective_enabled_language_codes(settings_codes: &[String]) -> Vec<String> {
-    if settings_codes.is_empty() {
-        MINIMAX_LANGUAGES
-            .iter()
-            .map(|(code, _, _)| (*code).to_string())
-            .collect()
-    } else {
-        normalize_enabled_language_codes(settings_codes)
-    }
+    opts
 }

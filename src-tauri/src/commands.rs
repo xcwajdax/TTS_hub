@@ -22,8 +22,8 @@ use crate::db::{
 };
 use crate::google::{GoogleTts, SpeakerConfig, TtsModelInfo, VOICES};
 use crate::minimax::{
-    MinimaxClonedVoice, MinimaxHealth, MinimaxLanguageInfo, MinimaxModelInfo, MinimaxPresetVoice,
-    MinimaxSyncVoicesResult,
+    MinimaxClonedVoice, MinimaxCloneOptions, MinimaxHealth, MinimaxLanguageInfo, MinimaxModelInfo,
+    MinimaxPresetVoice, MinimaxSynthesisOptions, MinimaxSyncVoicesResult, MinimaxVoiceDesignResult,
 };
 use crate::paths::AppPaths;
 use crate::paths::{rename_dir, slugify_name, unique_slug};
@@ -99,6 +99,8 @@ pub struct GenerateReq {
     pub minimax_vol: Option<f32>,
     #[serde(default)]
     pub minimax_pitch: Option<i32>,
+    #[serde(default)]
+    pub minimax_options: Option<MinimaxSynthesisOptions>,
     // === chat-window extension (2026-06-06) — additive, optional ===
     /// Original user prompt that produced this assistant reply. Stored on
     /// the generation for context/replay. Does NOT affect TTS output.
@@ -301,7 +303,7 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
                 .source
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string());
-            crate::chat::db::create_session(&conn, &source_name, None).map_err(err)?;
+            crate::chat::db::create_session(&conn, &source_name, None, None).map_err(err)?;
         }
         // User message: the original prompt that produced this reply.
         if let Some(prompt) = req.original_prompt.as_deref() {
@@ -1352,8 +1354,8 @@ pub fn hide_quick_hotkey_toast(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn show_playback_toast(app: AppHandle, generation: Generation) -> Result<(), String> {
-    playback_toast_window::show(&app, generation)
+pub fn show_playback_toast(app: AppHandle) -> Result<(), String> {
+    playback_toast_window::show(&app)
 }
 
 #[tauri::command]
@@ -1666,6 +1668,7 @@ pub async fn minimax_clone_voice_impl(
     preview_text: String,
     prompt_path: Option<String>,
     prompt_text: Option<String>,
+    clone_options: MinimaxCloneOptions,
 ) -> Result<MinimaxClonedVoice, String> {
     let source_bytes = std::fs::read(&source_path).map_err(err)?;
     let filename = std::path::Path::new(&source_path)
@@ -1696,7 +1699,7 @@ pub async fn minimax_clone_voice_impl(
     };
 
     let model_id = crate::minimax::model_from_id(&model);
-    state
+    let (_body, _clone_meta) = state
         .minimax
         .clone_voice(
             file_id,
@@ -1705,6 +1708,7 @@ pub async fn minimax_clone_voice_impl(
             &preview_text,
             prompt_file_id,
             prompt_text.as_deref(),
+            &clone_options,
         )
         .await
         .map_err(err)?;
@@ -1755,6 +1759,7 @@ pub async fn minimax_clone_voice(
     preview_text: String,
     prompt_path: Option<String>,
     prompt_text: Option<String>,
+    clone_options: Option<MinimaxCloneOptions>,
 ) -> Result<MinimaxClonedVoice, String> {
     minimax_clone_voice_impl(
         state.inner(),
@@ -1765,8 +1770,75 @@ pub async fn minimax_clone_voice(
         preview_text,
         prompt_path,
         prompt_text,
+        clone_options.unwrap_or_default(),
     )
     .await
+}
+
+#[tauri::command]
+pub async fn minimax_design_voice(
+    state: State<'_, AppArc>,
+    prompt: String,
+    preview_text: String,
+    voice_id: Option<String>,
+) -> Result<MinimaxVoiceDesignResult, String> {
+    let result = state
+        .minimax
+        .design_voice(&prompt, &preview_text, voice_id.as_deref())
+        .await
+        .map_err(err)?;
+    let entry = MinimaxClonedVoice {
+        voice_id: result.voice_id.clone(),
+        name: format!("Design: {}", prompt.chars().take(40).collect::<String>()),
+        created_at: chrono::Utc::now().timestamp(),
+        output_vol: None,
+    };
+    {
+        let mut settings = state.settings.write().map_err(err)?;
+        settings
+            .minimax_cloned_voices
+            .retain(|v| v.voice_id != entry.voice_id);
+        settings.minimax_cloned_voices.push(entry.clone());
+    }
+    state.persist_settings().map_err(err)?;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn minimax_delete_voice(
+    state: State<'_, AppArc>,
+    voice_id: String,
+) -> Result<(), String> {
+    state
+        .minimax
+        .delete_voice(&voice_id)
+        .await
+        .map_err(err)?;
+    {
+        let mut settings = state.settings.write().map_err(err)?;
+        settings
+            .minimax_cloned_voices
+            .retain(|v| v.voice_id != voice_id);
+    }
+    state.persist_settings().map_err(err)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn minimax_upload_text_file(
+    state: State<'_, AppArc>,
+    file_path: String,
+) -> Result<i64, String> {
+    let bytes = std::fs::read(&file_path).map_err(err)?;
+    let filename = std::path::Path::new(&file_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("input.txt");
+    state
+        .minimax
+        .upload_text_file(filename, bytes)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -2076,6 +2148,11 @@ pub async fn pick_skin_export_path(
 #[tauri::command]
 pub fn get_clear_local_data_confirmation_word() -> String {
     crate::local_storage::confirmation_word()
+}
+
+#[tauri::command]
+pub fn get_local_storage_stats(state: State<'_, AppArc>) -> Result<crate::local_storage::LocalStorageStats, String> {
+    crate::local_storage::compute_stats(state.inner()).map_err(err)
 }
 
 #[tauri::command]

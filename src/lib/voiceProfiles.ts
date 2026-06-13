@@ -1,6 +1,7 @@
 import { getAppSettings, setAppSettings } from "../api/tauri";
 import { appSettingsViewToPayload, type TtsVoiceProfile } from "../appSettings";
 import type { SettingsState } from "../components/Settings";
+import { defaultMinimaxSynthesisOptions } from "./minimaxOptions";
 import { inferGenerationProvider } from "./avatars";
 import { VOICE_PROFILES_CHANGED } from "./voiceProfilesEvents";
 import type { Generation, SpeakerConfig, TtsProvider } from "../types";
@@ -43,6 +44,7 @@ export function settingsStateToVoiceProfile(
     minimax_speed: state.provider === "minimax" ? state.minimaxSpeed : null,
     minimax_vol: state.provider === "minimax" ? state.minimaxVol : null,
     minimax_pitch: state.provider === "minimax" ? state.minimaxPitch : null,
+    minimax_options: state.provider === "minimax" ? state.minimaxOptions : null,
     multi_speaker: state.provider === "google" && state.multiSpeaker,
     speakers:
       state.provider === "google" && state.multiSpeaker
@@ -71,6 +73,20 @@ export function voiceProfileToSettingsState(profile: TtsVoiceProfile): SettingsS
     minimaxSpeed: profile.minimax_speed ?? 1,
     minimaxVol: profile.minimax_vol ?? 1,
     minimaxPitch: profile.minimax_pitch ?? 0,
+    minimaxOptions: profile.minimax_options
+      ? {
+          ...defaultMinimaxSynthesisOptions(),
+          ...profile.minimax_options,
+          voice: {
+            ...defaultMinimaxSynthesisOptions().voice,
+            ...(profile.minimax_options.voice ?? {}),
+          },
+          audio: {
+            ...defaultMinimaxSynthesisOptions().audio,
+            ...(profile.minimax_options.audio ?? {}),
+          },
+        }
+      : defaultMinimaxSynthesisOptions(),
   };
 }
 
@@ -201,6 +217,25 @@ export function isRerouteProfile(
   rerouteVoiceProfileId: string | null | undefined,
 ): boolean {
   return !!rerouteVoiceProfileId?.trim() && rerouteVoiceProfileId === profileId;
+}
+
+export async function deleteVoiceProfile(profileId: string): Promise<TtsVoiceProfile[]> {
+  const view = await getAppSettings();
+  const profiles = view.voice_profiles ?? [];
+  const next = profiles.filter((p) => p.id !== profileId);
+  if (next.length === profiles.length) return next;
+
+  const rerouteId =
+    view.reroute_voice_profile_id === profileId ? null : (view.reroute_voice_profile_id ?? null);
+  const { persistVoiceProfilesWithHotkeySync } = await import("./voiceProfileShortcuts");
+  await persistVoiceProfilesWithHotkeySync(
+    {
+      ...view,
+      reroute_voice_profile_id: rerouteId,
+    },
+    next,
+  );
+  return next;
 }
 
 export async function touchVoiceProfilePreviews(

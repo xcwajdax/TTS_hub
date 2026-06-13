@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { usePlayback } from "../context/PlaybackContext";
 import {
   TIMELINE_VIEW_CHANGE_EVENT,
   useTimelineView,
 } from "../context/TimelineViewContext";
 import { useAudioWaveform } from "../hooks/useAudioWaveform";
+import { useSmoothPlaybackTime } from "../hooks/useSmoothPlaybackTime";
 import { formatTime } from "../lib/formatTime";
 import {
   formatPlaybackRateLabel,
@@ -14,12 +15,22 @@ import {
 import { timelineViewBarCount } from "../lib/timelineView";
 import { drawWaveform } from "../lib/waveformCanvas";
 import AudioOutputSelect from "./AudioOutputSelect";
+import GenerationTextModal from "./GenerationTextModal";
+import Icon from "./Icon";
 import TimelinePanelMenu from "./TimelinePanelMenu";
+import TimelineRuler from "./TimelineRuler";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../types";
 
 const DEFAULT_VOLUME = 0.8;
 const VOLUME_STORAGE_KEY = "tts-hub.playback.volume";
 const MUTED_STORAGE_KEY = "tts-hub.playback.muted";
+
+interface LayoutParts {
+  controls: ReactNode;
+  timeline: ReactNode;
+  modals: ReactNode;
+  headerCorner: ReactNode;
+}
 
 interface Props {
   src: string;
@@ -29,6 +40,7 @@ interface Props {
   tags?: ArchiveTag[];
   onHistoryChanged?: () => void;
   onError?: (e: string) => void;
+  renderLayout?: (parts: LayoutParts) => ReactNode;
 }
 
 function readStoredVolume(): number {
@@ -45,17 +57,21 @@ export default function WaveformPlayer({
   tags = [],
   onHistoryChanged,
   onError,
+  renderLayout,
 }: Props) {
   const { audioRef, playing, togglePlay, seekTo, playbackRate, setPlaybackRate } = usePlayback();
   const { mode: timelineMode } = useTimelineView();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [textModalOpen, setTextModalOpen] = useState(false);
 
   const barCount = timelineViewBarCount(timelineMode);
   const { peaks, duration: decodedDuration, loading } = useAudioWaveform(src, barCount);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const { currentTime, duration, setTimeImmediate, setDurationExternal } = useSmoothPlaybackTime({
+    audioRef,
+    src,
+  });
   const [volume, setVolume] = useState(readStoredVolume);
   const [muted, setMuted] = useState(() => window.localStorage.getItem(MUTED_STORAGE_KEY) === "true");
 
@@ -64,28 +80,8 @@ export default function WaveformPlayer({
   const volumePercent = Math.round(volume * 100);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const onTime = () => setCurrentTime(audio.currentTime);
-    const onDuration = () => setDuration(audio.duration || 0);
-
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("loadedmetadata", onDuration);
-    audio.addEventListener("durationchange", onDuration);
-    onTime();
-    onDuration();
-
-    return () => {
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("loadedmetadata", onDuration);
-      audio.removeEventListener("durationchange", onDuration);
-    };
-  }, [audioRef, src]);
-
-  useEffect(() => {
-    if (decodedDuration != null) setDuration(decodedDuration);
-  }, [decodedDuration]);
+    if (decodedDuration != null) setDurationExternal(decodedDuration);
+  }, [decodedDuration, setDurationExternal]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -153,7 +149,7 @@ export default function WaveformPlayer({
     if (total <= 0) return;
 
     seekTo(ratio * total);
-    setCurrentTime(audio.currentTime);
+    setTimeImmediate(audio.currentTime);
   };
 
   const changeVolume = (nextVolume: number) => {
@@ -171,39 +167,67 @@ export default function WaveformPlayer({
     setMuted((value) => !value);
   };
 
-  return (
-    <div className={`flex flex-col gap-2 min-w-0 ${className}`}>
-      <div className="flex flex-wrap items-center gap-2 min-w-0">
+  const openContextMenu = (e: MouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setContextMenu({ x: rect.left, y: rect.bottom + 4 });
+  };
+
+  const headerCorner =
+    current && onHistoryChanged && onError ? (
+      <button
+        type="button"
+        className="shrink-0 w-7 h-7 text-muted hover:text-accent flex items-center justify-center text-base leading-none transition-colors"
+        aria-label="Opcje generacji i wyglądu timeline"
+        title="Opcje generacji i wyglądu timeline"
+        onClick={openContextMenu}
+      >
+        ⋮
+      </button>
+    ) : null;
+
+  const controls = (
+    <div className={`flex flex-nowrap items-center gap-x-2 min-w-0 ${className}`}>
+      <div className="flex shrink-0 items-center gap-x-2">
         <button
           type="button"
           onClick={togglePlay}
           disabled={loading}
-          className="shrink-0 w-8 h-8 rounded-full bg-panel2 border border-border flex items-center justify-center text-sm hover:border-accent hover:text-accent transition-colors disabled:opacity-40"
+          className="shrink-0 w-8 h-8 flex items-center justify-center text-muted hover:text-accent transition-colors disabled:opacity-40"
           aria-label={playing ? "Pauza" : "Odtwarzaj"}
         >
           {loading ? (
-            <span className="w-3 h-3 border-2 border-muted border-t-accent rounded-full animate-spin" />
-          ) : playing ? (
-            "❚❚"
+            <Icon name="spinner" size={16} spin className="opacity-80" />
           ) : (
-            "▶"
+            <Icon name={playing ? "pause" : "play"} size={16} />
           )}
         </button>
 
-        <span className="text-[10px] tabular-nums text-muted shrink-0 min-w-[72px]">
+        <span className="text-[10px] tabular-nums text-muted shrink-0 min-w-[36px]">
           {formatTime(currentTime)}
-          <span className="text-muted/60"> / </span>
-          {formatTime(duration)}
         </span>
 
-        <div
-          className="flex h-8 shrink-0 items-center gap-2 px-2 rounded-lg border border-border bg-panel2 text-muted ml-auto"
-          aria-label="Sterowanie glosnoscia"
-        >
+        {current && (
+          <button
+            type="button"
+            className="shrink-0 flex items-center gap-1 text-[10px] text-muted hover:text-accent transition-colors"
+            aria-label="Pokaż tekst generacji"
+            title="Pokaż tekst generacji"
+            onClick={() => setTextModalOpen(true)}
+          >
+            <Icon name="view-full" size={14} />
+            <span>Tekst</span>
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-2" aria-hidden />
+
+      <div className="flex shrink-0 items-center gap-x-2 min-w-0">
+        <div className="flex h-8 shrink-0 items-center gap-2 text-muted" aria-label="Sterowanie glosnoscia">
           <button
             type="button"
             onClick={toggleMute}
-            className="w-7 h-7 rounded-md border border-border bg-panel/90 flex items-center justify-center text-xs hover:border-accent hover:text-accent transition-colors"
+            className="w-7 h-7 flex items-center justify-center text-xs hover:text-accent transition-colors"
             aria-label={effectiveMuted ? "Wlacz dzwiek" : "Wycisz"}
             title={effectiveMuted ? "Wlacz dzwiek" : "Wycisz"}
           >
@@ -215,24 +239,24 @@ export default function WaveformPlayer({
             max={100}
             value={volumePercent}
             onChange={(e) => changeVolume(Number(e.currentTarget.value) / 100)}
-            className="w-20 cursor-pointer [accent-color:rgb(var(--color-accent2))]"
+            className="w-16 cursor-pointer [accent-color:rgb(var(--color-accent2))]"
             aria-label="Glosnosc"
             aria-valuetext={`${volumePercent}%`}
             title={`Glosnosc ${volumePercent}%`}
           />
-          <span className="text-[10px] tabular-nums min-w-[34px] text-right">
+          <span className="text-[10px] tabular-nums min-w-[30px] text-right">
             {volumePercent}%
           </span>
         </div>
 
-        <AudioOutputSelect />
+        <AudioOutputSelect flat />
 
-        <label className="flex h-8 shrink-0 items-center gap-1.5 px-2 rounded-lg border border-border bg-panel2 text-muted">
-          <span className="text-[10px] whitespace-nowrap">Tempo</span>
+        <label className="flex h-8 shrink-0 items-center gap-1 text-muted whitespace-nowrap">
+          <span className="text-[10px]">Tempo</span>
           <select
             value={playbackRate}
             onChange={(e) => setPlaybackRate(Number(e.currentTarget.value) as PlaybackRate)}
-            className="text-[10px] bg-panel border border-border rounded px-1 py-0.5 text-foreground cursor-pointer hover:border-accent focus:border-accent outline-none"
+            className="text-[10px] bg-transparent px-0 py-0.5 text-foreground cursor-pointer outline-none w-9 shrink-0"
             aria-label="Predkosc odtwarzania"
             title="Globalna predkosc odtwarzania"
           >
@@ -243,26 +267,15 @@ export default function WaveformPlayer({
             ))}
           </select>
         </label>
-
-        {current && onHistoryChanged && onError && (
-          <button
-            type="button"
-            className="shrink-0 w-8 h-8 rounded-lg border border-border bg-panel2 text-muted hover:border-accent hover:text-accent flex items-center justify-center text-sm"
-            aria-label="Opcje generacji i wyglądu timeline"
-            title="Opcje generacji i wyglądu timeline"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setContextMenu({ x: rect.left, y: rect.bottom + 4 });
-            }}
-          >
-            ⋮
-          </button>
-        )}
       </div>
+    </div>
+  );
 
+  const timeline = (
+    <div className="playback-timeline w-full min-w-0 border-t border-border">
       <div
         ref={wrapRef}
-        className="relative w-full min-w-0 h-11 rounded-lg border border-border bg-panel2 overflow-hidden cursor-pointer group"
+        className="relative w-full min-w-0 h-12 bg-panel2/50 overflow-hidden cursor-pointer"
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY });
@@ -279,12 +292,14 @@ export default function WaveformPlayer({
         aria-valuemax={duration}
         aria-valuenow={currentTime}
       >
+        <TimelineRuler duration={duration} />
         <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" aria-hidden />
-        {timelineMode !== "line" && (
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/40 via-transparent to-bg/20 pointer-events-none" />
-        )}
       </div>
+    </div>
+  );
 
+  const modals = (
+    <>
       {contextMenu && (
         <TimelinePanelMenu
           anchorX={contextMenu.x}
@@ -297,6 +312,26 @@ export default function WaveformPlayer({
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      {current && textModalOpen && (
+        <GenerationTextModal
+          open={textModalOpen}
+          gen={current}
+          onClose={() => setTextModalOpen(false)}
+        />
+      )}
+    </>
+  );
+
+  if (renderLayout) {
+    return <>{renderLayout({ controls, timeline, modals, headerCorner })}</>;
+  }
+
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      {controls}
+      {timeline}
+      {modals}
     </div>
   );
 }

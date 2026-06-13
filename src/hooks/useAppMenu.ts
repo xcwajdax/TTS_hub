@@ -20,6 +20,7 @@ export type MenuActionId =
   | "settings"
   | "minimax_voices"
   | "quick_setup"
+  | "product_tour"
   | "quick_hotkeys"
   | "soundboard"
   | "about";
@@ -32,6 +33,7 @@ interface Options {
   onOpenSettings: () => void;
   onOpenMinimaxVoices?: () => void;
   onOpenQuickSetup?: () => void;
+  onStartProductTour?: () => void;
   onOpenQuickHotkeys?: () => void;
   onOpenSoundboard?: () => void;
 }
@@ -44,6 +46,7 @@ export function useAppMenu({
   onOpenSettings,
   onOpenMinimaxVoices,
   onOpenQuickSetup,
+  onStartProductTour,
   onOpenQuickHotkeys,
   onOpenSoundboard,
 }: Options) {
@@ -74,6 +77,9 @@ export function useAppMenu({
               break;
             case "quick_setup":
               onOpenQuickSetup?.();
+              break;
+            case "product_tour":
+              onStartProductTour?.();
               break;
             case "quick_hotkeys":
               onOpenQuickHotkeys?.();
@@ -106,6 +112,7 @@ export function useAppMenu({
     onOpenSettings,
     onOpenMinimaxVoices,
     onOpenQuickSetup,
+    onStartProductTour,
     onOpenQuickHotkeys,
     onOpenSoundboard,
   ]);

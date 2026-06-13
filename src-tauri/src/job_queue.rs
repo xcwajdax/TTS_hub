@@ -14,8 +14,8 @@ use crate::commands::{derive_title, GenerateReq};
 use crate::db::{Generation, GenerationUsage, STATUS_CANCELLED, STATUS_DONE, STATUS_FAILED};
 use crate::google::TtsRequest;
 use crate::minimax::{
-    hub_language_to_boost, model_from_id, MinimaxClonedVoice, MinimaxClient, MinimaxGenerateParams,
-    MinimaxVoiceSetting, DEFAULT_MINIMAX_LANGUAGE,
+    model_from_id, resolve_minimax_options, MinimaxClonedVoice, MinimaxClient,
+    MinimaxGenerateParams, DEFAULT_MINIMAX_LANGUAGE,
 };
 use crate::state::AppState;
 use crate::voicebox::engine_from_model;
@@ -306,10 +306,20 @@ impl JobQueue {
                 }
             }
             let model = model_from_id(&req.model).to_string();
-            let language_boost =
-                hub_language_to_boost(req.language.as_deref().or(Some(DEFAULT_MINIMAX_LANGUAGE)));
-            let preset_vol = req.minimax_vol.unwrap_or(1.0);
-            let vol = {
+            let (mut minimax_options, preset_vol) = {
+                let settings = state.settings.read().map_err(|e| format!("{e}"))?;
+                let opts = resolve_minimax_options(
+                    req.minimax_options.clone(),
+                    Some(&settings.minimax_provider_settings.default_synthesis),
+                    req.minimax_speed,
+                    req.minimax_vol,
+                    req.minimax_pitch,
+                    req.language.as_deref().or(Some(DEFAULT_MINIMAX_LANGUAGE)),
+                );
+                let pv = opts.voice.vol;
+                (opts, pv)
+            };
+            minimax_options.voice.vol = {
                 let settings = state.settings.read().map_err(|e| format!("{e}"))?;
                 MinimaxClonedVoice::effective_minimax_vol(
                     &settings.minimax_cloned_voices,
@@ -317,21 +327,14 @@ impl JobQueue {
                     preset_vol,
                 )
             };
-            let voice = MinimaxVoiceSetting {
-                voice_id,
-                speed: req.minimax_speed.unwrap_or(1.0),
-                vol,
-                pitch: req.minimax_pitch.unwrap_or(0),
-                english_normalization: language_boost == "English",
-            };
             let audio = state
                 .minimax
                 .generate_audio(MinimaxGenerateParams {
                     model: &model,
                     text: &synth_text,
-                    voice: &voice,
-                    format: &req.format,
-                    language_boost: Some(language_boost),
+                    voice_id: &voice_id,
+                    hub_format: &req.format,
+                    options: &minimax_options,
                 })
                 .await
                 .map_err(|e| format!("{e}"))?;
@@ -349,6 +352,11 @@ impl JobQueue {
             let source_fmt = AudioFormat::from_str(&audio.format).unwrap_or(AudioFormat::Mp3);
             let written = write_downloaded_audio(&audio.bytes, source_fmt, &temp_dir, id, fmt)
                 .map_err(|e| format!("{e}"))?;
+
+            if let Some(sub) = &audio.subtitle_bytes {
+                let sub_path = temp_dir.join(format!("{id}_subtitles.json"));
+                let _ = std::fs::write(&sub_path, sub);
+            }
 
             let title_src = req.summary_text.as_deref().unwrap_or(&req.text);
             let title = derive_title(title_src);

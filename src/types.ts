@@ -1,4 +1,5 @@
 import type { TextFilterPreset } from "./lib/textFiltersTypes";
+import type { MinimaxSynthesisOptions } from "./lib/minimaxOptions";
 
 export type AudioFormat = "wav" | "mp3" | "ogg";
 export type TtsProvider = "google" | "voicebox" | "minimax";
@@ -32,6 +33,7 @@ export interface GenerateRequest {
   minimax_speed?: number | null;
   minimax_vol?: number | null;
   minimax_pitch?: number | null;
+  minimax_options?: MinimaxSynthesisOptions | null;
   // === voice-profile attribution (2026-06-09) — optional ===
   // Id of the saved TtsVoiceProfile used for this generation. When set,
   // the backend stores it on `generations.voice_profile_id` (and, if a chat
