@@ -1,9 +1,12 @@
 //! Local Voicebox backend lifecycle (bundled sidecar).
-//! Spawn/binary bundling lands in a later milestone; this module exposes mode + health polling.
+
+mod manager;
 
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+
+pub use manager::{default_port, dev_backend_root, ensure_running, stop_child};
 
 use crate::voicebox::VoiceBoxClient;
 

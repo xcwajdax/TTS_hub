@@ -1,5 +1,6 @@
 use anyhow::Result;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::process::Child;
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use tauri::AppHandle;
 use uuid::Uuid;
 
@@ -34,6 +35,7 @@ pub struct AppState {
     pub soundboard: RwLock<SoundboardSettings>,
     pub plugins_state_path: std::path::PathBuf,
     pub plugins_state: RwLock<PluginsState>,
+    pub voicebox_server_child: Mutex<Option<Child>>,
 }
 
 impl AppState {
@@ -89,6 +91,7 @@ impl AppState {
             soundboard: RwLock::new(soundboard),
             plugins_state_path,
             plugins_state: RwLock::new(plugins_state),
+            voicebox_server_child: Mutex::new(None),
         };
         state.persist_settings()?;
         {

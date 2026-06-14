@@ -31,3 +31,5 @@ pwsh -File scripts/dev/start-voicebox-backend.ps1
 ```
 
 Bundled sidecar spawn from TTS Hub is implemented separately in `src-tauri/src/voicebox_server/`.
+
+**Dev bundled mode:** set `"voicebox_server_mode": "bundled"` in `%APPDATA%\\TTS_hub\\settings.json`, ensure `voicebox-backend/.venv` exists — TTS Hub (debug build) auto-spawns Python on startup.
