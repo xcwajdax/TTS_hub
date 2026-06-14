@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use crate::quick_setup_window;
 use crate::playback_toast_window;
 use crate::toast_window;
 use crate::text_filters::{self, TextFilterPreset};
-use crate::audio::{convert_audio_file, AudioFormat};
+use crate::audio::{convert_audio_file, prepare_mp3_for_clipboard, AudioFormat, ClipboardAudioTags};
 use crate::avatars::{self, AvatarInfo};
 use crate::cursor_integration::{
     self, InstallReport, IntegrationStatus, McpIntegrationStatus, UninstallReport,
@@ -28,9 +28,12 @@ use crate::minimax::{
 use crate::paths::AppPaths;
 use crate::paths::{rename_dir, slugify_name, unique_slug};
 use crate::state::AppState;
-use crate::voice_profiles::apply_reroute_if_configured;
+use crate::voice_profiles::{apply_reroute_if_configured, find_voice_profile};
 use crate::voice_samples::{self, VoiceSampleInfo};
-use crate::voicebox::{VoiceBoxHealth, VoiceBoxProfile};
+use crate::voicebox::{
+    VoiceBoxAudioPayload, VoiceBoxHealth, VoiceBoxHistoryItem, VoiceBoxHistoryList,
+    VoiceBoxHistoryQuery, VoiceBoxProfile, VoiceBoxProfileCreate, VoiceBoxSample,
+};
 
 type AppArc = Arc<AppState>;
 
@@ -1202,6 +1205,7 @@ pub fn delete_folder_rule(id: String, state: State<'_, AppArc>) -> Result<(), St
 pub fn delete_generation(id: String, state: State<'_, AppArc>) -> Result<(), String> {
     if let Some(g) = state.db.get(&id).map_err(err)? {
         let _ = std::fs::remove_file(&g.file_path);
+        remove_clipboard_cache(&state, &g.id);
     }
     state.db.delete(&id).map_err(err)?;
     state.apply_temp_retention().map_err(err)
@@ -1210,6 +1214,11 @@ pub fn delete_generation(id: String, state: State<'_, AppArc>) -> Result<(), Str
 #[tauri::command]
 pub fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(err)
+}
+
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, content).map_err(err)
 }
 
 #[tauri::command]
@@ -1234,13 +1243,35 @@ pub fn export_generation_to_path(
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(err)?;
     }
-    std::fs::copy(&src, &dest).map_err(err)?;
+
+    let target = dest
+        .extension()
+        .and_then(|e| e.to_str())
+        .and_then(AudioFormat::from_str);
+
+    match target {
+        Some(AudioFormat::Mp3) => {
+            prepare_generation_mp3_with_metadata(&state, &g, &src, &dest)?;
+        }
+        Some(fmt) => {
+            let current = AudioFormat::from_str(&g.format).unwrap_or(AudioFormat::Wav);
+            if current == fmt && src != dest {
+                std::fs::copy(&src, &dest).map_err(err)?;
+            } else {
+                convert_audio_file(&src, &dest, fmt).map_err(err)?;
+            }
+        }
+        None => {
+            std::fs::copy(&src, &dest).map_err(err)?;
+        }
+    }
     Ok(())
 }
 
 #[tauri::command]
-pub fn copy_generation_audio_to_clipboard(
+pub fn export_generation_mp4_to_path(
     id: String,
+    dest_path: String,
     state: State<'_, AppArc>,
 ) -> Result<(), String> {
     let g = state
@@ -1248,13 +1279,530 @@ pub fn copy_generation_audio_to_clipboard(
         .get(&id)
         .map_err(err)?
         .ok_or_else(|| "not found".to_string())?;
-    if g.file_path.trim().is_empty() {
+    let src = resolve_share_mp4_path(&state, &g, None)?;
+    let dest = PathBuf::from(&dest_path);
+    if src == dest {
+        return Ok(());
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(err)?;
+    }
+    let _ = std::fs::copy(&src, &dest).map_err(err)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn copy_generation_mp4_to_clipboard(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    use crate::video_export::Mp4ExportProgress;
+
+    let g = state
+        .db
+        .get(&id)
+        .map_err(err)?
+        .ok_or_else(|| "not found".to_string())?;
+
+    let _ = app.emit(
+        "mp4-export-progress",
+        Mp4ExportProgress {
+            id: id.clone(),
+            phase: "start".to_string(),
+            percent: 0.0,
+            message: "Przygotowuję MP4…".to_string(),
+        },
+    );
+
+    let app_progress = app.clone();
+    let progress: Arc<dyn Fn(Mp4ExportProgress) + Send + Sync> = Arc::new(move |p| {
+        let _ = app_progress.emit("mp4-export-progress", &p);
+    });
+
+    let state_arc = state.inner().clone();
+    let gen = g.clone();
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        resolve_share_mp4_path(&state_arc, &gen, Some(progress))
+    })
+    .await
+    .map_err(|e| format!("{e}"))??;
+
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("schowek: {e}"))?;
+    clipboard
+        .set()
+        .file_list(&[path.as_path()])
+        .map_err(|e| format!("kopiowanie do schowka: {e}"))?;
+
+    let _ = app.emit(
+        "mp4-export-progress",
+        Mp4ExportProgress {
+            id,
+            phase: "done".to_string(),
+            percent: 1.0,
+            message: "Skopiowano MP4 do schowka".to_string(),
+        },
+    );
+    Ok(())
+}
+
+fn mp4_title_lines(state: &AppArc, gen: &Generation) -> Vec<String> {
+    use crate::video_export::wrap_title_lines;
+    let tags = clipboard_tags_for_generation(state, gen);
+    let overlay = if tags.artist == "TTS Hub" {
+        tags.title
+    } else {
+        format!("{} — {}", tags.title, tags.artist)
+    };
+    wrap_title_lines(&overlay, 3)
+}
+
+fn mp4_footer_line(state: &AppArc, gen: &Generation) -> String {
+    let tags = clipboard_tags_for_generation(state, gen);
+    let voice = if tags.artist.is_empty() {
+        gen.voice.clone()
+    } else {
+        tags.artist
+    };
+    let model = short_model_label(&gen.model);
+    let duration = gen
+        .duration_ms
+        .map(format_duration_short)
+        .unwrap_or_else(|| "—".to_string());
+    format!("{voice} · {model} · {duration} · TTS Hub")
+}
+
+fn short_model_label(model: &str) -> String {
+    let trimmed = model.trim();
+    if trimmed.is_empty() {
+        return "TTS".to_string();
+    }
+    trimmed
+        .rsplit('/')
+        .next()
+        .unwrap_or(trimmed)
+        .replace("speech-", "")
+}
+
+fn format_duration_short(ms: i64) -> String {
+    let total = ms.max(0) as u64;
+    let s = total / 1000;
+    let m = s / 60;
+    let sec = s % 60;
+    if m > 0 {
+        format!("{m}:{sec:02}")
+    } else {
+        format!("0:{sec:02}")
+    }
+}
+
+fn generation_subtitles_path(state: &AppArc, id: &str) -> Option<PathBuf> {
+    let paths = read_paths(state).ok()?;
+    let path = paths.temp.join(format!("{id}_subtitles.json"));
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn karaoke_source_text(gen: &Generation) -> String {
+    gen.text.trim().to_string()
+}
+
+fn wants_karaoke_export(gen: &Generation, subtitle_json: &Option<PathBuf>) -> bool {
+    subtitle_json
+        .as_ref()
+        .map(|p| p.is_file())
+        .unwrap_or(false)
+        || gen.provider.as_deref() == Some(PROVIDER_MINIMAX)
+}
+
+fn render_share_mp4(
+    state: &AppArc,
+    gen: &Generation,
+    dst: &Path,
+    progress: Option<Arc<dyn Fn(crate::video_export::Mp4ExportProgress) + Send + Sync>>,
+) -> Result<(), String> {
+    use crate::video_export::{export_still_video_with_audio, ShareVideoExportOptions, WHATSAPP_VIDEO_SIZE};
+
+    if gen.file_path.trim().is_empty() {
         return Err("brak pliku audio dla tej generacji".into());
     }
-    let path = PathBuf::from(&g.file_path);
-    if !path.is_file() {
+    let audio = PathBuf::from(&gen.file_path);
+    if !audio.is_file() {
         return Err("plik audio nie istnieje".into());
     }
+
+    let cover = clipboard_cover_art(state, gen).unwrap_or_else(|| {
+        let cache_dir = read_paths(state)
+            .map(|p| p.temp.join("clipboard_cache"))
+            .unwrap_or_else(|_| PathBuf::from("."));
+        ensure_default_clipboard_cover(&cache_dir).unwrap_or_else(|_| PathBuf::new())
+    });
+    if !cover.is_file() {
+        return Err("nie udało się przygotować okładki wideo".into());
+    }
+
+    let subtitle_json = generation_subtitles_path(state, &gen.id);
+    let uses_karaoke = wants_karaoke_export(gen, &subtitle_json);
+
+    export_still_video_with_audio(
+        &audio,
+        &cover,
+        dst,
+        &ShareVideoExportOptions {
+            width: WHATSAPP_VIDEO_SIZE,
+            height: WHATSAPP_VIDEO_SIZE,
+            title_lines: if uses_karaoke {
+                Vec::new()
+            } else {
+                mp4_title_lines(state, gen)
+            },
+            subtitle_json,
+            fallback_karaoke_text: if uses_karaoke {
+                Some(karaoke_source_text(gen))
+            } else {
+                None
+            },
+            audio_path: audio.clone(),
+            footer_line: Some(mp4_footer_line(state, gen)),
+            watermark_text: "TTS Hub".to_string(),
+            watermark_logo: ensure_default_clipboard_cover(
+                &read_paths(state)
+                    .map(|p| p.temp.join("clipboard_cache"))
+                    .unwrap_or_else(|_| PathBuf::from(".")),
+            )
+            .ok(),
+            export_id: Some(gen.id.clone()),
+            progress: progress.clone(),
+        },
+    )
+    .map_err(err)
+}
+
+fn resolve_share_mp4_path(
+    state: &AppArc,
+    gen: &Generation,
+    progress: Option<Arc<dyn Fn(crate::video_export::Mp4ExportProgress) + Send + Sync>>,
+) -> Result<PathBuf, String> {
+    if gen.file_path.trim().is_empty() {
+        return Err("brak pliku audio dla tej generacji".into());
+    }
+    let src = PathBuf::from(&gen.file_path);
+    if !src.is_file() {
+        return Err("plik audio nie istnieje".into());
+    }
+
+    let cache_base = clipboard_cache_dir(state)?.join(&gen.id);
+    std::fs::create_dir_all(&cache_base).map_err(err)?;
+    let dst = cache_base.join(format!(
+        "{}.mp4",
+        sanitize_clipboard_filename(&clipboard_display_stem(gen))
+    ));
+    let meta_path = cache_base.join("video.meta.json");
+    let subtitle_json = generation_subtitles_path(state, &gen.id);
+    let uses_karaoke = wants_karaoke_export(gen, &subtitle_json);
+    let title_lines = if uses_karaoke {
+        Vec::new()
+    } else {
+        mp4_title_lines(state, gen)
+    };
+    let cache_meta = VideoCacheMeta {
+        src_mtime_ms: file_mtime_ms(&src).unwrap_or(0),
+        cover_mtime_ms: clipboard_cover_art(state, gen).and_then(|p| file_mtime_ms(&p)),
+        subtitle_mtime_ms: subtitle_json.as_ref().and_then(|p| file_mtime_ms(p)),
+        karaoke: uses_karaoke,
+        karaoke_version: KARAOKE_CACHE_VERSION,
+        footer_line: mp4_footer_line(state, gen),
+        title_lines: title_lines.clone(),
+        updated_at: gen.updated_at,
+    };
+
+    if dst.is_file() && video_cache_is_valid(&meta_path, &cache_meta, &src) {
+        if let Some(cb) = progress.as_ref() {
+            cb(crate::video_export::Mp4ExportProgress {
+                id: gen.id.clone(),
+                phase: "done".to_string(),
+                percent: 1.0,
+                message: "MP4 z pamięci podręcznej".to_string(),
+            });
+        }
+        return Ok(dst);
+    }
+
+    if dst.is_file() {
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    render_share_mp4(state, gen, &dst, progress)?;
+    let meta_json = serde_json::to_string_pretty(&cache_meta).map_err(err)?;
+    std::fs::write(&meta_path, meta_json).map_err(err)?;
+    Ok(dst)
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct VideoCacheMeta {
+    src_mtime_ms: u128,
+    cover_mtime_ms: Option<u128>,
+    subtitle_mtime_ms: Option<u128>,
+    karaoke: bool,
+    /// Bump when karaoke render logic changes to invalidate stale cache.
+    karaoke_version: u32,
+    footer_line: String,
+    title_lines: Vec<String>,
+    updated_at: i64,
+}
+
+const KARAOKE_CACHE_VERSION: u32 = 4;
+
+fn video_cache_is_valid(meta_path: &Path, meta: &VideoCacheMeta, src: &Path) -> bool {
+    if !meta_path.is_file() {
+        return false;
+    }
+    let Ok(raw) = std::fs::read_to_string(meta_path) else {
+        return false;
+    };
+    let Ok(stored) = serde_json::from_str::<VideoCacheMeta>(&raw) else {
+        return false;
+    };
+    stored == *meta && file_mtime_ms(src) == Some(meta.src_mtime_ms)
+}
+
+fn clipboard_cache_dir(state: &AppArc) -> Result<PathBuf, String> {
+    let paths = read_paths(state)?;
+    Ok(paths.temp.join("clipboard_cache"))
+}
+
+fn remove_clipboard_cache(state: &AppArc, id: &str) {
+    if let Ok(base) = clipboard_cache_dir(state) {
+        let gen_dir = base.join(id);
+        if gen_dir.is_dir() {
+            let _ = std::fs::remove_dir_all(&gen_dir);
+        }
+        for ext in ["mp3", "ogg", "wav", "meta.json", "video.meta.json"] {
+            let _ = std::fs::remove_file(base.join(format!("{id}.{ext}")));
+        }
+        let _ = std::fs::remove_file(base.join(format!("{id}_share.mp4")));
+    }
+}
+
+fn sanitize_clipboard_filename(input: &str) -> String {
+    let mut out = String::new();
+    for c in input.trim().chars() {
+        if c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') {
+            continue;
+        }
+        out.push(c);
+    }
+    let trimmed = out.trim();
+    if trimmed.is_empty() {
+        "TTS Hub".to_string()
+    } else {
+        let chars: Vec<char> = trimmed.chars().collect();
+        if chars.len() > 72 {
+            chars.into_iter().take(72).collect::<String>() + "…"
+        } else {
+            trimmed.to_string()
+        }
+    }
+}
+
+fn clipboard_display_stem(gen: &Generation) -> String {
+    let title = gen
+        .title
+        .as_deref()
+        .filter(|t| !t.trim().is_empty())
+        .map(sanitize_clipboard_filename)
+        .unwrap_or_else(|| sanitize_clipboard_filename(&derive_title(&gen.text)));
+    let artist = clipboard_artist_label(gen);
+    if artist == "TTS Hub" {
+        title
+    } else {
+        format!("{title} — {artist}")
+    }
+}
+
+fn clipboard_artist_label(gen: &Generation) -> String {
+    gen.voice.trim().to_string()
+}
+
+fn clipboard_tags_for_generation(state: &AppArc, gen: &Generation) -> ClipboardAudioTags {
+    let title = gen
+        .title
+        .as_deref()
+        .filter(|t| !t.trim().is_empty())
+        .map(str::trim)
+        .map(str::to_string)
+        .unwrap_or_else(|| derive_title(&gen.text));
+
+    if let Some(pid) = gen.voice_profile_id.as_deref() {
+        if let Ok(settings) = state.settings.read() {
+            if let Some(profile) = find_voice_profile(&settings.voice_profiles, Some(pid)) {
+                return ClipboardAudioTags::new(title, profile.name.clone());
+            }
+        }
+    }
+    let voice = clipboard_artist_label(gen);
+    let artist = if voice.is_empty() {
+        "TTS Hub".to_string()
+    } else {
+        voice
+    };
+    ClipboardAudioTags::new(title, artist)
+}
+
+fn clipboard_cover_art(state: &AppArc, gen: &Generation) -> Option<PathBuf> {
+    let paths = read_paths(state).ok()?;
+    if let Some(provider) = gen.provider.as_deref() {
+        let path = avatars::voice_avatar_path(&paths, provider, &gen.voice);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    if let Some(kind) = gen.origin_kind.as_deref() {
+        let path = avatars::origin_avatar_path(&paths, kind);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    ensure_default_clipboard_cover(&paths.temp.join("clipboard_cache")).ok()
+}
+
+fn ensure_default_clipboard_cover(cache_dir: &Path) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(cache_dir).map_err(err)?;
+    let path = cache_dir.join("_default_cover.png");
+    if !path.is_file() {
+        std::fs::write(&path, include_bytes!("../icons/128x128.png")).map_err(err)?;
+    }
+    Ok(path)
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct ClipboardCacheMeta {
+    src_mtime_ms: u128,
+    cover_mtime_ms: Option<u128>,
+    title: String,
+    artist: String,
+    updated_at: i64,
+}
+
+fn file_mtime_ms(path: &Path) -> Option<u128> {
+    path.metadata()
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_millis())
+}
+
+fn clipboard_cache_is_valid(meta_path: &Path, meta: &ClipboardCacheMeta, src: &Path, cover: Option<&Path>) -> bool {
+    if !meta_path.is_file() {
+        return false;
+    }
+    let Ok(raw) = std::fs::read_to_string(meta_path) else {
+        return false;
+    };
+    let Ok(stored) = serde_json::from_str::<ClipboardCacheMeta>(&raw) else {
+        return false;
+    };
+    if stored != *meta {
+        return false;
+    }
+    file_mtime_ms(src) == Some(meta.src_mtime_ms)
+        && cover
+            .map(file_mtime_ms)
+            .unwrap_or(None) == meta.cover_mtime_ms
+}
+
+/// Build clipboard-ready audio: MP3 with ID3 title/artist/album + cover art when possible.
+fn resolve_clipboard_audio_path(
+    state: &AppArc,
+    gen: &Generation,
+    target: AudioFormat,
+) -> Result<PathBuf, String> {
+    if gen.file_path.trim().is_empty() {
+        return Err("brak pliku audio dla tej generacji".into());
+    }
+    let src = PathBuf::from(&gen.file_path);
+    if !src.is_file() {
+        return Err("plik audio nie istnieje".into());
+    }
+
+    if target != AudioFormat::Mp3 {
+        let cache_dir = clipboard_cache_dir(state)?;
+        std::fs::create_dir_all(&cache_dir).map_err(err)?;
+        let cached = cache_dir.join(format!("{}.{}", gen.id, target.ext()));
+        if cached.is_file() {
+            let use_cache = match (src.metadata().and_then(|m| m.modified()), cached.metadata().and_then(|m| m.modified())) {
+                (Ok(src_mtime), Ok(cache_mtime)) => cache_mtime >= src_mtime,
+                _ => true,
+            };
+            if use_cache {
+                return Ok(cached);
+            }
+            let _ = std::fs::remove_file(&cached);
+        }
+        convert_audio_file(&src, &cached, target).map_err(err)?;
+        return Ok(cached);
+    }
+
+    let tags = clipboard_tags_for_generation(state, gen);
+    let cover = clipboard_cover_art(state, gen);
+    let cache_base = clipboard_cache_dir(state)?.join(&gen.id);
+    std::fs::create_dir_all(&cache_base).map_err(err)?;
+    let dst = cache_base.join(format!("{}.mp3", sanitize_clipboard_filename(&clipboard_display_stem(gen))));
+    let meta_path = cache_base.join("meta.json");
+    let cache_meta = ClipboardCacheMeta {
+        src_mtime_ms: file_mtime_ms(&src).unwrap_or(0),
+        cover_mtime_ms: cover.as_deref().and_then(file_mtime_ms),
+        title: tags.title.clone(),
+        artist: tags.artist.clone(),
+        updated_at: gen.updated_at,
+    };
+
+    if dst.is_file() && clipboard_cache_is_valid(&meta_path, &cache_meta, &src, cover.as_deref()) {
+        return Ok(dst);
+    }
+
+    if dst.is_file() {
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    prepare_generation_mp3_with_metadata(state, gen, &src, &dst)?;
+    let meta_json = serde_json::to_string_pretty(&cache_meta).map_err(err)?;
+    std::fs::write(&meta_path, meta_json).map_err(err)?;
+    Ok(dst)
+}
+
+fn prepare_generation_mp3_with_metadata(
+    state: &AppArc,
+    gen: &Generation,
+    src: &Path,
+    dst: &Path,
+) -> Result<(), String> {
+    let tags = clipboard_tags_for_generation(state, gen);
+    let cover = clipboard_cover_art(state, gen);
+    prepare_mp3_for_clipboard(src, dst, &tags, cover.as_deref()).map_err(err)
+}
+
+#[tauri::command]
+pub fn copy_generation_audio_to_clipboard(
+    id: String,
+    format: Option<String>,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    let g = state
+        .db
+        .get(&id)
+        .map_err(err)?
+        .ok_or_else(|| "not found".to_string())?;
+    let target = format
+        .as_deref()
+        .and_then(AudioFormat::from_str)
+        .unwrap_or(AudioFormat::Mp3);
+    let path = resolve_clipboard_audio_path(&state, &g, target)?;
     let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("schowek: {e}"))?;
     clipboard
         .set()
@@ -1293,6 +1841,8 @@ pub struct ProbeResult {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_count: Option<usize>,
 }
 
 #[tauri::command]
@@ -1443,11 +1993,13 @@ pub async fn probe_google(api_key: String) -> Result<ProbeResult, String> {
             ok: true,
             message: format!("Połączenie OK — wykryto {count} modeli TTS."),
             model_count: Some(count),
+            profile_count: None,
         }),
         Err(message) => Ok(ProbeResult {
             ok: false,
             message,
             model_count: None,
+            profile_count: None,
         }),
     }
 }
@@ -1456,18 +2008,38 @@ pub async fn probe_google(api_key: String) -> Result<ProbeResult, String> {
 pub async fn probe_voicebox(base_url: String) -> Result<ProbeResult, String> {
     let client = crate::voicebox::VoiceBoxClient::new(base_url);
     match client.health().await {
-        Ok(h) => Ok(ProbeResult {
-            ok: true,
-            message: format!(
-                "Voice Box OK — status: {}, model_loaded: {}",
-                h.status, h.model_loaded
-            ),
-            model_count: None,
-        }),
+        Ok(h) => {
+            let profiles = client.profiles().await.ok();
+            let profile_count = profiles.as_ref().map(|p| p.len());
+            let model_count = client.count_downloaded_tts_models().await.ok();
+            let loaded_count = client.count_loaded_tts_models().await.ok();
+            let gpu = h
+                .gpu_type
+                .clone()
+                .unwrap_or_else(|| if h.gpu_available { "GPU".into() } else { "CPU".into() });
+            let mut parts = vec![
+                format!("Voice Box OK — status: {}", h.status),
+                format!("{gpu}"),
+            ];
+            if let Some(n) = profile_count {
+                parts.push(format!("{n} profile(ów)"));
+            }
+            if let Some(n) = model_count {
+                let loaded = loaded_count.unwrap_or(0);
+                parts.push(format!("{n} model(i), {loaded} załadowanych"));
+            }
+            Ok(ProbeResult {
+                ok: true,
+                message: parts.join(" · "),
+                model_count,
+                profile_count,
+            })
+        }
         Err(e) => Ok(ProbeResult {
             ok: false,
             message: format!("{e:#}"),
             model_count: None,
+            profile_count: None,
         }),
     }
 }
@@ -1480,11 +2052,13 @@ pub async fn probe_minimax(api_key: String) -> Result<ProbeResult, String> {
             ok: true,
             message: "Połączenie WebSocket z MiniMax OK.".into(),
             model_count: None,
+            profile_count: None,
         }),
         Err(e) => Ok(ProbeResult {
             ok: false,
             message: format!("{e:#}"),
             model_count: None,
+            profile_count: None,
         }),
     }
 }
@@ -1492,6 +2066,28 @@ pub async fn probe_minimax(api_key: String) -> Result<ProbeResult, String> {
 #[tauri::command]
 pub async fn voicebox_health(state: State<'_, AppArc>) -> Result<VoiceBoxHealth, String> {
     state.voicebox.health().await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_server_status(
+    state: State<'_, AppArc>,
+) -> Result<crate::voicebox_server::VoiceboxServerStatus, String> {
+    let mode = {
+        let settings = state.settings.read().map_err(|e| e.to_string())?;
+        crate::voicebox_server::VoiceboxServerMode::parse(&settings.voicebox_server_mode)
+    };
+    let mut status = crate::voicebox_server::probe_server(&state.voicebox, 2).await;
+    status.mode = mode.as_str().to_string();
+    if mode == crate::voicebox_server::VoiceboxServerMode::Bundled {
+        status.bundled_spawn_ready = false;
+        if !status.reachable {
+            status.message = Some(
+                "Bundled sidecar not yet shipped — install Voicebox separately or set external URL."
+                    .to_string(),
+            );
+        }
+    }
+    Ok(status)
 }
 
 #[tauri::command]
@@ -1504,6 +2100,190 @@ pub async fn list_voicebox_profiles(
 #[tauri::command]
 pub async fn list_voicebox_models(state: State<'_, AppArc>) -> Result<Vec<TtsModelInfo>, String> {
     state.voicebox.list_tts_models().await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_get_profile(
+    profile_id: String,
+    state: State<'_, AppArc>,
+) -> Result<VoiceBoxProfile, String> {
+    state
+        .voicebox
+        .get_profile(&profile_id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_create_profile(
+    body: VoiceBoxProfileCreate,
+    state: State<'_, AppArc>,
+) -> Result<VoiceBoxProfile, String> {
+    state.voicebox.create_profile(&body).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_update_profile(
+    profile_id: String,
+    body: VoiceBoxProfileCreate,
+    state: State<'_, AppArc>,
+) -> Result<VoiceBoxProfile, String> {
+    state
+        .voicebox
+        .update_profile(&profile_id, &body)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_delete_profile(
+    profile_id: String,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    state.voicebox.delete_profile(&profile_id).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_list_profile_samples(
+    profile_id: String,
+    state: State<'_, AppArc>,
+) -> Result<Vec<VoiceBoxSample>, String> {
+    state
+        .voicebox
+        .list_profile_samples(&profile_id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_add_profile_sample(
+    profile_id: String,
+    file_path: String,
+    reference_text: String,
+    state: State<'_, AppArc>,
+) -> Result<VoiceBoxSample, String> {
+    state
+        .voicebox
+        .add_profile_sample(&profile_id, &file_path, &reference_text)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_delete_profile_sample(
+    sample_id: String,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    state.voicebox.delete_sample(&sample_id).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_fetch_sample_audio(
+    sample_id: String,
+    state: State<'_, AppArc>,
+) -> Result<VoiceBoxAudioPayload, String> {
+    state
+        .voicebox
+        .fetch_sample_audio(&sample_id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_list_history(
+    query: VoiceBoxHistoryQuery,
+    state: State<'_, AppArc>,
+) -> Result<VoiceBoxHistoryList, String> {
+    state.voicebox.list_history(&query).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_get_history_item(
+    generation_id: String,
+    state: State<'_, AppArc>,
+) -> Result<VoiceBoxHistoryItem, String> {
+    state
+        .voicebox
+        .get_history_item(&generation_id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_delete_history_item(
+    generation_id: String,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    state
+        .voicebox
+        .delete_history_item(&generation_id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_fetch_history_audio(
+    generation_id: String,
+    state: State<'_, AppArc>,
+) -> Result<VoiceBoxAudioPayload, String> {
+    state
+        .voicebox
+        .fetch_generation_audio(&generation_id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn sync_voicebox_profile_avatar(
+    profile_id: String,
+    state: State<'_, AppArc>,
+) -> Result<bool, String> {
+    cache_voicebox_profile_avatar(&state, &profile_id, true).await
+}
+
+#[tauri::command]
+pub async fn sync_voicebox_profile_avatars(state: State<'_, AppArc>) -> Result<u32, String> {
+    let profiles = state.voicebox.profiles().await.map_err(err)?;
+    let mut synced = 0u32;
+    for profile in profiles {
+        if profile
+            .avatar_path
+            .as_ref()
+            .is_some_and(|p| !p.trim().is_empty())
+            && cache_voicebox_profile_avatar(&state, &profile.id, true)
+                .await
+                .unwrap_or(false)
+        {
+            synced += 1;
+        }
+    }
+    Ok(synced)
+}
+
+async fn cache_voicebox_profile_avatar(
+    state: &AppArc,
+    profile_id: &str,
+    force: bool,
+) -> Result<bool, String> {
+    let profile_id = profile_id.trim();
+    if profile_id.is_empty() {
+        return Ok(false);
+    }
+    let path = {
+        let paths = read_paths(state)?;
+        avatars::voice_avatar_path(&paths, "voicebox", profile_id)
+    };
+    if !force && path.is_file() {
+        return Ok(true);
+    }
+    match state.voicebox.fetch_profile_avatar(profile_id).await {
+        Ok(Some(bytes)) => {
+            avatars::save_avatar_image_bytes(&path, &bytes).map_err(err)?;
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(e) => Err(err(e)),
+    }
 }
 
 #[tauri::command]
@@ -2146,6 +2926,71 @@ pub async fn pick_skin_export_path(
 }
 
 #[tauri::command]
+pub fn export_voice_profile_pack(
+    profile_id: String,
+    dest_path: String,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    let settings = state.settings.read().map_err(err)?;
+    let profile = find_voice_profile(&settings.voice_profiles, Some(profile_id.trim()))
+        .ok_or_else(|| format!("profil głosu nie istnieje: {}", profile_id.trim()))?
+        .clone();
+    let paths = read_paths(&state)?;
+    crate::voice_pack::export_voice_pack(
+        &paths,
+        &profile,
+        PathBuf::from(dest_path).as_path(),
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+pub fn import_voice_profile_pack(
+    archive_path: String,
+    state: State<'_, AppArc>,
+) -> Result<crate::voice_profiles::TtsVoiceProfile, String> {
+    crate::voice_pack::import_and_persist_profile(&state, PathBuf::from(archive_path).as_path())
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn import_voice_profile_pack_from_url(
+    url: String,
+    state: State<'_, AppArc>,
+) -> Result<crate::voice_profiles::TtsVoiceProfile, String> {
+    crate::voice_pack::import_and_persist_profile_from_url(&state, &url)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn pick_voice_pack_archive(app: AppHandle) -> Result<Option<String>, String> {
+    pick_file_dialog(
+        &app,
+        "Importuj Voice Pack",
+        vec![
+            ("Voice Pack TTS Hub", vec!["ttshub-voice", "zip"]),
+        ],
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn pick_voice_pack_export_path(
+    pack_id: String,
+    app: AppHandle,
+) -> Result<Option<String>, String> {
+    let default = format!("{}.ttshub-voice", pack_id.trim());
+    save_file_dialog(
+        &app,
+        "Eksportuj Voice Pack",
+        &default,
+        vec![("Voice Pack TTS Hub", vec!["ttshub-voice"])],
+    )
+    .await
+}
+
+#[tauri::command]
 pub fn get_clear_local_data_confirmation_word() -> String {
     crate::local_storage::confirmation_word()
 }
@@ -2238,7 +3083,7 @@ pub fn get_source_avatar(source: String, state: State<'_, AppArc>) -> Result<Ava
 }
 
 #[tauri::command]
-pub fn get_voice_avatar(
+pub async fn get_voice_avatar(
     provider: String,
     voice_id: String,
     state: State<'_, AppArc>,
@@ -2248,8 +3093,16 @@ pub fn get_voice_avatar(
     if voice_id.is_empty() {
         return Err("voice_id is required".into());
     }
-    let paths = read_paths(&state)?;
-    let path = avatars::voice_avatar_path(&paths, &provider, voice_id);
+    let path = {
+        let paths = read_paths(&state)?;
+        avatars::voice_avatar_path(&paths, &provider, voice_id)
+    };
+    if path.is_file() {
+        return Ok(avatars::avatar_info(&path));
+    }
+    if provider.trim().eq_ignore_ascii_case("voicebox") {
+        let _ = cache_voicebox_profile_avatar(&state, voice_id, false).await;
+    }
     Ok(avatars::avatar_info(&path))
 }
 

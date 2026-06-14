@@ -24,18 +24,23 @@ mod text_filters;
 mod voice_samples;
 mod minimax;
 mod minimax_options;
+mod voice_pack;
 mod voice_profiles;
 mod voicebox;
+mod voicebox_server;
 mod roleplay;
 mod chat;
 mod local_storage;
 mod audio_output_devices;
 mod webview_media_permissions;
 mod usage;
+mod minimax_subtitles;
+mod video_export;
 
 use std::sync::Arc;
 
 use tauri::Manager;
+use tauri::Emitter;
 
 pub fn run() {
     let app_state = match state::AppState::initialize() {
@@ -89,7 +94,10 @@ pub fn run() {
             commands::archive_generation,
             commands::delete_generation,
             commands::read_text_file,
+            commands::write_text_file,
             commands::export_generation_to_path,
+            commands::export_generation_mp4_to_path,
+            commands::copy_generation_mp4_to_clipboard,
             commands::copy_generation_audio_to_clipboard,
             commands::reveal_in_explorer,
             commands::open_archive_folder,
@@ -110,8 +118,23 @@ pub fn run() {
             commands::list_voices,
             commands::list_models,
             commands::voicebox_health,
+            commands::voicebox_server_status,
             commands::list_voicebox_profiles,
             commands::list_voicebox_models,
+            commands::voicebox_get_profile,
+            commands::voicebox_create_profile,
+            commands::voicebox_update_profile,
+            commands::voicebox_delete_profile,
+            commands::voicebox_list_profile_samples,
+            commands::voicebox_add_profile_sample,
+            commands::voicebox_delete_profile_sample,
+            commands::voicebox_fetch_sample_audio,
+            commands::voicebox_list_history,
+            commands::voicebox_get_history_item,
+            commands::voicebox_delete_history_item,
+            commands::voicebox_fetch_history_audio,
+            commands::sync_voicebox_profile_avatar,
+            commands::sync_voicebox_profile_avatars,
             commands::minimax_health,
             commands::list_minimax_models,
             commands::list_minimax_languages,
@@ -142,6 +165,11 @@ pub fn run() {
             commands::open_skins_folder,
             commands::pick_skin_archive,
             commands::pick_skin_export_path,
+            commands::export_voice_profile_pack,
+            commands::import_voice_profile_pack,
+            commands::pick_voice_pack_archive,
+            commands::pick_voice_pack_export_path,
+            commands::import_voice_profile_pack_from_url,
             commands::get_clear_local_data_confirmation_word,
             commands::get_local_storage_stats,
             commands::clear_local_app_data,
@@ -222,6 +250,20 @@ pub fn run() {
                     eprintln!("HTTP API server error: {e:#}");
                 }
             });
+            if let Some(import_url) = voice_pack::startup_import_url_from_args() {
+                let import_state = app_state.clone();
+                let import_handle = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+                    match voice_pack::import_and_persist_profile_from_url(&import_state, &import_url).await
+                    {
+                        Ok(profile) => {
+                            let _ = import_handle.emit("voice-pack:imported", &profile);
+                        }
+                        Err(e) => eprintln!("startup voice pack import failed: {e:#}"),
+                    }
+                });
+            }
             // === chat-window: cleanup unsaved sessions older than 7 days on startup ===
             // (Hourly cron is overkill for first version; cleanup-at-start covers
             // the "user closed app and came back" case which is the main scenario.)

@@ -241,6 +241,9 @@ pub struct AppSettings {
     #[serde(default = "default_minimax_enabled_languages")]
     pub minimax_enabled_languages: Vec<String>,
     pub voicebox_base_url: Option<String>,
+    /// `external` (default) | `bundled` (future sidecar) | `disabled`
+    #[serde(default = "default_voicebox_server_mode")]
+    pub voicebox_server_mode: String,
     pub minimax_api_key: Option<String>,
     #[serde(default)]
     pub minimax_provider_settings: MinimaxProviderSettings,
@@ -298,6 +301,10 @@ fn default_timeline_view() -> String {
     "bars".to_string()
 }
 
+fn default_voicebox_server_mode() -> String {
+    "external".to_string()
+}
+
 const TIMELINE_VIEWS: &[&str] = &["bars", "bars-detailed", "line"];
 
 impl Default for AppSettings {
@@ -326,6 +333,7 @@ impl Default for AppSettings {
             enabled_providers: Vec::new(),
             minimax_enabled_languages: default_minimax_enabled_languages(),
             voicebox_base_url: None,
+            voicebox_server_mode: default_voicebox_server_mode(),
             minimax_api_key: None,
             minimax_provider_settings: MinimaxProviderSettings::default(),
             temp_history_max: default_temp_history_max(),
