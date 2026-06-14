@@ -4,7 +4,7 @@ Zrzuty z **okna Tauri** (`npm run tauri dev`), ~1400×900, skórka **VIBELIFE**.
 
 | Plik | Opis |
 |------|------|
-| `main-window.png` | Zakładka **TTS** — wybór modelu, edytor, kolejka, pasek odtwarzania |
+| `main-window.png` | Zakładka **TTS** — profile głosu, edytor wielozakładkowy, panel historii, waveform (skórka VIBELIFE) |
 | `history-archive.png` | Zakładka **Historia** — archiwum, foldery, panel szczegółów |
 | `settings-general.png` | Ustawienia → Ogólne (providery, kolejka, tryb zapisu) |
 | `settings-usage.png` | Ustawienia → Zużycie (tokeny, koszty) |

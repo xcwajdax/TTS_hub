@@ -7,10 +7,14 @@ dist-ssr
 src-tauri/target
 target/
 src-tauri/gen
+src-tauri/binaries/voicebox-server-*
+!src-tauri/binaries/README.md
+voicebox-backend/.venv
 studios.env
 .env
 .cursor/skills/tts-hub-speak/config.json
 *.mp4
+!docs/promo/video/readme-demo.mp4
 GITHUBSCREENS/
 scripts/dev/*.lnk
 maklowicz_*.mp3

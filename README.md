@@ -18,6 +18,12 @@
   <img src="docs/screenshots/main-window.png" alt="TTS Hub — edytor TTS, profile głosu, historia generacji i waveform" width="920" />
 </p>
 
+<p align="center">
+  <video src="docs/promo/video/readme-demo.mp4" width="480" controls playsinline />
+  <br />
+  <sub><em>Demo narracji — TTS Hub · MiniMax · karaoke inline</em></sub>
+</p>
+
 ---
 
 ## Czym jest TTS Hub?
@@ -60,12 +66,13 @@ Aplikacja startuje z API na **`http://127.0.0.1:8765`**. Build instalatora: `npm
 | | |
 |---|---|
 | [docs/QUICK_SETUP.md](docs/QUICK_SETUP.md) | konfiguracja providerów |
-| [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md) | relacja z [Voicebox](https://github.com/jamiepine/voicebox) (MIT, planowany fork backendu) |
+| [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md) | fork backendu [Voicebox](https://github.com/jamiepine/voicebox) (MIT, sidecar) |
 | [docs/API.md](docs/API.md) | referencja HTTP API |
 | [docs/CURSOR_SKILL.md](docs/CURSOR_SKILL.md) | integracja z Cursorem |
 | [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | pełna specyfikacja |
 | [docs/samples/](docs/samples/) | próbki audio (różne głosy) |
 | [docs/screenshots/](docs/screenshots/) | zrzuty ekranu |
+| [docs/promo/video/readme-demo.mp4](docs/promo/video/readme-demo.mp4) | demo narracji (README) |
 
 Szczegóły kosztów, danych lokalnych i zasad wkładu: [docs/PROJECT_GUIDELINES.md](docs/PROJECT_GUIDELINES.md).
 
@@ -106,4 +113,4 @@ Pełna lista sugestii technicznych: [docs/SPECIFICATION.md §10](docs/SPECIFICAT
 
 ### Voicebox (lokalny silnik TTS)
 
-Lokalny provider **Voice Box** korzysta dziś z [Voicebox](https://github.com/jamiepine/voicebox) jako osobnego serwera HTTP (`:17493`). Planujemy bundlować **fork backendu Voicebox** (MIT, tylko `backend/`) — szczegóły: [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md). Heads-up u upstream: [voicebox#749](https://github.com/jamiepine/voicebox/issues/749).
+Lokalny provider **Voice Box** korzysta dziś z [Voicebox](https://github.com/jamiepine/voicebox) jako osobnego serwera HTTP (`:17493`). Fork backendu **v0.4.1** (MIT, tylko `backend/`) jest w repozytorium — [`voicebox-backend/`](voicebox-backend/); w toku jest bundlowanie jako sidecar w instalatorze. Szczegóły: [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md). Heads-up u upstream: [voicebox#749](https://github.com/jamiepine/voicebox/issues/749).
