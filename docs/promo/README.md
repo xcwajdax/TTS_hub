@@ -52,7 +52,7 @@ Po wgraniu na YouTube ustaw ID w [video/publish-config.json](video/publish-confi
 
 | Plik | Spec |
 |------|------|
-| `video/readme-demo.mp4` | ~2:42, 720×720 — demo narracji na README (MiniMax, karaoke) |
+| `video/readme-demo.mp4` | ~0:24, 720×720 — demo narracji na README (robert_maklowicz, karaoke) |
 | `video/promo-social-9x16.mp4` | ≤60 s, 1080×1920 |
 | `video/promo-social-1x1.mp4` | ≤60 s, 1080×1080 |
 | `video/promo-full-16x9.mp4` | ~2:30–3:30, 1920×1080 |
