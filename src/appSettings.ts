@@ -27,6 +27,7 @@ export {
 export type SaveMode = "manual" | "auto";
 
 export type TtsProviderId = "google" | "voicebox" | "minimax";
+export type VoiceboxServerMode = "external" | "bundled" | "disabled";
 
 export const ALL_TTS_PROVIDERS: TtsProviderId[] = ["google", "voicebox", "minimax"];
 
@@ -109,6 +110,8 @@ export interface TtsVoiceProfile {
   profile_id: string | null;
   language: string | null;
   engine: string | null;
+  /** Voice Box — włącz przepisywanie tekstu w charakterze (personality). */
+  personality_enabled?: boolean | null;
   minimax_speed: number | null;
   minimax_vol: number | null;
   minimax_pitch: number | null;
@@ -259,6 +262,7 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     enabled_providers: view.enabled_providers,
     minimax_enabled_languages: view.minimax_enabled_languages,
     voicebox_base_url: view.voicebox_base_url ?? null,
+    voicebox_server_mode: view.voicebox_server_mode ?? "external",
     minimax_api_key: view.minimax_api_key ?? null,
     minimax_provider_settings: view.minimax_provider_settings,
     temp_history_max: view.temp_history_max ?? DEFAULT_TEMP_HISTORY_MAX,
@@ -295,6 +299,8 @@ export interface AppSettings {
   /** Hub codes (`pl`, `en`). Empty = all catalog languages. */
   minimax_enabled_languages?: string[];
   voicebox_base_url?: string | null;
+  /** external (default) | bundled (TTS Hub spawns fork) | disabled */
+  voicebox_server_mode?: VoiceboxServerMode;
   minimax_api_key?: string | null;
   minimax_provider_settings?: MinimaxProviderSettings;
   /** Max temp history from prior app sessions; current session always kept in full. */

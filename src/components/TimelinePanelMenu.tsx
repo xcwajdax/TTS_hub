@@ -15,6 +15,9 @@ import {
   updateGenerationUiColor,
 } from "../api/tauri";
 import { AUDIO_FORMATS, loadSaveFormat, storeSaveFormat } from "../audioFormats";
+import { promptExportGenerationAudio, promptExportGenerationMp4 } from "../lib/exportGenerationMp3";
+import { copyGenerationMp4ToClipboard } from "../api/tauri";
+import { MP4_CLIPBOARD_SUCCESS_TOAST } from "../lib/mp4ExportProgress";
 import { HISTORY_COLOR_PRESETS, resolveHistoryItemColor } from "../lib/historySourceUi";
 import Icon from "./Icon";
 
@@ -26,6 +29,7 @@ interface Props {
   tags: ArchiveTag[];
   onChanged: () => void;
   onError: (e: string) => void;
+  onToast?: (message: string) => void;
   onClose: () => void;
 }
 
@@ -39,6 +43,7 @@ export default function TimelinePanelMenu({
   tags,
   onChanged,
   onError,
+  onToast,
   onClose,
 }: Props) {
   const { mode, setMode } = useTimelineView();
@@ -155,12 +160,61 @@ export default function TimelinePanelMenu({
             onClick={() =>
               void run(async () => {
                 if (!current.file_path?.trim()) throw new Error("Brak pliku audio");
+                await copyGenerationMp4ToClipboard(current.id);
+                onToast?.(MP4_CLIPBOARD_SUCCESS_TOAST);
+              })
+            }
+          >
+            <Icon name="copy" size={14} />
+            Kopiuj MP4 do schowka
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busy || !current.file_path?.trim()}
+            className="w-full text-left px-3 py-2 text-xs hover:bg-panel2/80 disabled:opacity-40 flex items-center gap-2"
+            onClick={() =>
+              void run(async () => {
+                if (!current.file_path?.trim()) throw new Error("Brak pliku audio");
+                await promptExportGenerationMp4(current);
+              })
+            }
+          >
+            <Icon name="clip-external" size={14} />
+            Zapisz MP4 (WhatsApp)…
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busy || !current.file_path?.trim()}
+            className="w-full text-left px-3 py-2 text-xs hover:bg-panel2/80 disabled:opacity-40 flex items-center gap-2"
+            onClick={() =>
+              void run(async () => {
+                if (!current.file_path?.trim()) throw new Error("Brak pliku audio");
+                await promptExportGenerationAudio(current);
+              })
+            }
+          >
+            <Icon name="save" size={14} />
+            Zapisz MP3…
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busy || !current.file_path?.trim()}
+            className="w-full text-left px-3 py-2 text-xs hover:bg-panel2/80 disabled:opacity-40 flex items-center gap-2"
+            onClick={() =>
+              void run(async () => {
+                if (!current.file_path?.trim()) throw new Error("Brak pliku audio");
                 await revealInExplorer(current.file_path);
               })
             }
           >
             <Icon name="folder-filled" size={14} />
-            Pokaż w Eksploratorze
+            Pokaż w Eksploratorze (temp)
           </button>
 
           {!current.is_archived && (

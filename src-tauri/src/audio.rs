@@ -5,6 +5,24 @@ use std::process::{Command, Stdio};
 
 use crate::google::TtsResult;
 
+/// ID3 tags written into MP3 files copied to the clipboard (WhatsApp, Telegram, etc.).
+#[derive(Debug, Clone)]
+pub struct ClipboardAudioTags {
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+}
+
+impl ClipboardAudioTags {
+    pub fn new(title: impl Into<String>, artist: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            artist: artist.into(),
+            album: "TTS Hub".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AudioFormat {
@@ -163,6 +181,69 @@ pub fn convert_audio_file(src: &Path, dst: &Path, format: AudioFormat) -> Result
     }
     ensure_ffmpeg()?;
     convert_with_ffmpeg(src, dst, format)
+}
+
+/// Convert (if needed) and embed ID3 tags + optional cover art for clipboard sharing.
+pub fn prepare_mp3_for_clipboard(
+    src: &Path,
+    dst: &Path,
+    tags: &ClipboardAudioTags,
+    cover: Option<&Path>,
+) -> Result<()> {
+    ensure_ffmpeg()?;
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let cover_path = cover.filter(|p| p.is_file());
+    let src_is_mp3 = src.extension().and_then(|e| e.to_str()) == Some("mp3");
+
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-y")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-i")
+        .arg(src);
+
+    if let Some(cover_path) = cover_path {
+        cmd.arg("-i").arg(cover_path);
+        cmd.arg("-map").arg("0:a").arg("-map").arg("1:v");
+    }
+
+    if src_is_mp3 {
+        cmd.arg("-c:a").arg("copy");
+    } else {
+        cmd.arg("-codec:a").arg("libmp3lame").arg("-q:a").arg("2");
+    }
+
+    cmd.arg("-id3v2_version")
+        .arg("3")
+        .arg("-metadata")
+        .arg(format!("title={}", tags.title))
+        .arg("-metadata")
+        .arg(format!("artist={}", tags.artist))
+        .arg("-metadata")
+        .arg(format!("album={}", tags.album));
+
+    if cover_path.is_some() {
+        cmd.arg("-metadata:s:v")
+            .arg("title=Album cover")
+            .arg("-metadata:s:v")
+            .arg("comment=Cover (front)")
+            .arg("-disposition:v")
+            .arg("attached_pic");
+    }
+
+    cmd.arg(dst);
+
+    let output = cmd.output().context("failed to spawn ffmpeg for clipboard mp3")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "ffmpeg clipboard mp3 failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
 }
 
 fn convert_with_ffmpeg(src: &Path, dst: &Path, format: AudioFormat) -> Result<()> {

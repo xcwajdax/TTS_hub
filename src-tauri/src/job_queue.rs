@@ -327,6 +327,9 @@ impl JobQueue {
                     preset_vol,
                 )
             };
+            // Word timings for WhatsApp MP4 karaoke (no Whisper).
+            minimax_options.subtitle_enable = true;
+            minimax_options.subtitle_type = crate::minimax_options::MinimaxSubtitleType::Word;
             let audio = state
                 .minimax
                 .generate_audio(MinimaxGenerateParams {

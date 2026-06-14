@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   listVoiceboxModels,
   listVoiceboxProfiles,
   listVoices,
+  syncVoiceboxProfileAvatars,
   listMinimaxClonedVoices,
   listMinimaxLanguages,
   listMinimaxModels,
@@ -22,6 +23,7 @@ import { DEFAULT_MINIMAX_LANGUAGE } from "../appSettings";
 import { defaultMinimaxSynthesisOptions } from "../lib/minimaxOptions";
 import type { SettingsState } from "../components/Settings";
 import { isTauriApp } from "../lib/tauriEnv";
+import { notifyAvatarsChanged } from "../lib/avatars";
 import { DEFAULT_TTS_MODEL, type TtsModelInfo } from "../ttsModels";
 
 export const DEFAULT_TTS_SETTINGS: SettingsState = {
@@ -31,6 +33,7 @@ export const DEFAULT_TTS_SETTINGS: SettingsState = {
   voiceboxProfileId: "",
   language: "pl",
   style: "",
+  voiceboxPersonalityEnabled: false,
   multiSpeaker: false,
   speakers: [
     { speaker: "Mowca1", voice: "Kore" },
@@ -58,25 +61,38 @@ export function useTtsSettings(onError: (message: string) => void) {
   ]);
   const [minimaxStatus, setMinimaxStatus] = useState<MinimaxHealth | null>(null);
 
+  const refreshVoicebox = useCallback(async () => {
+    if (!isTauriApp()) return;
+    const [profiles, models, health] = await Promise.all([
+      listVoiceboxProfiles().catch(() => [] as VoiceBoxProfile[]),
+      listVoiceboxModels().catch(() => [] as TtsModelInfo[]),
+      voiceboxHealth().catch(() => null),
+    ]);
+    setVoiceboxProfiles(profiles);
+    setVoiceboxModels(models);
+    setVoiceboxStatus(health);
+    if (profiles.some((p) => p.avatar_path?.trim())) {
+      void syncVoiceboxProfileAvatars()
+        .then((count) => {
+          if (count > 0) notifyAvatarsChanged();
+        })
+        .catch(() => {});
+    }
+    setSettings((current) => {
+      if (current.voiceboxProfileId || profiles.length === 0) return current;
+      const profile = profiles[0];
+      return {
+        ...current,
+        voiceboxProfileId: profile.id,
+        language: profile.language,
+      };
+    });
+  }, []);
+
   useEffect(() => {
     if (!isTauriApp()) return;
     listVoices().then(setVoices).catch((e) => onError(String(e)));
-    listVoiceboxProfiles()
-      .then((profiles) => {
-        setVoiceboxProfiles(profiles);
-        setSettings((current) => {
-          if (current.voiceboxProfileId || profiles.length === 0) return current;
-          const profile = profiles[0];
-          return {
-            ...current,
-            voiceboxProfileId: profile.id,
-            language: profile.language,
-          };
-        });
-      })
-      .catch(() => setVoiceboxProfiles([]));
-    listVoiceboxModels().then(setVoiceboxModels).catch(() => setVoiceboxModels([]));
-    voiceboxHealth().then(setVoiceboxStatus).catch(() => setVoiceboxStatus(null));
+    void refreshVoicebox();
 
     listMinimaxModels().then(setMinimaxModels).catch(() => setMinimaxModels([]));
     listMinimaxPresetVoices().then(setMinimaxPresets).catch(() => setMinimaxPresets([]));
@@ -88,7 +104,7 @@ export function useTtsSettings(onError: (message: string) => void) {
       })
       .catch(() => setMinimaxLanguages([]));
     minimaxHealth().then(setMinimaxStatus).catch(() => setMinimaxStatus(null));
-  }, [onError]);
+  }, [onError, refreshVoicebox]);
 
   const minimaxLangOptions = useMemo(
     () => {
@@ -110,6 +126,7 @@ export function useTtsSettings(onError: (message: string) => void) {
     voiceboxProfiles,
     voiceboxModels,
     voiceboxStatus,
+    refreshVoicebox,
     minimaxModels,
     minimaxPresets,
     minimaxCloned,

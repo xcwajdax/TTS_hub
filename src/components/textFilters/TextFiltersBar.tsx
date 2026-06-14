@@ -25,7 +25,7 @@ interface Props {
 }
 
 const TOOLBAR_BTN =
-  "inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded border border-border bg-panel2 text-ink hover:bg-panel disabled:opacity-40 disabled:cursor-not-allowed";
+  "inline-flex items-center justify-center min-w-[22px] h-6 px-0.5 text-ink hover:bg-panel2 disabled:opacity-40 disabled:cursor-not-allowed shrink-0";
 
 function BarBtn({
   title,
@@ -45,13 +45,13 @@ function BarBtn({
   return (
     <button
       type="button"
-      className={`${TOOLBAR_BTN} ${active ? "border-accent2/50 bg-panel text-accent2" : ""} ${className}`.trim()}
+      className={`${TOOLBAR_BTN} ${active ? "text-accent2" : ""} ${className}`.trim()}
       title={title}
       aria-label={title}
       onClick={onClick}
       disabled={disabled}
     >
-      {icon ? <Icon name={icon} size={16} /> : null}
+      {icon ? <Icon name={icon} size={14} /> : null}
     </button>
   );
 }
@@ -86,10 +86,12 @@ export default function TextFiltersBar({
   const autosaveOn = saveMode === "auto";
   const providerLabel =
     PROVIDER_TABS.find((t) => t.id === ttsSettings.provider)?.label ?? ttsSettings.provider;
+  const providerIcon =
+    PROVIDER_TABS.find((t) => t.id === ttsSettings.provider)?.icon ?? "info";
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-1 py-2.5 text-xs border-b border-border/80">
+      <div className="text-filters-bar flex flex-nowrap items-center gap-x-2 px-0 text-xs overflow-x-auto scrollbar-thin">
         <ActiveVoiceProfileHero
           ttsSettings={ttsSettings}
           activeVoiceProfileId={activeVoiceProfileId}
@@ -97,55 +99,17 @@ export default function TextFiltersBar({
         />
 
         <span
-          className="hidden sm:block w-px h-12 bg-border shrink-0"
-          aria-hidden
-        />
-
-        <span
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-border bg-panel2 text-ink shrink-0"
-          title="Aktywny dostawca TTS"
+          className="inline-flex items-center gap-1 text-muted shrink-0"
+          title={`Dostawca: ${providerLabel}`}
         >
-          <Icon
-            name={PROVIDER_TABS.find((t) => t.id === ttsSettings.provider)?.icon ?? "info"}
-            size={14}
-          />
-          <span className="truncate max-w-[140px]">{providerLabel}</span>
+          <Icon name={providerIcon} size={13} />
+          <span className="truncate max-w-[5rem] hidden sm:inline">{providerLabel}</span>
         </span>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <BarBtn
-            title="Folder archiwum — ustawienia ścieżek"
-            icon="folder"
-            onClick={() => onOpenSettings("organization")}
-          />
-          <BarBtn
-            title={
-              autosaveOn
-                ? "Autozapis włączony — kliknij, aby wyłączyć"
-                : "Autozapis wyłączony — kliknij, aby włączyć"
-            }
-            icon="save"
-            active={autosaveOn}
-            onClick={onSaveModeToggle}
-          />
-          <span className="text-[10px] text-muted hidden sm:inline">
-            {autosaveOn ? "Zapis do folderu" : "Bez autozapisu"}
-          </span>
-          <button
-            type="button"
-            className={`${TOOLBAR_BTN} !px-2 gap-1`}
-            title="Format zapisu — ustawienia ogólne"
-            onClick={() => onOpenSettings("general")}
-          >
-            <span className="uppercase font-mono text-[10px]">{saveFormat}</span>
-            <Icon name="chevron-down" size={12} className="opacity-60" />
-          </button>
-        </div>
-
-        <label className="flex items-center gap-1.5 text-muted shrink-0 ml-auto">
-          Filtr
+        <label className="inline-flex items-center gap-1 text-muted shrink-0">
+          <span className="hidden md:inline">Filtr</span>
           <select
-            className="bg-panel2 border border-border rounded px-2 py-1 text-ink min-w-[120px] max-w-[200px]"
+            className="toolbar-select"
             value={activePreset.id}
             onChange={(e) => selectPreset(e.target.value)}
           >
@@ -159,12 +123,38 @@ export default function TextFiltersBar({
 
         <button
           type="button"
-          className="btn text-xs py-1 h-7 shrink-0"
+          className="text-xs text-muted hover:text-ink shrink-0 whitespace-nowrap"
           onClick={() => setRulesOpen(true)}
           title="Reguły filtrów tekstu"
         >
-          Reguły…
-          {activePreset.custom.length > 0 ? ` (${activePreset.custom.length})` : ""}
+          Reguły{activePreset.custom.length > 0 ? ` (${activePreset.custom.length})` : ""}
+        </button>
+
+        <span className="w-px h-4 bg-border/60 shrink-0 mx-0.5" aria-hidden />
+
+        <BarBtn
+          title="Folder archiwum — ustawienia ścieżek"
+          icon="folder"
+          onClick={() => onOpenSettings("organization")}
+        />
+        <BarBtn
+          title={
+            autosaveOn
+              ? "Autozapis włączony — kliknij, aby wyłączyć"
+              : "Autozapis wyłączony — kliknij, aby włączyć"
+          }
+          icon="save"
+          active={autosaveOn}
+          onClick={onSaveModeToggle}
+        />
+        <button
+          type="button"
+          className="inline-flex items-center gap-0.5 text-[10px] uppercase font-mono text-muted hover:text-ink shrink-0"
+          title="Format zapisu — ustawienia ogólne"
+          onClick={() => onOpenSettings("general")}
+        >
+          {saveFormat}
+          <Icon name="chevron-down" size={10} className="opacity-60" />
         </button>
       </div>
 

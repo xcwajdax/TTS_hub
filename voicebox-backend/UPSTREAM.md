@@ -26,3 +26,5 @@ git subtree add --prefix=voicebox-backend voicebox-upstream v0.4.1 --squash
 ## Ongoing sync
 
 Every 2–4 weeks: review `voicebox-upstream/main` under `backend/`, cherry-pick engine/CUDA fixes, open PRs upstream for universal improvements.
+
+Runbook: [docs/VOICEBOX_UPSTREAM_SYNC.md](../docs/VOICEBOX_UPSTREAM_SYNC.md).

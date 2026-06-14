@@ -1,0 +1,23 @@
+{
+  "format": "ttshub-voicepack",
+  "format_version": 1,
+  "id": "google-charon-formal-pl",
+  "name": "Google Charon — formalny PL",
+  "description": "Głos Charon z neutralnym, formalnym tonem — newsy, dokumenty, komunikaty.",
+  "author": "TTS Hub",
+  "license": "CC-BY-4.0",
+  "tags": ["pl", "google", "formalny", "charon"],
+  "preview_text": "This is a voice preview.",
+  "requires": {
+    "providers": ["google"],
+    "min_app_version": "0.1.0"
+  },
+  "profile": {
+    "provider": "google",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "style": "Mów formalnie, rzeczowo i wyraźnie po polsku.",
+    "multi_speaker": false,
+    "speakers": []
+  }
+}

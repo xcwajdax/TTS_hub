@@ -1,12 +1,16 @@
 //! Local Voicebox backend lifecycle (bundled sidecar).
 
 mod manager;
+mod process;
 
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
+use tauri_plugin_shell::ShellExt;
 
-pub use manager::{default_port, dev_backend_root, ensure_running, stop_child};
+pub use manager::{default_port, dev_venv_ready, ensure_running, stop_child};
+pub use process::VoiceboxServerProcess;
 
 use crate::voicebox::VoiceBoxClient;
 
@@ -86,6 +90,15 @@ pub async fn probe_server(client: &VoiceBoxClient, retries: u32) -> VoiceboxServ
         bundled_spawn_ready: false,
         message: last_err,
     }
+}
+
+/// Whether bundled spawn can work in this build (dev venv or release sidecar binary).
+pub fn bundled_spawn_ready(app: Option<&AppHandle>) -> bool {
+    if dev_venv_ready() {
+        return true;
+    }
+    app.and_then(|a| a.shell().sidecar("voicebox-server").ok())
+        .is_some()
 }
 
 #[cfg(test)]

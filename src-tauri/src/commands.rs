@@ -2071,16 +2071,16 @@ pub async fn voicebox_health(state: State<'_, AppArc>) -> Result<VoiceBoxHealth,
 #[tauri::command]
 pub async fn voicebox_server_status(
     state: State<'_, AppArc>,
+    app: AppHandle,
 ) -> Result<crate::voicebox_server::VoiceboxServerStatus, String> {
     let mode = {
         let settings = state.settings.read().map_err(|e| e.to_string())?;
         crate::voicebox_server::VoiceboxServerMode::parse(&settings.voicebox_server_mode)
     };
-    let mut status =
-        crate::voicebox_server::probe_server(&state.voicebox, 2).await;
+    let mut status = crate::voicebox_server::probe_server(&state.voicebox, 2).await;
     status.mode = mode.as_str().to_string();
     if mode == crate::voicebox_server::VoiceboxServerMode::Bundled {
-        status.bundled_spawn_ready = crate::voicebox_server::dev_backend_root().is_some();
+        status.bundled_spawn_ready = crate::voicebox_server::bundled_spawn_ready(Some(&app));
     }
     Ok(status)
 }
@@ -2088,14 +2088,18 @@ pub async fn voicebox_server_status(
 #[tauri::command]
 pub async fn voicebox_server_start(
     state: State<'_, AppArc>,
+    app: AppHandle,
 ) -> Result<crate::voicebox_server::VoiceboxServerStatus, String> {
     let mode = {
         let settings = state.settings.read().map_err(|e| e.to_string())?;
         crate::voicebox_server::VoiceboxServerMode::parse(&settings.voicebox_server_mode)
     };
+    let data_dir = read_paths(&state)?.voicebox_data.clone();
     Ok(crate::voicebox_server::ensure_running(
         &state.voicebox,
         &state.voicebox_server_child,
+        Some(&app),
+        &data_dir,
         mode,
         crate::voicebox_server::default_port(),
     )

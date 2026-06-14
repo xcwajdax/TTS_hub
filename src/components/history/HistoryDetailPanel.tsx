@@ -4,10 +4,10 @@ import { formatModelLabel } from "../../ttsModels";
 import type { TtsVoiceProfile } from "../../appSettings";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../../types";
 import {
-  copyGenerationAudioToClipboard,
   deleteGeneration,
   updateGenerationTitle,
 } from "../../api/tauri";
+import { promptExportGenerationAudio, promptExportGenerationMp4 } from "../../lib/exportGenerationMp3";
 import { usePlayback } from "../../context/PlaybackContext";
 import { loadPlainTextIntoEditor } from "../../lib/editorTextLoad";
 import { deriveTitleFromText, displayTitle } from "../../lib/generationTitle";
@@ -47,6 +47,8 @@ export default function HistoryDetailPanel({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportingVideo, setExportingVideo] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const gen = current;
@@ -121,11 +123,25 @@ export default function HistoryDetailPanel({
     setDraft(titleLabel);
   };
 
-  const handleCopyAudio = async () => {
+  const handleExportAudio = async () => {
+    setExporting(true);
     try {
-      await copyGenerationAudioToClipboard(gen.id);
+      await promptExportGenerationAudio(gen, voiceProfiles);
     } catch (e) {
       onError(String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportVideo = async () => {
+    setExportingVideo(true);
+    try {
+      await promptExportGenerationMp4(gen, voiceProfiles);
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      setExportingVideo(false);
     }
   };
 
@@ -249,11 +265,20 @@ export default function HistoryDetailPanel({
           <button
             type="button"
             className="history-action-btn"
-            onClick={() => void handleCopyAudio()}
-            title="Kopiuj plik audio"
-            disabled={!gen.file_path?.trim()}
+            onClick={() => void handleExportVideo()}
+            title="Zapisz MP4 z okładką (WhatsApp)"
+            disabled={exporting || exportingVideo || !gen.file_path?.trim()}
           >
-            <Icon name="copy" size={ACTION_ICON} />
+            <Icon name="clip-external" size={ACTION_ICON} />
+          </button>
+          <button
+            type="button"
+            className="history-action-btn"
+            onClick={() => void handleExportAudio()}
+            title="Zapisz MP3 z okładką i tytułem"
+            disabled={exporting || exportingVideo || !gen.file_path?.trim()}
+          >
+            <Icon name="save" size={ACTION_ICON} />
           </button>
           <button
             type="button"
@@ -266,7 +291,7 @@ export default function HistoryDetailPanel({
         </div>
 
         <p className="text-[10px] text-muted leading-snug">
-          Akcje pliku (archiwum, eksplorator, kolor, tagi) — menu timeline w zakładce TTS.
+          Zapis MP3/MP4 (dyskietka / strzałka) w zakładce Historia. Szybki panel: kopiuj MP4 do schowka.
         </p>
       </div>
     </aside>

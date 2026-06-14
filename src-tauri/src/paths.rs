@@ -16,6 +16,7 @@ pub struct AppPaths {
     pub plugins: PathBuf,
     pub soundboard_storage: PathBuf,
     pub roleplay_projects: PathBuf,
+    pub voicebox_data: PathBuf,
     pub db: PathBuf,
 }
 
@@ -33,6 +34,7 @@ impl AppPaths {
         let plugins = root.join("plugins");
         let soundboard_storage = plugins.join("soundboard");
         let roleplay_projects = root.join("roleplay");
+        let voicebox_data = root.join("voicebox");
         let db = root.join("history.db");
 
         std::fs::create_dir_all(&root)?;
@@ -45,6 +47,7 @@ impl AppPaths {
         std::fs::create_dir_all(&plugins)?;
         std::fs::create_dir_all(&soundboard_storage)?;
         std::fs::create_dir_all(&roleplay_projects)?;
+        std::fs::create_dir_all(&voicebox_data)?;
 
         Ok(Self {
             root,
@@ -58,6 +61,7 @@ impl AppPaths {
             plugins,
             soundboard_storage,
             roleplay_projects,
+            voicebox_data,
             db,
         })
     }

@@ -296,9 +296,18 @@ pub fn run() {
                     })
                     .unwrap_or(crate::voicebox_server::VoiceboxServerMode::External);
                 if mode == crate::voicebox_server::VoiceboxServerMode::Bundled {
+                    let data_dir = voicebox_boot
+                        .paths
+                        .read()
+                        .ok()
+                        .map(|p| p.voicebox_data.clone())
+                        .unwrap_or_default();
+                    let app = voicebox_boot.app_handle.get();
                     let _ = crate::voicebox_server::ensure_running(
                         &voicebox_boot.voicebox,
                         &voicebox_boot.voicebox_server_child,
+                        app,
+                        &data_dir,
                         mode,
                         crate::voicebox_server::default_port(),
                     )

@@ -33,6 +33,7 @@ export interface PlaybackToastViewModel {
   title: string;
   profileName: string | null;
   voiceAvatarPath: string | null;
+  provider: string;
   source: PlaybackToastSourceView;
   isArchived: boolean;
   queueLength?: number;

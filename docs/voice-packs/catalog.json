@@ -1,0 +1,73 @@
+{
+  "format": "ttshub-voice-catalog",
+  "format_version": 1,
+  "updated_at": "2026-06-14",
+  "repository": "https://github.com/xcwajdax/TTS_hub",
+  "packs": [
+    {
+      "id": "google-kore-cieply-pl",
+      "name": "Google Kore — ciepła narracja PL",
+      "description": "Spokojny, ciepły głos Kore z promptem stylu po polsku.",
+      "author": "TTS Hub",
+      "license": "CC-BY-4.0",
+      "tags": ["pl", "google", "narracja", "kore"],
+      "provider": "google",
+      "preview_url": "https://github.com/xcwajdax/TTS_hub/raw/main/docs/samples/google-kore.wav",
+      "preview_mime": "audio/wav",
+      "download_path": "docs/voice-packs/dist/google-kore-cieply-pl.ttshub-voice",
+      "folder": "google-kore-cieply"
+    },
+    {
+      "id": "google-charon-formal-pl",
+      "name": "Google Charon — formalny PL",
+      "description": "Neutralny, formalny ton — newsy, dokumenty, komunikaty.",
+      "author": "TTS Hub",
+      "license": "CC-BY-4.0",
+      "tags": ["pl", "google", "formalny", "charon"],
+      "provider": "google",
+      "preview_url": "https://github.com/xcwajdax/TTS_hub/raw/main/docs/samples/google-charon.wav",
+      "preview_mime": "audio/wav",
+      "download_path": "docs/voice-packs/dist/google-charon-formal-pl.ttshub-voice",
+      "folder": "google-charon-formal-pl"
+    },
+    {
+      "id": "google-puck-dialog-pl",
+      "name": "Google — dialog PL (Kore + Puck)",
+      "description": "Multi-speaker: Anna (Kore) i Tomek (Puck) do krótkich dialogów.",
+      "author": "TTS Hub",
+      "license": "CC-BY-4.0",
+      "tags": ["pl", "google", "dialog"],
+      "provider": "google",
+      "preview_url": "https://github.com/xcwajdax/TTS_hub/raw/main/docs/samples/google-kore.wav",
+      "preview_mime": "audio/wav",
+      "download_path": "docs/voice-packs/dist/google-puck-dialog-pl.ttshub-voice",
+      "folder": "google-puck-dialog-pl"
+    },
+    {
+      "id": "minimax-kobieta-pl",
+      "name": "MiniMax — kobieta PL",
+      "description": "Preset żeński speech-2.8-hd — narracja po polsku.",
+      "author": "TTS Hub",
+      "license": "CC-BY-4.0",
+      "tags": ["pl", "minimax", "kobieta"],
+      "provider": "minimax",
+      "preview_url": "https://github.com/xcwajdax/TTS_hub/raw/main/docs/samples/minimax-polish-female.mp3",
+      "preview_mime": "audio/mpeg",
+      "download_path": "docs/voice-packs/dist/minimax-kobieta-pl.ttshub-voice",
+      "folder": "minimax-kobieta-pl"
+    },
+    {
+      "id": "minimax-mezczyzna-pl",
+      "name": "MiniMax — mężczyzna PL",
+      "description": "Preset męski speech-2.8-hd — spokojny lektor po polsku.",
+      "author": "TTS Hub",
+      "license": "CC-BY-4.0",
+      "tags": ["pl", "minimax", "mezczyzna"],
+      "provider": "minimax",
+      "preview_url": "https://github.com/xcwajdax/TTS_hub/raw/main/docs/samples/minimax-polish-male.mp3",
+      "preview_mime": "audio/mpeg",
+      "download_path": "docs/voice-packs/dist/minimax-mezczyzna-pl.ttshub-voice",
+      "folder": "minimax-mezczyzna-pl"
+    }
+  ]
+}

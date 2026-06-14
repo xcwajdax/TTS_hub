@@ -16,6 +16,7 @@ interface Props {
   onPlay?: (g: Generation) => void;
   onChanged: () => void;
   onError: (e: string) => void;
+  onToast?: (message: string) => void;
   voiceProfiles?: TtsVoiceProfile[];
 }
 
@@ -28,6 +29,7 @@ export default function HistoryQuickPanel({
   onPlay,
   onChanged,
   onError,
+  onToast,
   voiceProfiles: voiceProfilesProp,
 }: Props) {
   const [voiceProfilesState, setVoiceProfilesState] = useState<TtsVoiceProfile[]>(
@@ -101,6 +103,7 @@ export default function HistoryQuickPanel({
                   onPlay={onPlay}
                   onChanged={onChanged}
                   onError={onError}
+                  onToast={onToast}
                   voiceProfiles={voiceProfiles}
                 />
               ))}

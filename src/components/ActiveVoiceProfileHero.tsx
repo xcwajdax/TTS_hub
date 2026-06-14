@@ -25,7 +25,7 @@ export default function ActiveVoiceProfileHero({
   ttsSettings,
   activeVoiceProfileId,
   onVoiceProfileChange,
-  avatarSize = 52,
+  avatarSize = 36,
   className = "",
 }: Props) {
   const [profiles, setProfiles] = useState<TtsVoiceProfile[]>([]);
@@ -59,27 +59,22 @@ export default function ActiveVoiceProfileHero({
 
   return (
     <div
-      className={`active-voice-profile-hero flex items-center gap-3 shrink-0 min-w-0 ${className}`.trim()}
+      className={`active-voice-profile-hero flex items-center gap-2 shrink-0 min-w-0 ${className}`.trim()}
+      title={subtitle}
     >
       <AvatarImage
         filePath={avatar?.path ?? null}
         fallbackLabel={displayName}
         size={avatarSize}
-        className="active-voice-profile-hero__avatar ring-2 ring-accent/45 shadow-md"
+        className="active-voice-profile-hero__avatar shrink-0"
         title={displayName}
       />
-      <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="text-sm font-semibold text-heading truncate leading-tight">
-          {displayName}
-        </span>
-        <span className="text-[10px] text-muted truncate leading-snug">{subtitle}</span>
-        <VoiceProfileSelect
-          value={activeVoiceProfileId}
-          onChange={onVoiceProfileChange}
-          className="bg-panel2 border border-border rounded px-2 py-0.5 text-ink text-[11px] min-w-[120px] max-w-[200px] mt-0.5"
-          emptyLabel="Własne ustawienia"
-        />
-      </div>
+      <VoiceProfileSelect
+        value={activeVoiceProfileId}
+        onChange={onVoiceProfileChange}
+        className="toolbar-select toolbar-select--profile"
+        emptyLabel="Własne ustawienia"
+      />
     </div>
   );
 }

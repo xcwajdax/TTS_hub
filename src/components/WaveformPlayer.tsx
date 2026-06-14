@@ -40,6 +40,7 @@ interface Props {
   tags?: ArchiveTag[];
   onHistoryChanged?: () => void;
   onError?: (e: string) => void;
+  onToast?: (message: string) => void;
   renderLayout?: (parts: LayoutParts) => ReactNode;
 }
 
@@ -57,6 +58,7 @@ export default function WaveformPlayer({
   tags = [],
   onHistoryChanged,
   onError,
+  onToast,
   renderLayout,
 }: Props) {
   const { audioRef, playing, togglePlay, seekTo, playbackRate, setPlaybackRate } = usePlayback();
@@ -67,7 +69,7 @@ export default function WaveformPlayer({
   const [textModalOpen, setTextModalOpen] = useState(false);
 
   const barCount = timelineViewBarCount(timelineMode);
-  const { peaks, duration: decodedDuration, loading } = useAudioWaveform(src, barCount);
+  const { peaks, duration: decodedDuration, loading, error: waveformError } = useAudioWaveform(src, barCount);
   const { currentTime, duration, setTimeImmediate, setDurationExternal } = useSmoothPlaybackTime({
     audioRef,
     src,
@@ -82,6 +84,11 @@ export default function WaveformPlayer({
   useEffect(() => {
     if (decodedDuration != null) setDurationExternal(decodedDuration);
   }, [decodedDuration, setDurationExternal]);
+
+  useEffect(() => {
+    if (!waveformError || !onError) return;
+    onError(`Nie udało się wczytać audio: ${waveformError}`);
+  }, [waveformError, onError]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -309,6 +316,7 @@ export default function WaveformPlayer({
           tags={tags}
           onChanged={onHistoryChanged ?? (() => undefined)}
           onError={onError ?? (() => undefined)}
+          onToast={onToast}
           onClose={() => setContextMenu(null)}
         />
       )}

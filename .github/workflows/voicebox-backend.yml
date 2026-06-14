@@ -1,0 +1,32 @@
+name: Voicebox backend
+
+on:
+  push:
+    paths:
+      - "voicebox-backend/**"
+      - "scripts/test-voicebox-contract.ps1"
+      - ".github/workflows/voicebox-backend.yml"
+  pull_request:
+    paths:
+      - "voicebox-backend/**"
+      - "scripts/test-voicebox-contract.ps1"
+
+jobs:
+  python-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compileall backend
+        run: python -m compileall voicebox-backend/backend -q
+
+  rust-voicebox-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo test voicebox_server
+        working-directory: src-tauri
+        run: cargo test voicebox_server -- --nocapture

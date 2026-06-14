@@ -3,7 +3,7 @@ import type { IconSlug } from "../../lib/icons";
 import Icon from "../Icon";
 
 const TOOLBAR_BTN =
-  "inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded border border-border bg-panel2 text-ink hover:bg-panel disabled:opacity-40 disabled:cursor-not-allowed";
+  "inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 text-ink hover:bg-panel2 disabled:opacity-40 disabled:cursor-not-allowed";
 
 function BarBtn({
   title,
@@ -23,7 +23,7 @@ function BarBtn({
   return (
     <button
       type="button"
-      className={`${TOOLBAR_BTN} ${active ? "border-accent2/50 bg-panel text-accent2" : ""}`.trim()}
+      className={`${TOOLBAR_BTN} ${active ? "text-accent2 bg-panel2/80" : ""}`.trim()}
       title={title}
       aria-label={title}
       onClick={onClick}
@@ -47,7 +47,7 @@ export default function EditorFormatToolbar({ editor }: Props) {
 
   return (
     <div
-      className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-panel2/60 shrink-0"
+      className="tts-editor-pane__toolbar flex flex-wrap items-center gap-0.5"
       role="toolbar"
       aria-label="Formatowanie"
     >

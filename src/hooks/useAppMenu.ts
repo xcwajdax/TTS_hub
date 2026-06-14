@@ -1,16 +1,14 @@
 import { listen } from "@tauri-apps/api/event";
-import { message, open, save } from "@tauri-apps/plugin-dialog";
+import { message, open } from "@tauri-apps/plugin-dialog";
 import { useEffect } from "react";
 import {
   archiveGeneration,
-  exportGenerationToPath,
   openArchiveFolder,
   readTextFile,
 } from "../api/tauri";
 import { loadSaveFormat } from "../audioFormats";
-import { isTauriApp } from "../lib/tauriEnv";
-import { displayTitle } from "../lib/generationTitle";
-import type { Generation } from "../types";
+import { promptExportGenerationAudio } from "../lib/exportGenerationMp3";
+import { isTauriApp } from "../lib/tauriEnv";import type { Generation } from "../types";
 
 export type MenuActionId =
   | "open_text"
@@ -160,15 +158,9 @@ async function handleSaveAs(current: Generation | null, onError: (msg: string) =
     await message("Brak pliku audio do zapisania.", { title: "Zapisz jako", kind: "warning" });
     return;
   }
-  const title = displayTitle(current);
-  const ext = current.format || "wav";
-  const dest = await save({
-    defaultPath: `${title}.${ext}`,
-    filters: [{ name: "Audio", extensions: ["wav", "mp3", "ogg"] }],
-  });
-  if (!dest) return;
   try {
-    await exportGenerationToPath(current.id, dest);
+    const ok = await promptExportGenerationAudio(current);
+    if (!ok) return;
   } catch (e) {
     onError(String(e));
   }

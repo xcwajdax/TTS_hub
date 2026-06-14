@@ -1,0 +1,29 @@
+# Voicebox backend (TTS Hub fork) — dev helpers
+
+set shell := ["pwsh", "-NoLogo", "-NoProfile", "-Command"]
+
+repo := justfile_directory()
+venv-win := repo / ".venv" / "Scripts" / "python.exe"
+venv-unix := repo / ".venv" / "bin" / "python"
+
+# Start FastAPI dev server on :17493 (requires .venv + pip install -r backend/requirements.txt)
+dev-server port="17493" host="127.0.0.1":
+    #!/usr/bin/env pwsh
+    $ErrorActionPreference = "Stop"
+    $repo = "{{repo}}"
+    $py = Join-Path $repo ".venv/Scripts/python.exe"
+    if (-not (Test-Path $py)) { $py = Join-Path $repo ".venv/bin/python" }
+    if (-not (Test-Path $py)) {
+        Write-Error "Missing .venv — run: python -m venv .venv && pip install -r backend/requirements.txt"
+    }
+    $env:PYTHONPATH = $repo
+    Set-Location $repo
+    & $py -m backend.main --host {{host}} --port {{port}}
+
+# Compile-check Python sources
+check:
+    #!/usr/bin/env pwsh
+    $repo = "{{repo}}"
+    $py = Join-Path $repo ".venv/Scripts/python.exe"
+    if (-not (Test-Path $py)) { python -m compileall (Join-Path $repo "backend") -q }
+    else { & $py -m compileall (Join-Path $repo "backend") -q }

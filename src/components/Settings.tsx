@@ -32,6 +32,8 @@ import { PROVIDER_TABS } from "../lib/providerSwitch";
 import type { MinimaxSynthesisOptions } from "../lib/minimaxOptions";
 import MinimaxAdvancedOptions from "./MinimaxAdvancedOptions";
 
+import { voiceboxModelForProfile } from "../lib/voiceboxProfile";
+
 export interface SettingsState {
   provider: TtsProvider;
   model: TtsModel;
@@ -39,6 +41,7 @@ export interface SettingsState {
   voiceboxProfileId: string;
   language: string;
   style: string;
+  voiceboxPersonalityEnabled: boolean;
   multiSpeaker: boolean;
   speakers: SpeakerConfig[];
   minimaxSpeed: number;
@@ -211,6 +214,7 @@ export default function Settings({
       voiceboxProfileId: profileId,
       voice: profile?.name ?? profileId,
       language: profile?.language ?? state.language,
+      model: voiceboxModelForProfile(profile, state.model, activeModels),
     });
   };
 
@@ -346,6 +350,17 @@ export default function Settings({
           </span>
         </label>
       )}
+
+      {state.provider === "voicebox" && selectedVoiceboxProfile?.personality ? (
+        <label className="flex items-center gap-2 text-xs text-muted sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={state.voiceboxPersonalityEnabled}
+            onChange={(e) => update("voiceboxPersonalityEnabled", e.target.checked)}
+          />
+          Przepisz tekst w charakterze profilu (personality)
+        </label>
+      ) : null}
 
       {state.provider === "minimax" && (
         <label className="flex flex-col gap-1 text-xs text-muted">

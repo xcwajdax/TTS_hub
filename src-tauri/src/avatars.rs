@@ -135,8 +135,11 @@ pub fn save_avatar_jpeg(path: &Path, image_base64: &str) -> Result<()> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(raw.trim())
         .context("invalid base64 image data")?;
+    save_avatar_image_bytes(path, &bytes)
+}
 
-    let img = image::load_from_memory(&bytes).context("decode image")?;
+pub fn save_avatar_image_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    let img = image::load_from_memory(bytes).context("decode image")?;
     let resized = resize_square_jpeg(&img)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

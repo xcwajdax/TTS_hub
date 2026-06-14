@@ -7,6 +7,7 @@ import type {
   CursorIntegrationStatus,
   CursorInstallReport,
   McpIntegrationStatus,
+  TtsVoiceProfile,
 } from "../appSettings";
 import type {
   ArchiveFolder,
@@ -201,16 +202,31 @@ export async function readTextFile(path: string): Promise<string> {
   return invoke<string>("read_text_file", { path });
 }
 
+export async function writeTextFile(path: string, content: string): Promise<void> {
+  return invoke("write_text_file", { path, content });
+}
+
 export async function exportGenerationToPath(id: string, destPath: string): Promise<void> {
   return invoke("export_generation_to_path", { id, destPath });
+}
+
+export async function exportGenerationMp4ToPath(id: string, destPath: string): Promise<void> {
+  return invoke("export_generation_mp4_to_path", { id, destPath });
 }
 
 export async function revealInExplorer(path: string): Promise<void> {
   return invoke("reveal_in_explorer", { path });
 }
 
-export async function copyGenerationAudioToClipboard(id: string): Promise<void> {
-  return invoke("copy_generation_audio_to_clipboard", { id });
+export async function copyGenerationMp4ToClipboard(id: string): Promise<void> {
+  return invoke("copy_generation_mp4_to_clipboard", { id });
+}
+
+export async function copyGenerationAudioToClipboard(
+  id: string,
+  format: AudioFormat = "mp3",
+): Promise<void> {
+  return invoke("copy_generation_audio_to_clipboard", { id, format });
 }
 
 export async function openArchiveFolder(): Promise<void> {
@@ -276,6 +292,7 @@ export interface ProbeResult {
   ok: boolean;
   message: string;
   model_count?: number;
+  profile_count?: number;
 }
 
 export async function probeGoogle(apiKey: string): Promise<ProbeResult> {
@@ -332,6 +349,88 @@ export interface VoiceBoxProfile {
   personality: string | null;
   generation_count: number;
   sample_count: number;
+  voice_type?: string | null;
+  avatar_path?: string | null;
+  preset_engine?: string | null;
+  preset_voice_id?: string | null;
+  design_prompt?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface VoiceBoxProfileCreate {
+  name: string;
+  description?: string | null;
+  language?: string | null;
+  voice_type?: string | null;
+  preset_engine?: string | null;
+  preset_voice_id?: string | null;
+  design_prompt?: string | null;
+  default_engine?: string | null;
+  personality?: string | null;
+}
+
+export interface VoiceBoxSample {
+  id: string;
+  profile_id: string;
+  audio_path: string;
+  reference_text: string;
+}
+
+export interface VoiceBoxHistoryItem {
+  id: string;
+  profile_id: string;
+  profile_name: string | null;
+  text: string;
+  language: string;
+  audio_path: string | null;
+  duration: number | null;
+  seed: number | null;
+  instruct: string | null;
+  engine: string | null;
+  model_size: string | null;
+  status: string;
+  error: string | null;
+  is_favorited: boolean | null;
+  created_at: string | null;
+}
+
+export interface VoiceBoxHistoryList {
+  items: VoiceBoxHistoryItem[];
+  total: number;
+}
+
+export interface VoiceBoxHistoryQuery {
+  profile_id?: string | null;
+  search?: string | null;
+  limit?: number | null;
+  offset?: number | null;
+}
+
+export interface VoiceBoxAudioPayload {
+  bytes_base64: string;
+  format: string;
+}
+
+export interface VoiceboxServerStatus {
+  mode: string;
+  base_url: string;
+  reachable: boolean;
+  health_status?: string | null;
+  bundled_spawn_ready: boolean;
+  message?: string | null;
+}
+
+export async function voiceboxServerStatus(): Promise<VoiceboxServerStatus> {
+  return invoke<VoiceboxServerStatus>("voicebox_server_status");
+}
+
+export async function voiceboxServerStart(): Promise<VoiceboxServerStatus> {
+  return invoke<VoiceboxServerStatus>("voicebox_server_start");
+}
+
+export async function voiceboxServerStop(): Promise<void> {
+  return invoke("voicebox_server_stop");
 }
 
 export async function voiceboxHealth(): Promise<VoiceBoxHealth> {
@@ -344,6 +443,81 @@ export async function listVoiceboxProfiles(): Promise<VoiceBoxProfile[]> {
 
 export async function listVoiceboxModels(): Promise<TtsModelInfo[]> {
   return invoke<TtsModelInfo[]>("list_voicebox_models");
+}
+
+export async function voiceboxGetProfile(profileId: string): Promise<VoiceBoxProfile> {
+  return invoke<VoiceBoxProfile>("voicebox_get_profile", { profileId });
+}
+
+export async function voiceboxCreateProfile(
+  body: VoiceBoxProfileCreate,
+): Promise<VoiceBoxProfile> {
+  return invoke<VoiceBoxProfile>("voicebox_create_profile", { body });
+}
+
+export async function voiceboxUpdateProfile(
+  profileId: string,
+  body: VoiceBoxProfileCreate,
+): Promise<VoiceBoxProfile> {
+  return invoke<VoiceBoxProfile>("voicebox_update_profile", { profileId, body });
+}
+
+export async function voiceboxDeleteProfile(profileId: string): Promise<void> {
+  return invoke("voicebox_delete_profile", { profileId });
+}
+
+export async function voiceboxListProfileSamples(profileId: string): Promise<VoiceBoxSample[]> {
+  return invoke<VoiceBoxSample[]>("voicebox_list_profile_samples", { profileId });
+}
+
+export async function voiceboxAddProfileSample(
+  profileId: string,
+  filePath: string,
+  referenceText: string,
+): Promise<VoiceBoxSample> {
+  return invoke<VoiceBoxSample>("voicebox_add_profile_sample", {
+    profileId,
+    filePath,
+    referenceText,
+  });
+}
+
+export async function voiceboxDeleteProfileSample(sampleId: string): Promise<void> {
+  return invoke("voicebox_delete_profile_sample", { sampleId });
+}
+
+export async function voiceboxFetchSampleAudio(sampleId: string): Promise<VoiceBoxAudioPayload> {
+  return invoke<VoiceBoxAudioPayload>("voicebox_fetch_sample_audio", { sampleId });
+}
+
+export async function voiceboxListHistory(
+  query: VoiceBoxHistoryQuery,
+): Promise<VoiceBoxHistoryList> {
+  return invoke<VoiceBoxHistoryList>("voicebox_list_history", { query });
+}
+
+export async function voiceboxGetHistoryItem(generationId: string): Promise<VoiceBoxHistoryItem> {
+  return invoke<VoiceBoxHistoryItem>("voicebox_get_history_item", { generationId });
+}
+
+export async function voiceboxDeleteHistoryItem(generationId: string): Promise<void> {
+  return invoke("voicebox_delete_history_item", { generationId });
+}
+
+export async function voiceboxFetchHistoryAudio(
+  generationId: string,
+): Promise<VoiceBoxAudioPayload> {
+  return invoke<VoiceBoxAudioPayload>("voicebox_fetch_history_audio", { generationId });
+}
+
+/** Pobiera awatar profilu z serwera Voice Box i zapisuje lokalnie (voices/voicebox/{id}.jpg). */
+export async function syncVoiceboxProfileAvatar(profileId: string): Promise<boolean> {
+  return invoke<boolean>("sync_voicebox_profile_avatar", { profileId });
+}
+
+/** Synchronizuje awatary wszystkich profili Voice Box, które mają avatar_path. */
+export async function syncVoiceboxProfileAvatars(): Promise<number> {
+  return invoke<number>("sync_voicebox_profile_avatars");
 }
 
 export interface MinimaxHealth {
@@ -590,6 +764,31 @@ export async function pickSkinArchive(): Promise<string | null> {
 
 export async function pickSkinExportPath(skinId: string): Promise<string | null> {
   return invoke<string | null>("pick_skin_export_path", { skinId });
+}
+
+export async function exportVoiceProfilePack(
+  profileId: string,
+  destPath: string,
+): Promise<void> {
+  return invoke("export_voice_profile_pack", { profileId, destPath });
+}
+
+export async function importVoiceProfilePack(
+  archivePath: string,
+): Promise<TtsVoiceProfile> {
+  return invoke<TtsVoiceProfile>("import_voice_profile_pack", { archivePath });
+}
+
+export async function importVoiceProfilePackFromUrl(url: string): Promise<TtsVoiceProfile> {
+  return invoke<TtsVoiceProfile>("import_voice_profile_pack_from_url", { url });
+}
+
+export async function pickVoicePackArchive(): Promise<string | null> {
+  return invoke<string | null>("pick_voice_pack_archive");
+}
+
+export async function pickVoicePackExportPath(packId: string): Promise<string | null> {
+  return invoke<string | null>("pick_voice_pack_export_path", { packId });
 }
 
 export type AvatarInfo = {

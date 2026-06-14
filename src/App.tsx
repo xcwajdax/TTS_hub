@@ -41,11 +41,18 @@ import RoleplayView from "./roleplay/RoleplayView";
 import ChatView from "./chat/ChatView";
 import SettingsView from "./components/settings/SettingsView";
 import MinimaxVoicesView from "./components/MinimaxVoicesView";
+import VoiceboxView from "./components/VoiceboxView";
 import { DEFAULT_MINIMAX_VOICES_SECTION, type MinimaxVoicesSection } from "./components/minimaxVoicesSections";
+import {
+  DEFAULT_VOICEBOX_SECTION,
+  type VoiceboxSection,
+} from "./components/voicebox/voiceboxSections";
 import { AppViewContext, type AppViewNav } from "./context/AppViewContext";
 import type { SettingsTabId } from "./components/settings/settingsTabs";
 import type { TtsProviderId, TtsVoiceProfile } from "./appSettings";
+import { mergeSessionAndArchiveHistory, isGenerationPlayable } from "./lib/generationPlayback";
 import { voiceProfileToSettingsState } from "./lib/voiceProfiles";
+import { VOICE_PROFILES_CHANGED } from "./lib/voiceProfilesEvents";
 
 interface AppInnerProps {
   appView: AppView;
@@ -124,25 +131,37 @@ function AppInner({
     void refreshInterrupted();
   }, [refresh, refreshInterrupted]);
 
+  const quickHistoryItems = useMemo(
+    () => mergeSessionAndArchiveHistory(session, archive),
+    [session, archive],
+  );
+
   const handleSelectGeneration = useCallback(
     (g: Generation) => {
       clearQueue();
-      select(g, { loadEditorText: true, autoPlay: false });
+      const fresh = quickHistoryItems.find((x) => x.id === g.id) ?? g;
+      if (!isGenerationPlayable(fresh)) {
+        setError("To nagranie nie jest jeszcze gotowe lub plik audio nie istnieje.");
+        return;
+      }
+      setAppViewState("tts");
+      select(fresh, { loadEditorText: true, autoPlay: false });
     },
-    [clearQueue, select],
+    [clearQueue, quickHistoryItems, select, setAppViewState],
   );
 
   const handlePlayGeneration = useCallback(
     (g: Generation) => {
       clearQueue();
-      select(g, { loadEditorText: true, autoPlay: true });
+      const fresh = quickHistoryItems.find((x) => x.id === g.id) ?? g;
+      if (!isGenerationPlayable(fresh)) {
+        setError("To nagranie nie jest jeszcze gotowe lub plik audio nie istnieje.");
+        return;
+      }
+      setAppViewState("tts");
+      select(fresh, { loadEditorText: true, autoPlay: true });
     },
-    [clearQueue, select],
-  );
-
-  const quickHistoryItems = useMemo(
-    () => [...session, ...archive].sort((a, b) => b.created_at - a.created_at),
-    [session, archive],
+    [clearQueue, quickHistoryItems, select, setAppViewState],
   );
 
   useEffect(() => {
@@ -172,6 +191,7 @@ function AppInner({
   useEffect(() => {
     return onDone((g) => {
       void refresh();
+      if (!isGenerationPlayable(g)) return;
       // Cursor / skill / quick_hotkey autoplay: generation:ready → dedicated listeners.
       if (isCursorPlaybackSource(g.source) && cfg.autoplay) return;
       if (g.source === "quick_hotkey") return;
@@ -216,7 +236,9 @@ function AppInner({
   }, [select, clearQueue]);
 
   const onGenerated = (g: Generation) => {
-    playOrEnqueue(g, { loadEditorText: false });
+    if (isGenerationPlayable(g)) {
+      playOrEnqueue(g, { loadEditorText: false });
+    }
     refresh();
   };
 
@@ -287,6 +309,7 @@ function AppInner({
   const [minimaxVoicesSection, setMinimaxVoicesSection] = useState<MinimaxVoicesSection>(
     DEFAULT_MINIMAX_VOICES_SECTION,
   );
+  const [voiceboxSection, setVoiceboxSection] = useState<VoiceboxSection>(DEFAULT_VOICEBOX_SECTION);
 
   const applyVoiceProfile = useCallback(
     (profile: TtsVoiceProfile) => {
@@ -313,6 +336,9 @@ function AppInner({
 
   const handleVoiceProfileDeleted = useCallback((profileId: string) => {
     setActiveVoiceProfileId((current) => (current === profileId ? null : current));
+    window.dispatchEvent(
+      new CustomEvent("tts-hub:voice-profile-deleted-tab", { detail: { profileId } }),
+    );
   }, []);
 
   const nav: AppViewNav = useMemo(
@@ -325,6 +351,10 @@ function AppInner({
       openMinimaxVoices: (section = DEFAULT_MINIMAX_VOICES_SECTION) => {
         setMinimaxVoicesSection(section);
         setAppViewState("minimax_voices");
+      },
+      openVoiceboxView: (section = DEFAULT_VOICEBOX_SECTION) => {
+        setVoiceboxSection(section);
+        setAppViewState("voicebox");
       },
       onBackToTts: () => setAppViewState("tts"),
     }),
@@ -406,6 +436,51 @@ function AppInner({
             window.setTimeout(() => setToast(null), 3500);
           }}
           onSettingsChanged={() => void refresh()}
+        />
+        {error && (
+          <div
+            className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setError(null)}
+            title="Kliknij aby zamknac"
+          >
+            {error}
+          </div>
+        )}
+        {toast && (
+          <div
+            className="fixed bottom-4 left-4 max-w-md bg-emerald-900/80 border border-emerald-700 text-emerald-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setToast(null)}
+            title="Kliknij aby zamknac"
+          >
+            {toast}
+          </div>
+        )}
+      </AppViewContext.Provider>
+    );
+  }
+
+  if (appView === "voicebox") {
+    return (
+      <AppViewContext.Provider value={nav}>
+        <VoiceboxView
+          initialSection={voiceboxSection}
+          settings={ttsSettings.settings}
+          voices={ttsSettings.voices}
+          voiceboxProfiles={ttsSettings.voiceboxProfiles}
+          voiceboxModels={ttsSettings.voiceboxModels}
+          voiceboxHealth={ttsSettings.voiceboxStatus}
+          enabledProviders={enabledProviders}
+          onSettingsChange={ttsSettings.setSettings}
+          onRefreshVoicebox={ttsSettings.refreshVoicebox}
+          onError={setError}
+          onSuccess={(msg) => {
+            setToast(msg);
+            window.setTimeout(() => setToast(null), 2500);
+          }}
+          onProfileSaved={(msg) => {
+            setToast(msg);
+            window.setTimeout(() => setToast(null), 3500);
+          }}
         />
         {error && (
           <div
@@ -618,6 +693,10 @@ function AppInner({
             tags={tags}
             onHistoryChanged={handleHistoryChanged}
             onError={setError}
+            onToast={(msg) => {
+              setToast(msg);
+              window.setTimeout(() => setToast(null), 3500);
+            }}
           />
         </div>
         <div className="min-w-0 overflow-hidden">
@@ -630,6 +709,10 @@ function AppInner({
             onPlay={handlePlayGeneration}
             onChanged={handleHistoryChanged}
             onError={setError}
+            onToast={(msg) => {
+              setToast(msg);
+              window.setTimeout(() => setToast(null), 3500);
+            }}
           />
         </div>
         <RecoveryModal
@@ -674,6 +757,35 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
   const [onboardingRestart, setOnboardingRestart] = useState(0);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
+  const [enabledProviders, setEnabledProviders] = useState<TtsProviderId[] | undefined>();
+
+  useEffect(() => {
+    if (!inTauri) return;
+    let mounted = true;
+    void getAppSettings().then((view) => {
+      if (!mounted) return;
+      setEnabledProviders(view.enabled_providers);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [inTauri]);
+
+  useEffect(() => {
+    if (!inTauri) return;
+    let unlisten: (() => void) | undefined;
+    void listen<{ name?: string }>("voice-pack:imported", () => {
+      window.dispatchEvent(new Event(VOICE_PROFILES_CHANGED));
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [inTauri]);
+
+  const showMinimaxVoices = !enabledProviders || enabledProviders.includes("minimax");
+  const showVoicebox = !enabledProviders || enabledProviders.includes("voicebox");
 
   return (
     <SkinProvider>
@@ -685,7 +797,8 @@ export default function App() {
             <AppViewTabs
               view={appView}
               onViewChange={setAppView}
-              showMinimaxVoices
+              showMinimaxVoices={showMinimaxVoices}
+              showVoicebox={showVoicebox}
             />
             <JobsProvider>
               <div className="flex-1 min-h-0 min-w-0">

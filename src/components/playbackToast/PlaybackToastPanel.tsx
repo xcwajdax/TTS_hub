@@ -116,6 +116,7 @@ export default function PlaybackToastPanel({ model, frame, onHide, onClose }: Pr
         <PlaybackToastIdentity
           profileName={model.profileName}
           voiceAvatarPath={model.voiceAvatarPath}
+          provider={model.provider}
           source={model.source}
           size={AVATAR_SIZE}
         />

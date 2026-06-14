@@ -2,7 +2,7 @@ import type { TtsVoiceProfile } from "../appSettings";
 import { useVoiceAvatar } from "../hooks/useAvatars";
 import { profileVoiceId } from "../lib/voiceProfiles";
 import type { TtsProvider } from "../types";
-import AvatarImage from "./avatars/AvatarImage";
+import ProviderAvatar from "./ProviderAvatar";
 
 interface Props {
   profile: TtsVoiceProfile;
@@ -36,7 +36,8 @@ export default function VoiceProfileChatRow({
       onClick={onSelect}
       onContextMenu={onContextMenu}
     >
-      <AvatarImage
+      <ProviderAvatar
+        provider={profile.provider as TtsProvider}
         filePath={avatar?.path ?? null}
         fallbackLabel={profile.name}
         size={44}

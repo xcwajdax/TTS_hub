@@ -1,6 +1,7 @@
 import type { SkinManifest } from "../types";
 import { validateSkinManifest } from "../types";
 import vibelifeJson from "./vibelife.json";
+import vibelifeCss from "./vibelife.css?raw";
 import matrixJson from "./matrix.json";
 import matrixCss from "./matrix.css?raw";
 import lightZenJson from "./light-zen.json";
@@ -15,7 +16,7 @@ export const BUILTIN_SKIN_IDS = ["vibelife", "matrix", "light-zen"] as const;
 export type BuiltinSkinId = (typeof BUILTIN_SKIN_IDS)[number];
 
 export const BUILTIN_SKINS: BuiltinSkin[] = [
-  { manifest: validateSkinManifest(vibelifeJson) },
+  { manifest: validateSkinManifest(vibelifeJson), cssText: vibelifeCss },
   {
     manifest: validateSkinManifest(matrixJson),
     cssText: matrixCss,

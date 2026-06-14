@@ -23,7 +23,7 @@ export type Phase =
 export const PHASE_LABEL: Record<Phase, string> = {
   idle: "Oczekuje",
   preparing: "Przygotowuję request...",
-  requesting: "Czekam na Google...",
+  requesting: "Czekam na odpowiedź...",
   decoding: "Dekoduję audio...",
   writing: "Zapisuję plik...",
   done: "Gotowe",
