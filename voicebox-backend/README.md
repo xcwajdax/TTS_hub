@@ -24,4 +24,10 @@ TTS Hub connects as HTTP client on `:17493`. Contract smoke test:
 pwsh -File ../scripts/test-voicebox-contract.ps1
 ```
 
+Dev launcher (repo root):
+
+```powershell
+pwsh -File scripts/dev/start-voicebox-backend.ps1
+```
+
 Bundled sidecar spawn from TTS Hub is implemented separately in `src-tauri/src/voicebox_server/`.
