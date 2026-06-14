@@ -19,9 +19,9 @@
 </p>
 
 <p align="center">
-  <video src="docs/promo/video/readme-demo.mp4" width="480" controls playsinline />
+  <video src="https://github.com/xcwajdax/TTS_hub/raw/main/docs/promo/video/readme-demo.mp4" width="480" controls playsinline />
   <br />
-  <sub><em>Demo narracji — TTS Hub · MiniMax · karaoke inline</em></sub>
+  <sub><em>Demo narracji — TTS Hub · robert_maklowicz · karaoke inline</em></sub>
 </p>
 
 ---
