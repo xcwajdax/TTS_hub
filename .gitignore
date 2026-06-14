@@ -11,6 +11,7 @@ studios.env
 .env
 .cursor/skills/tts-hub-speak/config.json
 *.mp4
+!docs/promo/video/readme-demo.mp4
 GITHUBSCREENS/
 scripts/dev/*.lnk
 maklowicz_*.mp3
