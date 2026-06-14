@@ -19,9 +19,9 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/xcwajdax/TTS_hub/raw/main/docs/promo/video/readme-demo.mp4" width="480" controls playsinline />
+  <video src="docs/promo/video/readme-demo.mp4" width="480" controls playsinline />
   <br />
-  <sub><em>Demo narracji — TTS Hub · robert_maklowicz · karaoke inline</em></sub>
+  <sub><em>Demo narracji — TTS Hub · MiniMax · karaoke inline</em></sub>
 </p>
 
 ---
@@ -91,7 +91,7 @@ Szczegóły kosztów, danych lokalnych i zasad wkładu: [docs/PROJECT_GUIDELINES
 
 | Temat | Status |
 |-------|--------|
-| **Fork backendu Voicebox** (`v0.4.1`, MIT) | kod w [`feat/voicebox-backend-fork`](https://github.com/xcwajdax/TTS_hub/tree/feat/voicebox-backend-fork/voicebox-backend) — bundlowanie sidecar w instalatorze |
+| **Fork backendu Voicebox** (`v0.4.1`, MIT) | kod w [`voicebox-backend/`](voicebox-backend/) — bundlowanie sidecar w instalatorze |
 | **Upstream Voicebox** | heads-up opublikowany — [voicebox#749](https://github.com/jamiepine/voicebox/issues/749) |
 | **Klient HTTP Voicebox** | `User-Agent: TTS-Hub/…`, `X-Voicebox-Client-Id: tts-hub` |
 
@@ -113,4 +113,4 @@ Pełna lista sugestii technicznych: [docs/SPECIFICATION.md §10](docs/SPECIFICAT
 
 ### Voicebox (lokalny silnik TTS)
 
-Lokalny provider **Voice Box** korzysta dziś z [Voicebox](https://github.com/jamiepine/voicebox) jako osobnego serwera HTTP (`:17493`). Fork backendu **v0.4.1** (MIT, tylko `backend/`) jest w branchu [`feat/voicebox-backend-fork`](https://github.com/xcwajdax/TTS_hub/tree/feat/voicebox-backend-fork/voicebox-backend); w toku jest bundlowanie jako sidecar w instalatorze. Szczegóły: [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md). Heads-up u upstream: [voicebox#749](https://github.com/jamiepine/voicebox/issues/749).
+Lokalny provider **Voice Box** korzysta dziś z [Voicebox](https://github.com/jamiepine/voicebox) jako osobnego serwera HTTP (`:17493`). Fork backendu **v0.4.1** (MIT, tylko `backend/`) jest w repozytorium — [`voicebox-backend/`](voicebox-backend/); w toku jest bundlowanie jako sidecar w instalatorze. Szczegóły: [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md). Heads-up u upstream: [voicebox#749](https://github.com/jamiepine/voicebox/issues/749).
