@@ -71,6 +71,7 @@ Aplikacja startuje z API na **`http://127.0.0.1:8765`**. Build instalatora: `npm
 | [docs/CURSOR_SKILL.md](docs/CURSOR_SKILL.md) | integracja z Cursorem |
 | [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | pełna specyfikacja |
 | [docs/samples/](docs/samples/) | próbki audio (różne głosy) |
+| [docs/LEGAL_NOTICE.md](docs/LEGAL_NOTICE.md) | polityka głosów i klonów osób trzecich |
 | [docs/screenshots/](docs/screenshots/) | zrzuty ekranu |
 | [docs/promo/video/readme-demo.mp4](docs/promo/video/readme-demo.mp4) | demo narracji (README) |
 

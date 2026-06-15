@@ -277,7 +277,7 @@ export default function ChatView({ onError, onToast, voiceProfiles: voiceProfile
 {
   "text": "Cześć",
   "model": "minimax:speech-2.8-hd",
-  "voice": "wojciech_mann",
+  "voice": "Polish_female_1_sample1",
   "format": "mp3",
   "original_prompt": "przywitaj się",
   "chat_session_id": "${activeSessionId}"
