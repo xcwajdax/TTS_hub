@@ -67,7 +67,7 @@ Aplikacja startuje z API na **`http://127.0.0.1:8765`**. Build instalatora: `npm
 |---|---|
 | [docs/QUICK_SETUP.md](docs/QUICK_SETUP.md) | konfiguracja providerów |
 | [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md) | fork backendu [Voicebox](https://github.com/jamiepine/voicebox) (MIT, sidecar) |
-| [docs/API.md](docs/API.md) | referencja HTTP API |
+| [docs/API.md](docs/API.md) | referencja HTTP API, kolejka jobów, Safe Mode, czat i usage |
 | [docs/CURSOR_SKILL.md](docs/CURSOR_SKILL.md) | integracja z Cursorem |
 | [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | pełna specyfikacja |
 | [docs/samples/](docs/samples/) | próbki audio (różne głosy) |
