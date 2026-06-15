@@ -11,6 +11,7 @@ import {
 } from "../../appSettings";
 import { isTauriApp } from "../../lib/tauriEnv";
 import { syncSaveFormatFromSettings } from "../../audioFormats";
+import { dispatchAppSettingsChanged } from "../../lib/appSettingsEvents";
 
 export type HistoryPrefs = {
   history_click_to_play: boolean;
@@ -103,6 +104,7 @@ export function useSettingsView({
           history_compact_view: view.history_compact_view,
         };
         void syncSaveFormatFromSettings();
+        dispatchAppSettingsChanged();
         onSuccess?.("Zapisano ustawienie");
       }
       setView(nextView);

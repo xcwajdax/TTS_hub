@@ -33,7 +33,7 @@ interface LayoutParts {
 }
 
 interface Props {
-  src: string;
+  src: string | null;
   className?: string;
   current?: Generation | null;
   folders?: ArchiveFolder[];
@@ -80,6 +80,7 @@ export default function WaveformPlayer({
   const progress = duration > 0 ? currentTime / duration : 0;
   const effectiveMuted = muted || volume === 0;
   const volumePercent = Math.round(volume * 100);
+  const awaitingAudio = !src;
 
   useEffect(() => {
     if (decodedDuration != null) setDurationExternal(decodedDuration);
@@ -198,11 +199,11 @@ export default function WaveformPlayer({
         <button
           type="button"
           onClick={togglePlay}
-          disabled={loading}
+          disabled={loading || awaitingAudio}
           className="shrink-0 w-8 h-8 flex items-center justify-center text-muted hover:text-accent transition-colors disabled:opacity-40"
           aria-label={playing ? "Pauza" : "Odtwarzaj"}
         >
-          {loading ? (
+          {loading || awaitingAudio ? (
             <Icon name="spinner" size={16} spin className="opacity-80" />
           ) : (
             <Icon name={playing ? "pause" : "play"} size={16} />

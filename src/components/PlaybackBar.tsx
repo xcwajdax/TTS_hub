@@ -3,6 +3,7 @@ import { formatModelLabel } from "../ttsModels";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../types";
 import { getAppSettings } from "../api/tauri";
 import { playbackAudioSrc } from "../api/tauri";
+import { isGenerationPlayable } from "../lib/generationPlayback";
 import { inferGenerationProvider } from "../lib/avatars";
 import { displayTitle } from "../lib/generationTitle";
 import { useVoiceAvatar } from "../hooks/useAvatars";
@@ -124,7 +125,7 @@ export default function PlaybackBar({
       {current ? (
         <WaveformPlayer
           key={`${current.id}-${playNonce}`}
-          src={playbackAudioSrc(current.id)}
+          src={isGenerationPlayable(current) ? playbackAudioSrc(current.id) : null}
           current={current}
           folders={folders}
           tags={tags}

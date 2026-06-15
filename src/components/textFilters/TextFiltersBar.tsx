@@ -20,7 +20,6 @@ interface Props {
   onSettingsChange: (next: TextFiltersSettings) => void;
   onPresetUpdate: (preset: TextFilterPreset) => void;
   onOpenSettings: (tab: SettingsTab) => void;
-  onVoiceProfileChange: (profileId: string | null) => void;
   onSaveModeToggle: () => void;
 }
 
@@ -66,7 +65,6 @@ export default function TextFiltersBar({
   onSettingsChange,
   onPresetUpdate,
   onOpenSettings,
-  onVoiceProfileChange,
   onSaveModeToggle,
 }: Props) {
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -95,7 +93,6 @@ export default function TextFiltersBar({
         <ActiveVoiceProfileHero
           ttsSettings={ttsSettings}
           activeVoiceProfileId={activeVoiceProfileId}
-          onVoiceProfileChange={onVoiceProfileChange}
         />
 
         <span

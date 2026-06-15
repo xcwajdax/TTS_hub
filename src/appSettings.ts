@@ -266,6 +266,7 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     minimax_api_key: view.minimax_api_key ?? null,
     minimax_provider_settings: view.minimax_provider_settings,
     temp_history_max: view.temp_history_max ?? DEFAULT_TEMP_HISTORY_MAX,
+    quick_history_page_size: view.quick_history_page_size ?? DEFAULT_QUICK_HISTORY_PAGE_SIZE,
     timeline_view: normalizeTimelineViewMode(view.timeline_view),
     safe_mode: view.safe_mode ?? false,
     safe_mode_auto_open_queue: view.safe_mode_auto_open_queue ?? true,
@@ -305,6 +306,8 @@ export interface AppSettings {
   minimax_provider_settings?: MinimaxProviderSettings;
   /** Max temp history from prior app sessions; current session always kept in full. */
   temp_history_max?: number;
+  /** Initial row count (and load-more step) for sidebar "Ostatnie generacje". */
+  quick_history_page_size?: number;
   /** Main playback bar waveform style: bars | bars-detailed | line */
   timeline_view?: TimelineViewMode;
   /** Hold new generations for manual approval before synthesis. */
@@ -325,6 +328,10 @@ export const DEFAULT_MAX_CONCURRENT_JOBS = 3;
 export const MIN_TEMP_HISTORY_MAX = 10;
 export const MAX_TEMP_HISTORY_MAX = 500;
 export const DEFAULT_TEMP_HISTORY_MAX = 100;
+
+export const MIN_QUICK_HISTORY_PAGE_SIZE = 5;
+export const MAX_QUICK_HISTORY_PAGE_SIZE = 100;
+export const DEFAULT_QUICK_HISTORY_PAGE_SIZE = 30;
 
 export interface CursorIntegrationStatus {
   api_ok: boolean;

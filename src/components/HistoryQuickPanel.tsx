@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAppSettings } from "../api/tauri";
-import type { TtsVoiceProfile } from "../appSettings";
+import {
+  DEFAULT_QUICK_HISTORY_PAGE_SIZE,
+  type TtsVoiceProfile,
+} from "../appSettings";
 import type { ArchiveFolder, Generation } from "../types";
+import { APP_SETTINGS_CHANGED } from "../lib/appSettingsEvents";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import { groupGenerationsByCalendarDay } from "../lib/historyDateGroups";
 import GenerationQueuePanel from "./GenerationQueuePanel";
@@ -35,31 +39,47 @@ export default function HistoryQuickPanel({
   const [voiceProfilesState, setVoiceProfilesState] = useState<TtsVoiceProfile[]>(
     () => voiceProfilesProp ?? [],
   );
+  const [pageSize, setPageSize] = useState(DEFAULT_QUICK_HISTORY_PAGE_SIZE);
+  const [visibleLimit, setVisibleLimit] = useState(DEFAULT_QUICK_HISTORY_PAGE_SIZE);
   const voiceProfiles = voiceProfilesProp ?? voiceProfilesState;
 
-  useEffect(() => {
-    if (voiceProfilesProp) return;
-    let cancelled = false;
-    const refresh = async () => {
-      try {
-        const view = await getAppSettings();
-        if (!cancelled) {
-          setVoiceProfilesState(view.voice_profiles ?? []);
-        }
-      } catch {
-        // ignore
+  const refreshSettings = useCallback(async () => {
+    try {
+      const view = await getAppSettings();
+      const nextPageSize = view.quick_history_page_size ?? DEFAULT_QUICK_HISTORY_PAGE_SIZE;
+      setPageSize(nextPageSize);
+      if (!voiceProfilesProp) {
+        setVoiceProfilesState(view.voice_profiles ?? []);
       }
-    };
-    void refresh();
-    const onChange = () => void refresh();
-    window.addEventListener(VOICE_PROFILES_CHANGED, onChange);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(VOICE_PROFILES_CHANGED, onChange);
-    };
+    } catch {
+      // ignore
+    }
   }, [voiceProfilesProp]);
 
-  const dayGroups = useMemo(() => groupGenerationsByCalendarDay(items), [items]);
+  useEffect(() => {
+    void refreshSettings();
+    const onChange = () => void refreshSettings();
+    window.addEventListener(VOICE_PROFILES_CHANGED, onChange);
+    window.addEventListener(APP_SETTINGS_CHANGED, onChange);
+    return () => {
+      window.removeEventListener(VOICE_PROFILES_CHANGED, onChange);
+      window.removeEventListener(APP_SETTINGS_CHANGED, onChange);
+    };
+  }, [refreshSettings]);
+
+  useEffect(() => {
+    setVisibleLimit(pageSize);
+  }, [pageSize]);
+
+  const visibleItems = useMemo(
+    () => items.slice(0, visibleLimit),
+    [items, visibleLimit],
+  );
+  const dayGroups = useMemo(
+    () => groupGenerationsByCalendarDay(visibleItems),
+    [visibleItems],
+  );
+  const hasMore = items.length > visibleLimit;
 
   return (
     <div
@@ -109,6 +129,17 @@ export default function HistoryQuickPanel({
               ))}
             </section>
           ))
+        )}
+        {hasMore && (
+          <button
+            type="button"
+            className="btn text-xs w-[calc(100%-1rem)] mx-2 my-2 shrink-0"
+            onClick={() =>
+              setVisibleLimit((n) => Math.min(n + pageSize, items.length))
+            }
+          >
+            Załaduj więcej ({visibleLimit} z {items.length})
+          </button>
         )}
       </div>
     </div>

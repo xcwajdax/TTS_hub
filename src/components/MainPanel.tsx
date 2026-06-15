@@ -168,6 +168,8 @@ export default function MainPanel({
 
   activeVoiceProfileIdRef.current = activeVoiceProfileId;
 
+  const ignoreNextProfileSyncRef = useRef(false);
+
   const voiceProfilesRef = useRef(appSettingsSnapshot?.voice_profiles ?? []);
 
   voiceProfilesRef.current = appSettingsSnapshot?.voice_profiles ?? [];
@@ -183,6 +185,8 @@ export default function MainPanel({
   const applyTabToUi = useCallback(
 
     async (tab: EditorTab) => {
+
+      ignoreNextProfileSyncRef.current = true;
 
       setEditorText(blockDocToSourceText(tab.blockDoc));
 
@@ -244,6 +248,26 @@ export default function MainPanel({
 
 
   const blockDoc = activeTab?.blockDoc ?? EMPTY_DOC;
+
+
+
+  useEffect(() => {
+
+    if (ignoreNextProfileSyncRef.current) {
+
+      ignoreNextProfileSyncRef.current = false;
+
+      return;
+
+    }
+
+    if (activeTab && activeTab.voiceProfileId !== activeVoiceProfileId) {
+
+      editorTabs.updateActiveTab({ voiceProfileId: activeVoiceProfileId });
+
+    }
+
+  }, [activeVoiceProfileId, activeTab, editorTabs]);
 
 
 
@@ -386,22 +410,6 @@ export default function MainPanel({
     }
 
   };
-
-
-
-  const handleVoiceProfileChange = useCallback(
-
-    (profileId: string | null) => {
-
-      editorTabs.updateActiveTab({ voiceProfileId: profileId });
-
-      onVoiceProfileChange(profileId);
-
-    },
-
-    [editorTabs, onVoiceProfileChange],
-
-  );
 
 
 
@@ -953,8 +961,6 @@ export default function MainPanel({
               onPresetUpdate={onPresetUpdate}
 
               onOpenSettings={openSettings}
-
-              onVoiceProfileChange={handleVoiceProfileChange}
 
               onSaveModeToggle={() => void toggleSaveMode()}
 

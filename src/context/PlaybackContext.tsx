@@ -20,6 +20,7 @@ import {
   type PlaybackRate,
 } from "../lib/playbackPrefs";
 import { openGenerationInEditor } from "../lib/editorTextLoad";
+import { isGenerationPlayable } from "../lib/generationPlayback";
 import type { Generation } from "../types";
 
 export interface SelectOptions {
@@ -142,7 +143,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     enumerationNotice: audioOutputEnumerationNotice,
   } = useAudioOutputDevices();
 
-  const src = current ? playbackAudioSrc(current.id) : null;
+  const src =
+    current && isGenerationPlayable(current) ? playbackAudioSrc(current.id) : null;
 
   const applyCurrentSink = useCallback(async () => {
     const audio = audioRef.current;

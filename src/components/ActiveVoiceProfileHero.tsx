@@ -11,12 +11,10 @@ import {
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import type { TtsProvider } from "../types";
 import AvatarImage from "./avatars/AvatarImage";
-import VoiceProfileSelect from "./VoiceProfileSelect";
 
 interface Props {
   ttsSettings: SettingsState;
   activeVoiceProfileId: string | null;
-  onVoiceProfileChange: (profileId: string | null) => void;
   avatarSize?: number;
   className?: string;
 }
@@ -24,7 +22,6 @@ interface Props {
 export default function ActiveVoiceProfileHero({
   ttsSettings,
   activeVoiceProfileId,
-  onVoiceProfileChange,
   avatarSize = 36,
   className = "",
 }: Props) {
@@ -69,12 +66,9 @@ export default function ActiveVoiceProfileHero({
         className="active-voice-profile-hero__avatar shrink-0"
         title={displayName}
       />
-      <VoiceProfileSelect
-        value={activeVoiceProfileId}
-        onChange={onVoiceProfileChange}
-        className="toolbar-select toolbar-select--profile"
-        emptyLabel="Własne ustawienia"
-      />
+      <span className="active-voice-profile-hero__name truncate max-w-[10rem] font-semibold text-heading text-xs">
+        {displayName}
+      </span>
     </div>
   );
 }

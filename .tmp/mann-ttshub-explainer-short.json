@@ -1,0 +1,10 @@
+{
+  "text": "Otóż, słuchaczu: TTS Hub zamienia tekst na mowę — na twoim komputerze. Google, MiniMax, lokalny Voice Box, API na localhost, integracja z Cursorem. Eksportuje też MP4 z okładką na WhatsAppa — bo samo audio to dziś za mało. Roadmapa: zero jeden zero już jest, w toku sidecar Voicebox, dalej MCP, routing audio, rozszerzenie do Cursora. Reklamę pchamy z legalnymi głosami polskich aktorów — nie ukradzionymi, nie bez licencji. Wielogłosowy spot promocyjny poczeka chwilę — najpierw porządek prawny, potem czterech narratorów na raz. Open source, twoje klucze API. Tekst przestaje być cichy.",
+  "model": "minimax:speech-2.8-hd",
+  "voice": "wojciech_mann",
+  "provider": "minimax",
+  "format": "mp3",
+  "language": "pl",
+  "source": "http",
+  "autoplay": true
+}

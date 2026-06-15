@@ -1,6 +1,44 @@
 import { useEffect, useState } from "react";
 import { getCachedWaveform, setCachedWaveform } from "../lib/waveformCache";
 
+const WAVEFORM_FETCH_RETRIES = 4;
+const WAVEFORM_FETCH_RETRY_MS = 400;
+
+function isRetryableWaveformStatus(status: number): boolean {
+  return status === 404 || status === 500 || status === 503;
+}
+
+async function fetchAudioBuffer(src: string, signal: AbortSignal): Promise<ArrayBuffer> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < WAVEFORM_FETCH_RETRIES; attempt += 1) {
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+
+    const res = await fetch(src, { signal });
+    if (res.ok) return res.arrayBuffer();
+
+    const err = new Error(`HTTP ${res.status}`);
+    lastError = err;
+    if (!isRetryableWaveformStatus(res.status) || attempt === WAVEFORM_FETCH_RETRIES - 1) {
+      throw err;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(resolve, WAVEFORM_FETCH_RETRY_MS * (attempt + 1));
+      signal.addEventListener(
+        "abort",
+        () => {
+          window.clearTimeout(timer);
+          reject(new DOMException("Aborted", "AbortError"));
+        },
+        { once: true },
+      );
+    });
+  }
+
+  throw lastError ?? new Error("fetch failed");
+}
+
 export function useAudioWaveform(src: string | null, barCount = 120) {
   const [peaks, setPeaks] = useState<number[] | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
@@ -35,9 +73,7 @@ export function useAudioWaveform(src: string | null, barCount = 120) {
       setDuration(null);
 
       try {
-        const res = await fetch(src, { signal: ac.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
+        const buf = await fetchAudioBuffer(src, ac.signal);
         if (cancelled) return;
 
         const ctx = new AudioContext();
