@@ -1,10 +1,10 @@
 # TTS Hub — specyfikacja produktu
 
-Wersja dokumentu: **0.1.0** · maj 2026
+Wersja dokumentu: **0.1.0** · czerwiec 2026
 
 ## 1. Cel produktu
 
-**TTS Hub** to aplikacja desktopowa (Windows/macOS/Linux) do syntezy mowy przez **Google Gemini TTS**, z interfejsem do pracy ręcznej oraz **lokalnym API HTTP** do automatyzacji.
+**TTS Hub** to aplikacja desktopowa (Windows/macOS/Linux) do syntezy mowy przez providery TTS (Google Gemini, MiniMax, Voice Box), z interfejsem do pracy ręcznej oraz **lokalnym API HTTP** do automatyzacji.
 
 ## 2. Stos technologiczny
 
@@ -13,7 +13,7 @@ Wersja dokumentu: **0.1.0** · maj 2026
 | Shell | Tauri 2 |
 | Backend | Rust (tokio, axum, rusqlite, reqwest) |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS |
-| TTS | Google Generative Language API (modele `*-tts*`) |
+| TTS | Google Generative Language API (modele `*-tts*`), MiniMax T2A, Voice Box |
 | Historia | SQLite (`history.db`) |
 | Konwersja audio | WAV natywnie; MP3/OGG przez `ffmpeg` |
 
@@ -71,6 +71,28 @@ Proporcje siatki (desktop):
 - Własne ścieżki folderów **temp** i **archive**.
 - **Maks. generacji w historii sesji (temp)** — limit globalny dla poprzednich uruchomień (domyślnie 100, zakres 10–500).
 
+### 4.6 Czat
+
+- Zakładka **Czat** jest osobnym widokiem aplikacji obok TTS, Roleplay, Historii, Rozszerzeń i Ustawień.
+- Lewy panel pokazuje sesje rozmów pogrupowane przez `source` (np. `hermes`, `cursor`, `opencode`, `custom`) i licznik wiadomości.
+- Użytkownik może utworzyć sesję, wybrać aktywną rozmowę, oznaczyć ją jako zapisaną albo usunąć z listy sesji.
+- Widok wiadomości rozróżnia role `user`, `assistant`, `system`. Wiadomości asystenta mogą mieć przycisk ponownego odtworzenia, jeśli są powiązane z `generation_id`.
+- Jeśli wiadomość asystenta ma `voice_profile_id`, UI pokazuje badge zapisanego profilu głosu. Po zmianie profilu badge odświeża się bez przełączania sesji.
+- Sesje niezapisane starsze niż 7 dni są czyszczone przy starcie aplikacji.
+
+### 4.7 Zewnętrzne originy i bot feed
+
+- Zewnętrzne klienty lokalnego API mogą oznaczać generację blokiem `origin` (`kind`, `platform_id`, `user_id`, `user_name`, `thread_id`).
+- `origin.kind` jest dowolnym stringiem, np. `telegram`, `discord`, `webhook`, `cli`; dodanie nowego klienta nie wymaga migracji schematu.
+- Historia pokazuje informację o bocie przy generacjach z originem i ma osobny feed botów oparty o `origin_kind`.
+- Origin nie jest tym samym co `chat_session_id`: origin opisuje klienta zewnętrznego, a sesja czatu opisuje rozmowę w modelu czatu TTS Hub.
+
+### 4.8 Lokalne zużycie providerów
+
+- Backend zapisuje przy generacji `provider`, `char_count` i `estimated_tokens`.
+- Endpoint `/usage` agreguje lokalne rekordy `generations` per provider oraz w oknie 24h.
+- Licznik nie odczytuje stanu konta providera ani pozostałego limitu; nie ma endpointu `/usage/remaining`.
+
 ## 5. Modele TTS (domyślny zestaw)
 
 | Id API | Etykieta UI |
@@ -91,9 +113,29 @@ Lista może być rozszerzana dynamicznie przez API Google.
 | `%APPDATA%/TTS_hub/voice_samples/` | Cache próbek głosów |
 | `%APPDATA%/TTS_hub/settings.json` | Ustawienia aplikacji |
 
+### 6.1 SQLite — rozszerzenia danych
+
+| Tabela / kolumny | Rola |
+|------------------|------|
+| `chat_sessions` | Sesje rozmów: `source`, `title`, `created_at`, `last_active_at`, `is_saved`, `message_count`, `metadata_json`. |
+| `chat_messages` | Wiadomości sesji: `role`, `content`, `generation_id`, `created_at`, `order_index`, opcjonalnie `voice_profile_id`. |
+| `generations.original_prompt`, `chat_session_id`, `chat_message_id` | Powiązanie wygenerowanego audio z rozmową i promptem użytkownika. |
+| `generations.origin_*` | Atrybucja zewnętrznego klienta dla bot feedu i `/generations/by-origin`. |
+| `generations.char_count`, `estimated_tokens`, `provider` | Lokalne liczniki używane przez `/usage`. |
+| `generations.voice_profile_id` | Snapshot profilu głosu dla historii i czatu. |
+
 ## 7. Lokalne API
 
 Szczegóły: [API.md](./API.md) — port **8765**, brak auth, tylko loopback.
+
+Najważniejsze grupy endpointów:
+
+- generacja TTS: `/generate`, `/audio/{id}`,
+- historia i archiwum: `/history`, `/folders`, `/folder-rules`,
+- integracje Cursor: `/cursor/config`, `/text/filter`,
+- sesje czatu: `/chat/sessions`, `/chat/sessions/{id}/messages`, `/chat/sources`,
+- zewnętrzne originy: `/generations/by-origin`,
+- lokalne zużycie: `/usage`.
 
 ## 8. Wymagania niefunkcjonalne
 

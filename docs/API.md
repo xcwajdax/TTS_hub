@@ -19,7 +19,9 @@ Serwer startuje automatycznie z aplikacją desktopową.
 | `POST` | `/generate` | Generacja mowy (JSON). |
 | `POST` | `/text/filter` | Podgląd filtrów tekstu (preset + tekst wejściowy). |
 | `GET` | `/cursor/config` | Konfiguracja integracji Cursor (w tym `text_filters`). |
+| `GET` | `/usage?provider=…&window=24h` | Lokalny licznik znaków/tokenów/generacji per provider. |
 | `GET` | `/history?scope=session\|archive&folder_id=…` | Lista generacji. `folder_id`: `__none__` (bez folderu), `__all__` lub ID folderu (tylko archiwum). |
+| `GET` | `/generations/by-origin?kind=telegram&limit=50` | Generacje oznaczone zewnętrznym originem (boty, webhooki, CLI). |
 | `POST` | `/history/{id}/archive` | Przeniesienie do archiwum (opcjonalny format w body). |
 | `POST` | `/history/{id}/folder` | Przeniesienie do folderu (`{ "folder_id": "…" \| null }`). |
 | `DELETE` | `/history/{id}` | Usunięcie generacji (plik + wpis w SQLite). |
@@ -41,6 +43,15 @@ Serwer startuje automatycznie z aplikacją desktopową.
 | `DELETE` | `/plugins/soundboard/slots/{index}` | Wyczyść slot. |
 | `POST` | `/plugins/soundboard/slots/{index}/play` | Odtwórz slot (emituje zdarzenie w aplikacji). |
 | `GET` | `/plugins/soundboard/slots/{index}/audio` | Strumień pliku przypisanego do slotu. |
+| `GET` | `/chat/sessions?source=…&saved_only=true` | Lista sesji czatu, najnowsze aktywne pierwsze. |
+| `POST` | `/chat/sessions` | Utworzenie sesji czatu dla źródła (`source`). |
+| `GET` | `/chat/sessions/{id}` | Metadane jednej sesji czatu (bez wiadomości). |
+| `PATCH` | `/chat/sessions/{id}` | Zmiana tytułu i/lub flagi zapisania sesji. |
+| `DELETE` | `/chat/sessions/{id}` | Usunięcie rekordu sesji czatu. |
+| `GET` | `/chat/sessions/{id}/messages` | Wiadomości sesji w kolejności rozmowy. |
+| `POST` | `/chat/sessions/{id}/messages` | Dodanie wiadomości do sesji. |
+| `POST` | `/chat/sessions/{id}/replay/{message_id}` | Pobranie `generation_id` audio dla wiadomości. |
+| `GET` | `/chat/sources` | Źródła sesji aktywne w ostatnich 30 dniach. |
 
 ## Soundboard (agent)
 
@@ -103,6 +114,11 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/plugins/soundboard/slots/0/play" -
 | `minimax_vol` | number \| null | nie | MiniMax — 0–10 (domyślnie 1.0). |
 | `minimax_pitch` | number \| null | nie | MiniMax — -12–12 (domyślnie 0). |
 | `minimax_options` | object \| null | nie | Pełne opcje T2A MiniMax (voice, audio, voice_modify, pronunciation_dict, timbre_weights, language, subtitles, transport HTTP/WS, async `text_file_id`). Tekst >10 000 znaków → async T2A. |
+| `original_prompt` | string \| null | nie | Prompt użytkownika, który doprowadził do odpowiedzi asystenta. Zapisywany w historii/czacie; nie wpływa na tekst syntezowany. |
+| `chat_session_id` | string \| null | nie | Jeśli ustawione, generacja zostaje powiązana z sesją czatu. Podawaj ID istniejącej sesji zwrócone przez `/chat/sessions`; nie zakładaj, że dowolny ID zostanie poprawnie utworzony automatycznie. |
+| `chat_role` | string \| null | nie | Pole przyjmowane przez backend dla kompatybilności. Obecny zapis automatyczny z `/generate` tworzy wiadomość `assistant` dla `text`; rola z tego pola nie steruje jeszcze zapisem. |
+| `origin` | object \| null | nie | Atrybucja zewnętrznego klienta: `kind`, opcjonalnie `platform_id`, `user_id`, `user_name`, `thread_id`. Używane przez `/generations/by-origin` i feed botów. |
+| `voice_profile_id` | string \| null | nie | Snapshot zapisanego profilu głosu. UI historii i czatu pokazuje avatar/nazwę profilu, nawet po zmianie ustawień generacji. |
 
 ### Multi-speaker
 
@@ -122,6 +138,193 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/plugins/soundboard/slots/0/play" -
 **Odpowiedź 200:** obiekt `Generation` (jak w UI).
 
 **Błędy:** `500` z `{ "error": "..." }`.
+
+### Kontekst czatu i origin
+
+`chat_session_id` dotyczy zakładki **Czat** w TTS Hub. Najpierw utwórz sesję przez `/chat/sessions`, a potem przekaż zwrócone `id` do `/generate`. Gdy podasz istniejące `chat_session_id`, backend:
+
+1. dodaje wiadomość `user` z `original_prompt`, jeśli pole jest niepuste,
+2. dodaje wiadomość `assistant` z tekstem syntezy i podpina do niej `generation_id`,
+3. zapisuje `chat_session_id`, `chat_message_id`, `original_prompt` i `voice_profile_id` na rekordzie generacji.
+
+`origin` jest niezależny od sesji czatu i służy zewnętrznym integracjom, np. botom Telegram/Discord lub webhookom. `kind` jest dowolnym stringiem, więc nowy klient nie wymaga zmiany kodu TTS Hub.
+
+Przykład:
+
+```json
+{
+  "provider": "minimax",
+  "text": "Cześć, jestem gotowy do rozmowy.",
+  "model": "speech-2.8-hd",
+  "voice": "Polish_female_1_sample1",
+  "language": "pl",
+  "format": "mp3",
+  "source": "telegram",
+  "original_prompt": "Przywitaj użytkownika po polsku",
+  "chat_session_id": "sess_123",
+  "origin": {
+    "kind": "telegram",
+    "platform_id": "bot-prod",
+    "user_id": "42",
+    "user_name": "anna",
+    "thread_id": "chat-42"
+  }
+}
+```
+
+## `GET /usage`
+
+Zwraca lokalny rollup po rekordach `generations`. To **nie** jest stan konta Google/MiniMax/Voice Box ani endpoint limitu/quota; backend nie udostępnia `/usage/remaining`, bo MiniMax nie zwraca wiarygodnego sygnału pozostałego pakietu.
+
+Parametry:
+
+| Parametr | Opis |
+|----------|------|
+| `provider` | Opcjonalnie jeden z `google`, `voicebox`, `minimax`. Bez parametru zwracana jest lista providerów widzianych w lokalnej historii. |
+| `window` | Opcjonalnie tylko `24h`. Inne wartości zwracają `400`. |
+
+**Odpowiedź dla jednego providera:**
+
+```json
+{
+  "provider": "minimax",
+  "total_chars": 12345,
+  "total_tokens_est": 4115,
+  "total_generations": 17,
+  "last_24h_chars": 900,
+  "last_24h_generations": 2,
+  "as_of": 1781200000
+}
+```
+
+Bez `provider` odpowiedzią jest tablica takich obiektów.
+
+## `GET /generations/by-origin`
+
+Zwraca najnowsze generacje, których `origin_kind` odpowiada `kind` z query stringa.
+
+| Parametr | Wymagane | Opis |
+|----------|----------|------|
+| `kind` | tak | Dowolny origin ustawiony w `/generate`, np. `telegram`, `discord`, `webhook`, `cli`. Pusty string zwraca `400`. |
+| `limit` | nie | Domyślnie `100`, zakres wymuszony przez API: `1`–`1000`. |
+
+**Odpowiedź 200:** tablica obiektów `Generation`.
+
+## Chat sessions
+
+Sesje czatu przechowują rozmowę podzieloną na metadane sesji i wiadomości. Frontend używa tych samych danych w zakładce **Czat**.
+
+### Typy
+
+`ChatSession`:
+
+```json
+{
+  "id": "sess_...",
+  "source": "cursor",
+  "title": "cursor 2026-06-11 16:55",
+  "created_at": 1781200000000,
+  "last_active_at": 1781200000000,
+  "is_saved": false,
+  "message_count": 2,
+  "metadata_json": null
+}
+```
+
+`ChatMessage`:
+
+```json
+{
+  "id": "msg_...",
+  "session_id": "sess_...",
+  "role": "assistant",
+  "content": "Gotowe.",
+  "generation_id": "gen_...",
+  "created_at": 1781200000000,
+  "order_index": 2,
+  "voice_profile_id": "profile_..."
+}
+```
+
+Role wiadomości są ograniczone przez bazę do `user`, `assistant`, `system`. `voice_profile_id` jest opcjonalne i służy tylko do pokazania profilu głosu w UI.
+
+### `POST /chat/sessions`
+
+```json
+{
+  "source": "cursor",
+  "title": "Sesja z Cursor"
+}
+```
+
+`source` jest wymagany. Jeśli `title` jest puste, backend tworzy tytuł z nazwy źródła i czasu UTC. Pole `metadata` istnieje w typie requestu, ale obecnie nie jest zapisywane; `metadata_json` wraca jako `null`.
+
+### `GET /chat/sessions`
+
+Opcjonalne filtry:
+
+| Parametr | Opis |
+|----------|------|
+| `source` | Zwróć tylko sesje danego źródła. |
+| `saved_only` | `true` ogranicza wynik do zapisanych sesji. |
+
+Wynik jest sortowany po `last_active_at DESC` i ma twardy limit 200 sesji.
+
+### `GET /chat/sessions/{id}`
+
+Zwraca tylko `ChatSession`. Wiadomości trzeba pobrać osobno przez `/chat/sessions/{id}/messages`.
+
+### `PATCH /chat/sessions/{id}`
+
+```json
+{
+  "title": "Nowy tytuł",
+  "is_saved": true
+}
+```
+
+Można wysłać jedno lub oba pola. Odpowiedź: `{ "ok": true }`.
+
+### `DELETE /chat/sessions/{id}`
+
+Usuwa rekord sesji. Odpowiedź: `{ "ok": true }`. Nie traktuj tego endpointu jako API do kasowania pojedynczych wiadomości.
+
+Niezapisane sesje starsze niż 7 dni są dodatkowo czyszczone przy starcie aplikacji.
+
+### `GET /chat/sessions/{id}/messages`
+
+Zwraca wiadomości sortowane rosnąco po `order_index`.
+
+### `POST /chat/sessions/{id}/messages`
+
+```json
+{
+  "role": "user",
+  "content": "Przeczytaj to spokojnie.",
+  "generation_id": null,
+  "voice_profile_id": null
+}
+```
+
+Dodanie wiadomości zwiększa `message_count` sesji i aktualizuje `last_active_at`.
+
+### `POST /chat/sessions/{id}/replay/{message_id}`
+
+Zwraca pointer do audio wiadomości:
+
+```json
+{
+  "session_id": "sess_...",
+  "message_id": "msg_...",
+  "generation_id": "gen_..."
+}
+```
+
+Jeśli wiadomość nie ma audio, API zwraca `404` z `{ "error": "message has no audio" }`. Sam strumień pobierzesz przez `/audio/{generation_id}`.
+
+### `GET /chat/sources`
+
+Zwraca listę par `[source, last_active_at]` dla źródeł, które miały sesję aktywną w ostatnich 30 dniach.
 
 ## `POST /history/{id}/archive`
 
