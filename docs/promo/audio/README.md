@@ -8,11 +8,8 @@ Pliki WAV generowane przez `generate-promo-audio.ps1` (TTS Hub API).
 |---------|----------|--------|
 | `social/` | 5 plików | Cut ≤60 s (9:16, 1:1) |
 | `full/` | 5 plików | Pełna wersja 16:9 |
-| *(root)* | `mann-ttshub-explainer-*.mp3` | Monolog Mann — skrót i pełna wersja (MiniMax `wojciech_mann`) |
 
 Manifest głosów i tekstów: [segments.json](segments.json)
-
-Scenariusz Manna: [../scripts/mann-ttshub-explainer.md](../scripts/mann-ttshub-explainer.md)
 
 ## Regeneracja
 

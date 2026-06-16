@@ -18,6 +18,12 @@ studios.env
 GITHUBSCREENS/
 scripts/dev/*.lnk
 maklowicz_*.mp3
+mann-*.mp3
+docs/promo/audio/mann-*.mp3
+docs/promo/scripts/mann-*
+docs/promo/scripts/render-mann-*
+.tmp/mann-*
 docs/samples/minimax-grzegorz-braun.mp3
+.tmp/
 Gemini_Generated_*.png
 public/c4d/
