@@ -677,7 +677,7 @@ textarea:focus, input:focus, select:focus { outline: none; }
 
 .group:hover .history-quick-item__hover-actions,
 .group:focus-within .history-quick-item__hover-actions {
-  max-width: 3rem;
+  max-width: 4.5rem;
   opacity: 1;
   pointer-events: auto;
   @apply border-l border-border/40;
@@ -1256,4 +1256,28 @@ html.toast-window body {
 
 .status-bar__hash {
   opacity: 0.55;
+}
+
+/* Schowek: wyróżnione przyciski MP4 / audio */
+.generation-clipboard-btn {
+  @apply inline-flex items-center justify-center gap-1.5 font-medium transition-colors;
+  @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100;
+}
+
+.generation-clipboard-btn--timeline {
+  @apply h-8 min-w-[2rem] px-2 rounded-md;
+}
+
+.generation-clipboard-btn--menu {
+  @apply flex-1 h-9 rounded-lg text-xs;
+}
+
+.generation-clipboard-btn--mp4 {
+  @apply bg-accent/25 text-accent border border-accent/55 hover:bg-accent/35 hover:border-accent/70;
+  box-shadow: 0 0 0 1px rgb(var(--color-accent) / 0.08);
+}
+
+.generation-clipboard-btn--audio {
+  @apply bg-violet-500/20 text-violet-200 border border-violet-400/50 hover:bg-violet-500/30 hover:border-violet-300/60;
+  box-shadow: 0 0 0 1px rgb(167 139 250 / 0.1);
 }

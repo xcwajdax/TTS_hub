@@ -7,6 +7,7 @@ export const SETTINGS_TAB_IDS = [
   "audio_output",
   "usage",
   "filters",
+  "video",
   "quick_hotkeys",
   "cursor",
   "appearance",
@@ -75,6 +76,13 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     label: "Filtry tekstu",
     icon: "clip-insert",
     description: "Presety filtrów, wbudowane reguły, własne reguły",
+    group: "tts",
+  },
+  {
+    id: "video",
+    label: "Wideo / MP4",
+    icon: "clip-external",
+    description: "Szablony wideo WYSIWYG, auto-archiwizacja MP4",
     group: "tts",
   },
   {

@@ -36,6 +36,9 @@ mod webview_media_permissions;
 mod usage;
 mod minimax_subtitles;
 mod video_export;
+mod video_template;
+mod video_library;
+mod video_commands;
 
 use std::sync::Arc;
 
@@ -101,6 +104,17 @@ pub fn run() {
             commands::export_generation_to_path,
             commands::export_generation_mp4_to_path,
             commands::copy_generation_mp4_to_clipboard,
+            video_commands::list_video_templates,
+            video_commands::get_video_template,
+            video_commands::save_video_template,
+            video_commands::delete_video_template,
+            video_commands::duplicate_video_template,
+            video_commands::new_video_template_from_preset,
+            video_commands::preview_video_template_frame,
+            video_commands::list_video_exports,
+            video_commands::get_video_export_by_id,
+            video_commands::delete_video_export_by_id,
+            video_commands::copy_video_export_to_clipboard,
             commands::copy_generation_audio_to_clipboard,
             commands::reveal_in_explorer,
             commands::open_archive_folder,

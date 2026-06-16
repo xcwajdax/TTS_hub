@@ -15,6 +15,7 @@ import {
 import { timelineViewBarCount } from "../lib/timelineView";
 import { drawWaveform } from "../lib/waveformCanvas";
 import AudioOutputSelect from "./AudioOutputSelect";
+import GenerationClipboardButtons from "./video/GenerationClipboardButtons";
 import GenerationTextModal from "./GenerationTextModal";
 import Icon from "./Icon";
 import TimelinePanelMenu from "./TimelinePanelMenu";
@@ -258,6 +259,17 @@ export default function WaveformPlayer({
         </div>
 
         <AudioOutputSelect flat />
+
+        {current && (
+          <GenerationClipboardButtons
+            gen={current}
+            variant="timeline"
+            showTemplatePicker
+            onError={onError}
+            onToast={onToast}
+            className="shrink-0"
+          />
+        )}
 
         <label className="flex h-8 shrink-0 items-center gap-1 text-muted whitespace-nowrap">
           <span className="text-[10px]">Tempo</span>

@@ -7,7 +7,7 @@ import {
   deleteGeneration,
   updateGenerationTitle,
 } from "../../api/tauri";
-import { promptExportGenerationAudio, promptExportGenerationMp4 } from "../../lib/exportGenerationMp3";
+import { promptExportGenerationAudio } from "../../lib/exportGenerationMp3";
 import { usePlayback } from "../../context/PlaybackContext";
 import { loadPlainTextIntoEditor } from "../../lib/editorTextLoad";
 import { deriveTitleFromText, displayTitle } from "../../lib/generationTitle";
@@ -22,6 +22,7 @@ import Icon from "../Icon";
 import HistoryTextPreview from "../HistoryTextPreview";
 import HistoryTokenInfoButton from "./HistoryTokenInfoButton";
 import HistoryItemProfileAvatar from "./HistoryItemProfileAvatar";
+import GenerationClipboardButtons from "../video/GenerationClipboardButtons";
 
 interface Props {
   folders: ArchiveFolder[];
@@ -48,7 +49,6 @@ export default function HistoryDetailPanel({
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportingVideo, setExportingVideo] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const gen = current;
@@ -131,17 +131,6 @@ export default function HistoryDetailPanel({
       onError(String(e));
     } finally {
       setExporting(false);
-    }
-  };
-
-  const handleExportVideo = async () => {
-    setExportingVideo(true);
-    try {
-      await promptExportGenerationMp4(gen, voiceProfiles);
-    } catch (e) {
-      onError(String(e));
-    } finally {
-      setExportingVideo(false);
     }
   };
 
@@ -265,18 +254,9 @@ export default function HistoryDetailPanel({
           <button
             type="button"
             className="history-action-btn"
-            onClick={() => void handleExportVideo()}
-            title="Zapisz MP4 z okładką (WhatsApp)"
-            disabled={exporting || exportingVideo || !gen.file_path?.trim()}
-          >
-            <Icon name="clip-external" size={ACTION_ICON} />
-          </button>
-          <button
-            type="button"
-            className="history-action-btn"
             onClick={() => void handleExportAudio()}
             title="Zapisz MP3 z okładką i tytułem"
-            disabled={exporting || exportingVideo || !gen.file_path?.trim()}
+            disabled={exporting || !gen.file_path?.trim()}
           >
             <Icon name="save" size={ACTION_ICON} />
           </button>
@@ -290,8 +270,10 @@ export default function HistoryDetailPanel({
           </button>
         </div>
 
+        <GenerationClipboardButtons gen={gen} showTemplatePicker showSave onError={onError} className="mt-1" />
+
         <p className="text-[10px] text-muted leading-snug">
-          Zapis MP3/MP4 (dyskietka / strzałka) w zakładce Historia. Szybki panel: kopiuj MP4 do schowka.
+          Zapis MP3 (dyskietka) powyżej. MP4: wybierz profil layoutu, kopiuj do schowka lub zapisz na dysk.
         </p>
       </div>
     </aside>

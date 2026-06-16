@@ -16,10 +16,10 @@ import {
 } from "../api/tauri";
 import { AUDIO_FORMATS, loadSaveFormat, storeSaveFormat } from "../audioFormats";
 import { promptExportGenerationAudio, promptExportGenerationMp4 } from "../lib/exportGenerationMp3";
-import { copyGenerationMp4ToClipboard } from "../api/tauri";
-import { MP4_CLIPBOARD_SUCCESS_TOAST } from "../lib/mp4ExportProgress";
+import { useVideoTemplatePicker } from "../hooks/useVideoTemplatePicker";
 import { HISTORY_COLOR_PRESETS, resolveHistoryItemColor } from "../lib/historySourceUi";
 import Icon from "./Icon";
+import GenerationClipboardButtons from "./video/GenerationClipboardButtons";
 
 interface Props {
   anchorX: number;
@@ -47,6 +47,7 @@ export default function TimelinePanelMenu({
   onClose,
 }: Props) {
   const { mode, setMode } = useTimelineView();
+  const { selectedId } = useVideoTemplatePicker();
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: anchorX, top: anchorY });
   const [submenu, setSubmenu] = useState<Submenu>(null);
@@ -152,22 +153,13 @@ export default function TimelinePanelMenu({
             Generacja
           </p>
 
-          <button
-            type="button"
-            role="menuitem"
-            disabled={busy || !current.file_path?.trim()}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-panel2/80 disabled:opacity-40 flex items-center gap-2"
-            onClick={() =>
-              void run(async () => {
-                if (!current.file_path?.trim()) throw new Error("Brak pliku audio");
-                await copyGenerationMp4ToClipboard(current.id);
-                onToast?.(MP4_CLIPBOARD_SUCCESS_TOAST);
-              })
-            }
-          >
-            <Icon name="copy" size={14} />
-            Kopiuj MP4 do schowka
-          </button>
+          <GenerationClipboardButtons
+            gen={current}
+            variant="menu"
+            showTemplatePicker
+            onError={onError}
+            onToast={onToast}
+          />
 
           <button
             type="button"
@@ -177,7 +169,7 @@ export default function TimelinePanelMenu({
             onClick={() =>
               void run(async () => {
                 if (!current.file_path?.trim()) throw new Error("Brak pliku audio");
-                await promptExportGenerationMp4(current);
+                await promptExportGenerationMp4(current, [], selectedId);
               })
             }
           >

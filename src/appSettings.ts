@@ -270,6 +270,8 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     timeline_view: normalizeTimelineViewMode(view.timeline_view),
     safe_mode: view.safe_mode ?? false,
     safe_mode_auto_open_queue: view.safe_mode_auto_open_queue ?? true,
+    default_video_template_id: view.default_video_template_id ?? "builtin-whatsapp-karaoke",
+    auto_archive_mp4_on_clipboard: view.auto_archive_mp4_on_clipboard ?? true,
   };
 }
 
@@ -314,6 +316,8 @@ export interface AppSettings {
   safe_mode?: boolean;
   /** Expand queue panel and show approval tab when a new pending item arrives. */
   safe_mode_auto_open_queue?: boolean;
+  default_video_template_id?: string | null;
+  auto_archive_mp4_on_clipboard?: boolean;
 }
 
 export { DEFAULT_TIMELINE_VIEW };

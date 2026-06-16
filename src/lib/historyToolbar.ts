@@ -5,7 +5,7 @@ export const HISTORY_TOOLBAR_BTN =
 
 export const HISTORY_TOOLBAR_BTN_ACTIVE = "history-toolbar-btn-active";
 
-export type HistoryScopeTab = "session" | "archive" | "cursor" | "bots" | "soundboard";
+export type HistoryScopeTab = "session" | "archive" | "cursor" | "bots" | "video" | "soundboard";
 
 export const SCOPE_TAB_META: Record<
   HistoryScopeTab,
@@ -23,6 +23,11 @@ export const SCOPE_TAB_META: Record<
     title: "Generacje z zewnętrznych botów (Telegram, Discord…)",
   },
   archive: { icon: "archive", label: "Archiwum" },
+  video: {
+    icon: "clip-external",
+    label: "Wideo",
+    title: "Biblioteka wyrenderowanych plików MP4",
+  },
   soundboard: {
     icon: "play",
     label: "Soundboard",

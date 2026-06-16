@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
 import type { TtsVoiceProfile } from "../appSettings";
 import type { ArchiveFolder, AudioFormat, Generation } from "../types";
-import { archiveGeneration, copyGenerationMp4ToClipboard } from "../api/tauri";
+import {
+  archiveGeneration,
+  copyGenerationAudioToClipboard,
+  copyGenerationMp4ToClipboard,
+} from "../api/tauri";
 import { displayTitle } from "../lib/generationTitle";
 import { formatDurationMs } from "../lib/formatTime";
 import { historyQuickItemSurfaceStyle, resolveHistoryItemColor } from "../lib/historySourceUi";
-import { resolveProfileForGeneration } from "../lib/voiceProfiles";
 import {
+  AUDIO_CLIPBOARD_SUCCESS_TOAST,
   MP4_CLIPBOARD_SUCCESS_TOAST,
   subscribeMp4ExportProgress,
   type Mp4ExportProgress,
 } from "../lib/mp4ExportProgress";
+import { resolveProfileForGeneration } from "../lib/voiceProfiles";
 import Icon from "./Icon";
 import HistoryItemProfileAvatar from "./history/HistoryItemProfileAvatar";
 
@@ -87,7 +92,8 @@ export default function HistoryQuickItem({
   voiceProfiles = [],
 }: Props) {
   const [saving, setSaving] = useState(false);
-  const [copying, setCopying] = useState(false);
+  const [copyingMp4, setCopyingMp4] = useState(false);
+  const [copyingAudio, setCopyingAudio] = useState(false);
   const [mp4Progress, setMp4Progress] = useState<Mp4ExportProgress | null>(null);
 
   useEffect(() => {
@@ -107,6 +113,7 @@ export default function HistoryQuickItem({
   const showDuration = gen.status === "done" && (gen.duration_ms ?? 0) > 0;
   const canPlay = gen.status === "done" && Boolean(gen.file_path?.trim());
   const canCopy = Boolean(gen.file_path?.trim());
+  const copying = copyingMp4 || copyingAudio;
   const playHandler = onPlay ?? onSelect;
 
   const folderLabel = gen.folder_id
@@ -125,8 +132,8 @@ export default function HistoryQuickItem({
     }
   };
 
-  const handleCopy = async () => {
-    setCopying(true);
+  const handleCopyMp4 = async () => {
+    setCopyingMp4(true);
     setMp4Progress(null);
     try {
       await copyGenerationMp4ToClipboard(gen.id);
@@ -134,14 +141,26 @@ export default function HistoryQuickItem({
     } catch (e) {
       onError(String(e));
     } finally {
-      setCopying(false);
+      setCopyingMp4(false);
       window.setTimeout(() => setMp4Progress(null), 600);
     }
   };
 
+  const handleCopyAudio = async () => {
+    setCopyingAudio(true);
+    try {
+      await copyGenerationAudioToClipboard(gen.id, gen.format ?? "mp3");
+      onToast?.(AUDIO_CLIPBOARD_SUCCESS_TOAST);
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      setCopyingAudio(false);
+    }
+  };
+
   const showMp4Bar =
-    copying || (mp4Progress != null && mp4Progress.phase !== "done");
-  const mp4Pct = Math.round((mp4Progress?.percent ?? (copying ? 0.04 : 0)) * 100);
+    copyingMp4 || (mp4Progress != null && mp4Progress.phase !== "done");
+  const mp4Pct = Math.round((mp4Progress?.percent ?? (copyingMp4 ? 0.04 : 0)) * 100);
 
   const handleClick = () => {
     if (saving) return;
@@ -202,15 +221,28 @@ export default function HistoryQuickItem({
           <button
             type="button"
             className="history-quick-item__action-btn"
-            title="Kopiuj MP4 do schowka (WhatsApp)"
+            title="Kopiuj MP4 do schowka (domyślny layout)"
             aria-label="Kopiuj MP4 do schowka"
             disabled={saving || copying || !canCopy}
             onClick={(e) => {
               e.stopPropagation();
-              void handleCopy();
+              void handleCopyMp4();
             }}
           >
-            <Icon name="copy" size={ACTION_ICON} />
+            <Icon name="film" size={ACTION_ICON} />
+          </button>
+          <button
+            type="button"
+            className="history-quick-item__action-btn"
+            title="Kopiuj audio do schowka"
+            aria-label="Kopiuj audio do schowka"
+            disabled={saving || copying || !canCopy}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleCopyAudio();
+            }}
+          >
+            <Icon name="music-note" size={ACTION_ICON} />
           </button>
         </div>
 
@@ -244,7 +276,7 @@ export default function HistoryQuickItem({
         >
           <div
             className="h-full bg-accent transition-[width] duration-200 ease-out"
-            style={{ width: `${Math.max(mp4Pct, copying ? 4 : 0)}%` }}
+            style={{ width: `${Math.max(mp4Pct, copyingMp4 ? 4 : 0)}%` }}
           />
         </div>
       )}

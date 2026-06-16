@@ -1268,10 +1268,19 @@ pub fn export_generation_to_path(
     Ok(())
 }
 
+fn resolve_template_id(state: &AppArc, explicit: Option<String>) -> Result<String, String> {
+    if let Some(id) = explicit.filter(|s| !s.trim().is_empty()) {
+        return Ok(id);
+    }
+    let settings = state.settings.read().map_err(|e| err(e))?;
+    Ok(crate::video_template::default_template_id(&settings))
+}
+
 #[tauri::command]
 pub fn export_generation_mp4_to_path(
     id: String,
     dest_path: String,
+    template_id: Option<String>,
     state: State<'_, AppArc>,
 ) -> Result<(), String> {
     let g = state
@@ -1279,7 +1288,7 @@ pub fn export_generation_mp4_to_path(
         .get(&id)
         .map_err(err)?
         .ok_or_else(|| "not found".to_string())?;
-    let src = resolve_share_mp4_path(&state, &g, None)?;
+    let src = resolve_share_mp4_path(&state, &g, None, template_id)?;
     let dest = PathBuf::from(&dest_path);
     if src == dest {
         return Ok(());
@@ -1294,6 +1303,7 @@ pub fn export_generation_mp4_to_path(
 #[tauri::command]
 pub async fn copy_generation_mp4_to_clipboard(
     id: String,
+    template_id: Option<String>,
     app: AppHandle,
     state: State<'_, AppArc>,
 ) -> Result<(), String> {
@@ -1322,8 +1332,9 @@ pub async fn copy_generation_mp4_to_clipboard(
 
     let state_arc = state.inner().clone();
     let gen = g.clone();
+    let tpl_id = template_id.clone();
     let path = tauri::async_runtime::spawn_blocking(move || {
-        resolve_share_mp4_path(&state_arc, &gen, Some(progress))
+        resolve_share_mp4_path(&state_arc, &gen, Some(progress), tpl_id)
     })
     .await
     .map_err(|e| format!("{e}"))??;
@@ -1333,6 +1344,16 @@ pub async fn copy_generation_mp4_to_clipboard(
         .set()
         .file_list(&[path.as_path()])
         .map_err(|e| format!("kopiowanie do schowka: {e}"))?;
+
+    let auto_archive = state
+        .settings
+        .read()
+        .map(|s| s.auto_archive_mp4_on_clipboard)
+        .unwrap_or(true);
+    if auto_archive {
+        let tpl = resolve_template_id(state.inner(), template_id)?;
+        let _ = maybe_archive_mp4(state.inner(), &g, &path, &tpl, "clipboard");
+    }
 
     let _ = app.emit(
         "mp4-export-progress",
@@ -1370,6 +1391,35 @@ fn mp4_footer_line(state: &AppArc, gen: &Generation) -> String {
         .map(format_duration_short)
         .unwrap_or_else(|| "—".to_string());
     format!("{voice} · {model} · {duration} · TTS Hub")
+}
+
+fn expand_footer_template(template_str: &str, state: &AppArc, gen: &Generation) -> String {
+    let tags = clipboard_tags_for_generation(state, gen);
+    let voice = if tags.artist.is_empty() {
+        gen.voice.clone()
+    } else {
+        tags.artist
+    };
+    let title = tags.title;
+    let model = short_model_label(&gen.model);
+    let duration = gen
+        .duration_ms
+        .map(format_duration_short)
+        .unwrap_or_else(|| "—".to_string());
+    let date = {
+        let secs = gen.created_at.max(0) as i64;
+        if secs > 0 {
+            format!("{}", secs)
+        } else {
+            "—".to_string()
+        }
+    };
+    template_str
+        .replace("{{voice}}", &voice)
+        .replace("{{model}}", &model)
+        .replace("{{duration}}", &duration)
+        .replace("{{title}}", &title)
+        .replace("{{date}}", &date)
 }
 
 fn short_model_label(model: &str) -> String {
@@ -1423,8 +1473,10 @@ fn render_share_mp4(
     gen: &Generation,
     dst: &Path,
     progress: Option<Arc<dyn Fn(crate::video_export::Mp4ExportProgress) + Send + Sync>>,
+    template_id: &str,
 ) -> Result<(), String> {
-    use crate::video_export::{export_still_video_with_audio, ShareVideoExportOptions, WHATSAPP_VIDEO_SIZE};
+    use crate::video_export::{apply_template_to_opts, export_still_video_with_audio, ShareVideoExportOptions};
+    use crate::video_template::{load_template_by_id, VideoLayer};
 
     if gen.file_path.trim().is_empty() {
         return Err("brak pliku audio dla tej generacji".into());
@@ -1444,47 +1496,105 @@ fn render_share_mp4(
         return Err("nie udało się przygotować okładki wideo".into());
     }
 
+    let paths = read_paths(state)?;
+    let template = load_template_by_id(&paths.root, template_id).map_err(err)?;
     let subtitle_json = generation_subtitles_path(state, &gen.id);
     let uses_karaoke = wants_karaoke_export(gen, &subtitle_json);
 
-    export_still_video_with_audio(
-        &audio,
-        &cover,
-        dst,
-        &ShareVideoExportOptions {
-            width: WHATSAPP_VIDEO_SIZE,
-            height: WHATSAPP_VIDEO_SIZE,
-            title_lines: if uses_karaoke {
-                Vec::new()
-            } else {
-                mp4_title_lines(state, gen)
-            },
-            subtitle_json,
-            fallback_karaoke_text: if uses_karaoke {
-                Some(karaoke_source_text(gen))
+    let footer_tpl = template
+        .layers
+        .iter()
+        .find_map(|l| {
+            if let VideoLayer::Footer { template: ft, visible: true, .. } = l {
+                Some(ft.as_str())
             } else {
                 None
-            },
-            audio_path: audio.clone(),
-            footer_line: Some(mp4_footer_line(state, gen)),
-            watermark_text: "TTS Hub".to_string(),
-            watermark_logo: ensure_default_clipboard_cover(
-                &read_paths(state)
-                    .map(|p| p.temp.join("clipboard_cache"))
-                    .unwrap_or_else(|_| PathBuf::from(".")),
-            )
-            .ok(),
-            export_id: Some(gen.id.clone()),
-            progress: progress.clone(),
+            }
+        })
+        .unwrap_or("{{voice}} · {{model}} · {{duration}} · TTS Hub");
+
+    let mut opts = ShareVideoExportOptions {
+        title_lines: if uses_karaoke {
+            Vec::new()
+        } else {
+            mp4_title_lines(state, gen)
         },
-    )
-    .map_err(err)
+        subtitle_json: subtitle_json.clone(),
+        fallback_karaoke_text: if uses_karaoke {
+            Some(karaoke_source_text(gen))
+        } else {
+            None
+        },
+        audio_path: audio.clone(),
+        footer_line: Some(expand_footer_template(footer_tpl, state, gen)),
+        watermark_text: "TTS Hub".to_string(),
+        watermark_logo: ensure_default_clipboard_cover(
+            &read_paths(state)
+                .map(|p| p.temp.join("clipboard_cache"))
+                .unwrap_or_else(|_| PathBuf::from(".")),
+        )
+        .ok(),
+        export_id: Some(gen.id.clone()),
+        progress: progress.clone(),
+        ..Default::default()
+    };
+    apply_template_to_opts(&mut opts, &template);
+
+    export_still_video_with_audio(&audio, &cover, dst, &opts).map_err(err)?;
+    Ok(())
+}
+
+fn maybe_archive_mp4(
+    state: &AppArc,
+    gen: &Generation,
+    src: &Path,
+    template_id: &str,
+    source: &str,
+) -> Result<(), String> {
+    use crate::video_commands::{insert_archived_export, new_video_export_record};
+    use crate::video_export::probe_audio_duration_ms;
+    use crate::video_library::{archive_mp4_copy, build_render_hash, generate_thumbnail};
+
+    let paths = read_paths(state)?;
+    let export_id = crate::video_library::new_export_id();
+    let archived = archive_mp4_copy(src, &paths.archive, &export_id).map_err(err)?;
+    let thumb_path = paths.archive.join("videos").join(format!("{export_id}.jpg"));
+    let _ = generate_thumbnail(&archived, &thumb_path);
+    let thumb = if thumb_path.is_file() {
+        Some(thumb_path)
+    } else {
+        None
+    };
+
+    let src_mtime = file_mtime_ms(&PathBuf::from(&gen.file_path)).unwrap_or(0);
+    let sub_mtime = generation_subtitles_path(state, &gen.id).and_then(|p| file_mtime_ms(&p));
+    let hash = build_render_hash(template_id, &gen.id, src_mtime, sub_mtime);
+    let duration_ms = probe_audio_duration_ms(&PathBuf::from(&gen.file_path)).ok().map(|v| v as i64);
+
+    let title = gen
+        .title
+        .clone()
+        .filter(|t| !t.trim().is_empty())
+        .or_else(|| Some(derive_title(&gen.text)));
+
+    let record = new_video_export_record(
+        &gen.id,
+        template_id,
+        archived,
+        thumb,
+        duration_ms,
+        &hash,
+        source,
+        title,
+    );
+    insert_archived_export(state, &record)
 }
 
 fn resolve_share_mp4_path(
     state: &AppArc,
     gen: &Generation,
     progress: Option<Arc<dyn Fn(crate::video_export::Mp4ExportProgress) + Send + Sync>>,
+    template_id: Option<String>,
 ) -> Result<PathBuf, String> {
     if gen.file_path.trim().is_empty() {
         return Err("brak pliku audio dla tej generacji".into());
@@ -1494,7 +1604,10 @@ fn resolve_share_mp4_path(
         return Err("plik audio nie istnieje".into());
     }
 
-    let cache_base = clipboard_cache_dir(state)?.join(&gen.id);
+    let template_id = resolve_template_id(state, template_id)?;
+    let cache_base = clipboard_cache_dir(state)?
+        .join(&gen.id)
+        .join(&template_id);
     std::fs::create_dir_all(&cache_base).map_err(err)?;
     let dst = cache_base.join(format!(
         "{}.mp4",
@@ -1508,12 +1621,14 @@ fn resolve_share_mp4_path(
     } else {
         mp4_title_lines(state, gen)
     };
+
     let cache_meta = VideoCacheMeta {
         src_mtime_ms: file_mtime_ms(&src).unwrap_or(0),
         cover_mtime_ms: clipboard_cover_art(state, gen).and_then(|p| file_mtime_ms(&p)),
         subtitle_mtime_ms: subtitle_json.as_ref().and_then(|p| file_mtime_ms(p)),
         karaoke: uses_karaoke,
         karaoke_version: KARAOKE_CACHE_VERSION,
+        template_id: template_id.clone(),
         footer_line: mp4_footer_line(state, gen),
         title_lines: title_lines.clone(),
         updated_at: gen.updated_at,
@@ -1535,7 +1650,7 @@ fn resolve_share_mp4_path(
         let _ = std::fs::remove_file(&dst);
     }
 
-    render_share_mp4(state, gen, &dst, progress)?;
+    render_share_mp4(state, gen, &dst, progress, &template_id)?;
     let meta_json = serde_json::to_string_pretty(&cache_meta).map_err(err)?;
     std::fs::write(&meta_path, meta_json).map_err(err)?;
     Ok(dst)
@@ -1549,12 +1664,13 @@ struct VideoCacheMeta {
     karaoke: bool,
     /// Bump when karaoke render logic changes to invalidate stale cache.
     karaoke_version: u32,
+    template_id: String,
     footer_line: String,
     title_lines: Vec<String>,
     updated_at: i64,
 }
 
-const KARAOKE_CACHE_VERSION: u32 = 4;
+const KARAOKE_CACHE_VERSION: u32 = 5;
 
 fn video_cache_is_valid(meta_path: &Path, meta: &VideoCacheMeta, src: &Path) -> bool {
     if !meta_path.is_file() {

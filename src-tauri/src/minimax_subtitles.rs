@@ -314,9 +314,26 @@ pub fn estimate_word_timings_from_text(text: &str, duration_ms: u64) -> Vec<Time
 
 /// Build karaoke ASS — full line with gold fill per word (`\kf`), below the cover art.
 pub fn write_karaoke_ass(words: &[TimedWord], dest: &Path, video_height: u32) -> Result<()> {
+    write_karaoke_ass_styled(
+        words,
+        dest,
+        video_height,
+        720,
+        40,
+        62u32.min(video_height.saturating_sub(120)),
+    )
+}
+
+pub fn write_karaoke_ass_styled(
+    words: &[TimedWord],
+    dest: &Path,
+    video_height: u32,
+    play_res_x: u32,
+    font_size: u32,
+    margin_v: u32,
+) -> Result<()> {
     let font = subtitle_font_name();
-    // Bottom-center band between cover (~y480) and metadata footer (~y700).
-    let margin_v = 62u32.min(video_height.saturating_sub(120));
+    let margin_v = margin_v.min(video_height.saturating_sub(80));
     let lines = group_words_into_lines(words, 34, 8);
     let mut events = String::new();
 
@@ -339,14 +356,14 @@ pub fn write_karaoke_ass(words: &[TimedWord], dest: &Path, video_height: u32) ->
     let script = format!(
         "[Script Info]\n\
          ScriptType: v4.00+\n\
-         PlayResX: 720\n\
+         PlayResX: {play_res_x}\n\
          PlayResY: {video_height}\n\
          WrapStyle: 0\n\
          ScaledBorderAndShadow: yes\n\
          \n\
          [V4+ Styles]\n\
          Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n\
-         Style: Karaoke,{font},40,&H00A8B0C0,&H0000D7FF,&H101010,&H96000000,0,0,0,0,100,100,0,0,1,3,1,2,40,40,{margin_v},1\n\
+         Style: Karaoke,{font},{font_size},&H00A8B0C0,&H0000D7FF,&H101010,&H96000000,0,0,0,0,100,100,0,0,1,3,1,2,40,40,{margin_v},1\n\
          \n\
          [Events]\n\
          Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n\

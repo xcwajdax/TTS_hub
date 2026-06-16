@@ -51,6 +51,7 @@ impl AppState {
         paths.apply_settings(&settings);
 
         let db = Db::open(&paths.db)?;
+        let _ = crate::video_template::ensure_builtin_template(&paths.root);
         let tts = GoogleTts::new(settings.active_google_key(&env_google_key));
         let voicebox = VoiceBoxClient::new(settings.effective_voicebox_url(&env_voicebox_url));
         let minimax = MinimaxClient::new(settings.effective_minimax_key(&env_minimax_key));

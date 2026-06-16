@@ -4,7 +4,7 @@ import {
   type HistoryScopeTab,
 } from "../../lib/historyToolbar";
 
-const TAB_ORDER: HistoryScopeTab[] = ["session", "cursor", "bots", "archive", "soundboard"];
+const TAB_ORDER: HistoryScopeTab[] = ["session", "cursor", "bots", "archive", "video", "soundboard"];
 
 interface Props {
   scope: HistoryScopeTab;

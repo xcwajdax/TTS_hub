@@ -55,6 +55,7 @@ export async function promptExportGenerationAudio(
 export async function promptExportGenerationMp4(
   gen: Generation,
   voiceProfiles: TtsVoiceProfile[] = [],
+  templateId?: string | null,
 ): Promise<boolean> {
   if (gen.status !== "done" || !gen.file_path?.trim()) {
     return false;
@@ -66,6 +67,6 @@ export async function promptExportGenerationMp4(
   });
   if (!dest) return false;
 
-  await exportGenerationMp4ToPath(gen.id, dest);
+  await exportGenerationMp4ToPath(gen.id, dest, templateId);
   return true;
 }

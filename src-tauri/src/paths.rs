@@ -18,6 +18,7 @@ pub struct AppPaths {
     pub roleplay_projects: PathBuf,
     pub voicebox_data: PathBuf,
     pub db: PathBuf,
+    pub video_templates: PathBuf,
 }
 
 impl AppPaths {
@@ -36,6 +37,7 @@ impl AppPaths {
         let roleplay_projects = root.join("roleplay");
         let voicebox_data = root.join("voicebox");
         let db = root.join("history.db");
+        let video_templates = root.join("video_templates");
 
         std::fs::create_dir_all(&root)?;
         std::fs::create_dir_all(&temp)?;
@@ -48,6 +50,8 @@ impl AppPaths {
         std::fs::create_dir_all(&soundboard_storage)?;
         std::fs::create_dir_all(&roleplay_projects)?;
         std::fs::create_dir_all(&voicebox_data)?;
+        std::fs::create_dir_all(&video_templates)?;
+        let _ = std::fs::create_dir_all(archive.join("videos"));
 
         Ok(Self {
             root,
@@ -63,6 +67,7 @@ impl AppPaths {
             roleplay_projects,
             voicebox_data,
             db,
+            video_templates,
         })
     }
 
@@ -79,6 +84,8 @@ impl AppPaths {
             .unwrap_or_else(|| self.root.join("archive"));
         let _ = std::fs::create_dir_all(&self.temp);
         let _ = std::fs::create_dir_all(&self.archive);
+        let _ = std::fs::create_dir_all(self.archive.join("videos"));
+        let _ = std::fs::create_dir_all(&self.video_templates);
     }
 
     /// Physical directory for an archive folder (`archive_path/<slug>/`).

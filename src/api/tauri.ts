@@ -210,16 +210,30 @@ export async function exportGenerationToPath(id: string, destPath: string): Prom
   return invoke("export_generation_to_path", { id, destPath });
 }
 
-export async function exportGenerationMp4ToPath(id: string, destPath: string): Promise<void> {
-  return invoke("export_generation_mp4_to_path", { id, destPath });
+export async function exportGenerationMp4ToPath(
+  id: string,
+  destPath: string,
+  templateId?: string | null,
+): Promise<void> {
+  return invoke("export_generation_mp4_to_path", {
+    id,
+    destPath,
+    templateId: templateId ?? null,
+  });
 }
 
 export async function revealInExplorer(path: string): Promise<void> {
   return invoke("reveal_in_explorer", { path });
 }
 
-export async function copyGenerationMp4ToClipboard(id: string): Promise<void> {
-  return invoke("copy_generation_mp4_to_clipboard", { id });
+export async function copyGenerationMp4ToClipboard(
+  id: string,
+  templateId?: string | null,
+): Promise<void> {
+  return invoke("copy_generation_mp4_to_clipboard", {
+    id,
+    templateId: templateId ?? null,
+  });
 }
 
 export async function copyGenerationAudioToClipboard(

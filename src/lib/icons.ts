@@ -29,6 +29,8 @@ import sourceAllUrl from "../assets/history-icons/source-all.svg?url";
 import viewFullUrl from "../assets/history-icons/view-full.svg?url";
 import viewCompactUrl from "../assets/history-icons/view-compact.svg?url";
 import copyUrl from "../assets/history-icons/copy.svg?url";
+import filmUrl from "../assets/history-icons/film.svg?url";
+import musicNoteUrl from "../assets/history-icons/music-note.svg?url";
 import providerGoogleUrl from "../assets/provider-icons/provider-google.svg?url";
 import providerVoiceboxUrl from "../assets/provider-icons/provider-voicebox.svg?url";
 import providerMinimaxUrl from "../assets/provider-icons/provider-minimax.svg?url";
@@ -74,6 +76,8 @@ export type IconSlug =
   | "view-full"
   | "view-compact"
   | "copy"
+  | "film"
+  | "music-note"
   | "provider-google"
   | "provider-voicebox"
   | "provider-minimax"
@@ -118,6 +122,8 @@ export const ICON_SRC: Record<IconSlug, string> = {
   "view-full": viewFullUrl,
   "view-compact": viewCompactUrl,
   copy: copyUrl,
+  film: filmUrl,
+  "music-note": musicNoteUrl,
   "provider-google": providerGoogleUrl,
   "provider-voicebox": providerVoiceboxUrl,
   "provider-minimax": providerMinimaxUrl,

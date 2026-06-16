@@ -1,7 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
 
 export const MP4_CLIPBOARD_SUCCESS_TOAST =
-  "MP4 skopiowano do schowka — wklej w WhatsApp jako plik wideo.";
+  "MP4 w schowku · zapisano w bibliotece Wideo (wklej w WhatsApp jako plik wideo).";
+
+export const AUDIO_CLIPBOARD_SUCCESS_TOAST = "Audio skopiowane do schowka.";
 
 export interface Mp4ExportProgress {
   id: string;

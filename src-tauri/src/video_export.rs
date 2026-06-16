@@ -8,8 +8,9 @@ use serde::Serialize;
 use crate::audio::ensure_ffmpeg;
 use crate::minimax_subtitles::{
     estimate_word_timings_from_text, expand_sentences_to_words, parse_minimax_subtitles_with_duration,
-    write_karaoke_ass, TimedWord,
+    write_karaoke_ass_styled, TimedWord,
 };
+use crate::video_template::{VideoLayer, VideoRect, VideoTemplate};
 
 /// Square 720×720 — good WhatsApp chat preview; small file size.
 pub const WHATSAPP_VIDEO_SIZE: u32 = 720;
@@ -18,6 +19,24 @@ const COVER_MAX_KARAOKE: u32 = 380;
 const COVER_MAX_STATIC: u32 = 480;
 const FOOTER_PAD: u32 = 18;
 const BG_COLOR: &str = "0x12141a";
+
+#[derive(Debug, Clone)]
+pub enum DecorativeLayerSpec {
+    Image {
+        path: PathBuf,
+        rect: VideoRect,
+        object_fit: String,
+        opacity: f32,
+    },
+    Shape {
+        rect: VideoRect,
+        shape_kind: String,
+        fill: String,
+        stroke: String,
+        stroke_width: u32,
+        opacity: f32,
+    },
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +50,19 @@ pub struct Mp4ExportProgress {
 pub struct ShareVideoExportOptions {
     pub width: u32,
     pub height: u32,
+    pub template_id: Option<String>,
+    pub bg_color: String,
+    pub cover_rect: Option<VideoRect>,
+    pub cover_object_fit: String,
+    pub decorative_layers: Vec<DecorativeLayerSpec>,
+    pub karaoke_enabled: bool,
+    pub karaoke_margin_v: Option<u32>,
+    pub karaoke_font_size: Option<u32>,
+    pub footer_rect: Option<VideoRect>,
+    pub footer_font_size: u32,
+    pub footer_align: String,
+    pub watermark_rect: Option<VideoRect>,
+    pub watermark_opacity: f32,
     /// Static fallback title when karaoke subtitles are unavailable.
     pub title_lines: Vec<String>,
     pub subtitle_json: Option<PathBuf>,
@@ -49,6 +81,19 @@ impl Default for ShareVideoExportOptions {
         Self {
             width: WHATSAPP_VIDEO_SIZE,
             height: WHATSAPP_VIDEO_SIZE,
+            template_id: None,
+            bg_color: BG_COLOR.to_string(),
+            cover_rect: None,
+            cover_object_fit: "contain".to_string(),
+            decorative_layers: Vec::new(),
+            karaoke_enabled: true,
+            karaoke_margin_v: None,
+            karaoke_font_size: None,
+            footer_rect: None,
+            footer_font_size: 18,
+            footer_align: "center".to_string(),
+            watermark_rect: None,
+            watermark_opacity: 0.38,
             title_lines: Vec::new(),
             subtitle_json: None,
             fallback_karaoke_text: None,
@@ -65,6 +110,204 @@ impl Default for ShareVideoExportOptions {
 /// Back-compat alias.
 #[allow(dead_code)]
 pub type StillVideoExportOptions = ShareVideoExportOptions;
+
+pub fn share_opts_from_template(
+    template: &VideoTemplate,
+) -> (
+    u32,
+    u32,
+    String,
+    Option<VideoRect>,
+    bool,
+    Option<u32>,
+    Option<u32>,
+    Option<VideoRect>,
+    u32,
+    String,
+    Option<VideoRect>,
+    f32,
+) {
+    let w = template.canvas.width;
+    let h = template.canvas.height;
+    let bg = hex_to_ffmpeg_color(&template.canvas.background);
+
+    let mut cover_rect = None;
+    let mut karaoke_enabled = false;
+    let mut karaoke_margin_v = None;
+    let mut karaoke_font_size = None;
+    let mut footer_rect = None;
+    let mut footer_font_size = 18u32;
+    let mut footer_align = "center".to_string();
+    let mut watermark_rect = None;
+    let mut watermark_opacity = 0.38f32;
+
+    for layer in &template.layers {
+        match layer {
+            VideoLayer::Cover {
+                visible: true,
+                rect,
+                ..
+            } => cover_rect = Some(*rect),
+            VideoLayer::Karaoke {
+                visible: true,
+                rect,
+                font_size,
+                ..
+            } => {
+                karaoke_enabled = true;
+                karaoke_margin_v = Some(h.saturating_sub(rect.y + rect.height / 2));
+                karaoke_font_size = Some(*font_size);
+            }
+            VideoLayer::Footer {
+                visible: true,
+                rect,
+                font_size,
+                align,
+                ..
+            } => {
+                footer_rect = Some(*rect);
+                footer_font_size = *font_size;
+                footer_align = align.clone();
+            }
+            VideoLayer::Watermark {
+                visible: true,
+                rect,
+                opacity,
+                ..
+            } => {
+                watermark_rect = Some(*rect);
+                watermark_opacity = *opacity;
+            }
+            _ => {}
+        }
+    }
+
+    (
+        w,
+        h,
+        bg,
+        cover_rect,
+        karaoke_enabled,
+        karaoke_margin_v,
+        karaoke_font_size,
+        footer_rect,
+        footer_font_size,
+        footer_align,
+        watermark_rect,
+        watermark_opacity,
+    )
+}
+
+pub fn apply_template_to_opts(opts: &mut ShareVideoExportOptions, template: &VideoTemplate) {
+    let (
+        w,
+        h,
+        bg,
+        cover_rect,
+        karaoke_enabled,
+        karaoke_margin_v,
+        karaoke_font_size,
+        footer_rect,
+        footer_font_size,
+        footer_align,
+        watermark_rect,
+        watermark_opacity,
+    ) = share_opts_from_template(template);
+
+    opts.width = w;
+    opts.height = h;
+    opts.template_id = Some(template.id.clone());
+    opts.bg_color = bg;
+    opts.cover_rect = cover_rect;
+    opts.karaoke_enabled = karaoke_enabled;
+    opts.karaoke_margin_v = karaoke_margin_v;
+    opts.karaoke_font_size = karaoke_font_size;
+    opts.footer_rect = footer_rect;
+    opts.footer_font_size = footer_font_size;
+    opts.footer_align = footer_align;
+    opts.watermark_rect = watermark_rect;
+    opts.watermark_opacity = watermark_opacity;
+    opts.cover_object_fit = "contain".to_string();
+    opts.decorative_layers.clear();
+
+    for layer in &template.layers {
+        match layer {
+            VideoLayer::Cover {
+                visible: true,
+                object_fit,
+                ..
+            } => {
+                opts.cover_object_fit = object_fit.clone();
+            }
+            VideoLayer::Image {
+                visible: true,
+                rect,
+                image_path: Some(path),
+                object_fit,
+                opacity,
+                ..
+            } if !path.trim().is_empty() => {
+                let p = PathBuf::from(path);
+                if p.is_file() {
+                    opts.decorative_layers.push(DecorativeLayerSpec::Image {
+                        path: p,
+                        rect: *rect,
+                        object_fit: object_fit.clone(),
+                        opacity: *opacity,
+                    });
+                }
+            }
+            VideoLayer::Shape {
+                visible: true,
+                rect,
+                shape_kind,
+                fill,
+                stroke,
+                stroke_width,
+                opacity,
+                ..
+            } => {
+                opts.decorative_layers.push(DecorativeLayerSpec::Shape {
+                    rect: *rect,
+                    shape_kind: shape_kind.clone(),
+                    fill: fill.clone(),
+                    stroke: stroke.clone(),
+                    stroke_width: *stroke_width,
+                    opacity: *opacity,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(VideoLayer::Footer { template: footer_tpl, .. }) = template
+        .layers
+        .iter()
+        .find(|l| matches!(l, VideoLayer::Footer { visible: true, .. }))
+    {
+        if opts.footer_line.is_none() {
+            opts.footer_line = Some(footer_tpl.clone());
+        }
+    }
+    if let Some(VideoLayer::Watermark { text, .. }) = template
+        .layers
+        .iter()
+        .find(|l| matches!(l, VideoLayer::Watermark { visible: true, .. }))
+    {
+        if opts.watermark_text == "TTS Hub" && !text.trim().is_empty() {
+            opts.watermark_text = text.clone();
+        }
+    }
+}
+
+fn hex_to_ffmpeg_color(hex: &str) -> String {
+    let trimmed = hex.trim().trim_start_matches('#');
+    if trimmed.len() == 6 {
+        format!("0x{trimmed}")
+    } else {
+        BG_COLOR.to_string()
+    }
+}
 
 /// Split overlay title into lines that fit the video width.
 pub fn wrap_title_lines(text: &str, max_lines: usize) -> Vec<String> {
@@ -128,26 +371,16 @@ pub fn export_still_video_with_audio(
     let w = opts.width;
     let h = opts.height;
     let audio_duration_ms = probe_audio_duration_ms(audio).unwrap_or(0);
-    let karaoke = prepare_karaoke_ass(opts, dest, audio_duration_ms)?;
+    let karaoke = if opts.karaoke_enabled {
+        prepare_karaoke_ass(opts, dest, audio_duration_ms)?
+    } else {
+        None
+    };
     emit_progress(opts, "render", 0.05, "Przygotowuję napisy…");
-    let cover_max = if karaoke.is_some() {
-        COVER_MAX_KARAOKE.min(w.saturating_sub(80)).min(h.saturating_sub(220))
-    } else {
-        COVER_MAX_STATIC.min(w.saturating_sub(80)).min(h.saturating_sub(160))
-    };
-    let y_offset = if karaoke.is_some() {
-        -72
-    } else if opts.title_lines.is_empty() {
-        0
-    } else {
-        -48
-    };
 
-    let (filter, out_label) = build_render_filter(
+    let (filter, out_label, extra_images) = build_render_filter(
         w,
         h,
-        cover_max,
-        y_offset,
         karaoke.as_deref(),
         opts,
     );
@@ -156,22 +389,119 @@ pub fn export_still_video_with_audio(
         return export_with_logo_overlay(audio, cover, dest, &filter, &out_label, logo, w, opts);
     }
 
-    run_ffmpeg_render(audio, cover, dest, &filter, &out_label, opts)
+    run_ffmpeg_render(audio, cover, dest, &filter, &out_label, &extra_images, opts)
+}
+
+fn cover_scale_filter(object_fit: &str, rw: u32, rh: u32) -> String {
+    match object_fit {
+        "cover" => format!("scale={rw}:{rh}:force_original_aspect_ratio=increase,crop={rw}:{rh}"),
+        "fill" => format!("scale={rw}:{rh}"),
+        _ => format!("scale={rw}:{rh}:force_original_aspect_ratio=decrease"),
+    }
+}
+
+fn color_with_alpha(hex: &str, opacity: f32) -> String {
+    let base = hex_to_ffmpeg_color(hex);
+    let alpha = opacity.clamp(0.05, 1.0);
+    if base.contains('@') {
+        base
+    } else {
+        format!("{base}@{alpha:.2}")
+    }
+}
+
+fn build_cover_base(w: u32, h: u32, bg: &str, rect: Option<&VideoRect>, object_fit: &str) -> String {
+    if let Some(r) = rect {
+        let scale = cover_scale_filter(object_fit, r.width, r.height);
+        format!(
+            "color=c={bg}:s={w}x{h}:r=1[vbase];\
+             [0:v]{scale},format=rgba[vcover];\
+             [vbase][vcover]overlay={}:{}:format=auto,format=yuv420p[v0]",
+            r.x, r.y
+        )
+    } else {
+        let cover_max = COVER_MAX_KARAOKE.min(w.saturating_sub(80)).min(h.saturating_sub(220));
+        format!(
+            "[0:v]scale={cover_max}:{cover_max}:force_original_aspect_ratio=decrease,\
+             pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color={bg},format=yuv420p[v0]"
+        )
+    }
+}
+
+fn append_decorative_layers(
+    chain: &mut String,
+    last: &mut String,
+    layers: &[DecorativeLayerSpec],
+) -> (Vec<PathBuf>, u32) {
+    let mut image_paths = Vec::new();
+    let mut img_input = 0u32;
+    let mut step = 0u32;
+
+    for spec in layers {
+        match spec {
+            DecorativeLayerSpec::Shape {
+                rect,
+                fill,
+                stroke,
+                stroke_width,
+                opacity,
+                ..
+            } => {
+                step += 1;
+                let next = format!("vshape{step}");
+                let fill_c = color_with_alpha(fill, *opacity);
+                let mut filters = vec![format!(
+                    "drawbox=x={}:y={}:w={}:h={}:color={}:t=fill",
+                    rect.x, rect.y, rect.width, rect.height, fill_c
+                )];
+                if *stroke_width > 0 && !stroke.trim().is_empty() {
+                    let stroke_c = color_with_alpha(stroke, *opacity);
+                    filters.push(format!(
+                        "drawbox=x={}:y={}:w={}:h={}:color={}:t={stroke_width}",
+                        rect.x, rect.y, rect.width, rect.height, stroke_c
+                    ));
+                }
+                chain.push_str(&format!(";[{last}]{}[{next}]", filters.join(",")));
+                *last = next;
+            }
+            DecorativeLayerSpec::Image {
+                path,
+                rect,
+                object_fit,
+                opacity,
+            } => {
+                step += 1;
+                let input_idx = 2 + img_input;
+                img_input += 1;
+                image_paths.push(path.clone());
+                let scale = cover_scale_filter(object_fit, rect.width, rect.height);
+                let img_l = format!("vimg{step}");
+                let next = format!("vov{step}");
+                let alpha = opacity.clamp(0.05, 1.0);
+                chain.push_str(&format!(
+                    ";[{input_idx}:v]{scale},format=rgba,colorchannelmixer=aa={alpha:.3}[{img_l}];\
+                     [{last}][{img_l}]overlay={}:{}:format=auto,format=yuv420p[{next}]",
+                    rect.x, rect.y
+                ));
+                *last = next;
+            }
+        }
+    }
+
+    (image_paths, img_input)
 }
 
 fn build_render_filter(
     w: u32,
     h: u32,
-    cover_max: u32,
-    y_offset: i32,
     ass: Option<&Path>,
     opts: &ShareVideoExportOptions,
-) -> (String, String) {
-    let mut chain = format!(
-        "[0:v]scale={cover_max}:{cover_max}:force_original_aspect_ratio=decrease,\
-         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2+{y_offset}:color={BG_COLOR},format=yuv420p[v0]"
-    );
+) -> (String, String, Vec<PathBuf>) {
+    let bg = opts.bg_color.as_str();
+    let mut chain = build_cover_base(w, h, bg, opts.cover_rect.as_ref(), &opts.cover_object_fit);
     let mut last = "v0".to_string();
+
+    let (extra_images, _) = append_decorative_layers(&mut chain, &mut last, &opts.decorative_layers);
 
     if let Some(ass_path) = ass {
         chain.push_str(&format!(
@@ -191,18 +521,24 @@ fn build_render_filter(
         if let Some(footer) = opts.footer_line.as_deref().filter(|s| !s.is_empty()) {
             chain.push_str(&format!(
                 ";[{last}]{}[vfoot]",
-                footer_drawtext_filter(footer, h, &font)
+                footer_drawtext_filter(footer, h, &font, opts.footer_rect.as_ref(), opts.footer_font_size, &opts.footer_align)
             ));
             last = "vfoot".to_string();
         }
         chain.push_str(&format!(
             ";[{last}]{}[vout]",
-            watermark_drawtext_filter(&opts.watermark_text, w, &font)
+            watermark_drawtext_filter(
+                &opts.watermark_text,
+                w,
+                &font,
+                opts.watermark_rect.as_ref(),
+                opts.watermark_opacity,
+            )
         ));
         last = "vout".to_string();
     }
 
-    (chain, last)
+    (chain, last, extra_images)
 }
 
 fn static_title_drawtext_filters(title_lines: &[String], h: u32, font: &str) -> String {
@@ -232,26 +568,53 @@ fn static_title_drawtext_filters(title_lines: &[String], h: u32, font: &str) -> 
     parts.join(",")
 }
 
-fn footer_drawtext_filter(footer: &str, h: u32, font: &str) -> String {
+fn footer_drawtext_filter(
+    footer: &str,
+    h: u32,
+    font: &str,
+    rect: Option<&VideoRect>,
+    font_size: u32,
+    align: &str,
+) -> String {
     let escaped = escape_drawtext(footer);
-    let y = h.saturating_sub(FOOTER_PAD);
+    let (x, y) = if let Some(r) = rect {
+        let x_expr = match align {
+            "left" => format!("{}", r.x),
+            "right" => format!("{}+{}-text_w", r.x, r.width),
+            _ => format!("{}+({}-text_w)/2", r.x, r.width),
+        };
+        (x_expr, r.y)
+    } else {
+        ("(w-text_w)/2".to_string(), h.saturating_sub(FOOTER_PAD))
+    };
     format!(
         "drawtext=fontfile='{font}':text='{escaped}':\
-         fontsize=18:fontcolor=0xA8B0C0@0.92:\
-         x=(w-text_w)/2:y={y}"
+         fontsize={font_size}:fontcolor=0xA8B0C0@0.92:\
+         x={x}:y={y}"
     )
 }
 
-fn watermark_drawtext_filter(watermark: &str, w: u32, font: &str) -> String {
+fn watermark_drawtext_filter(
+    watermark: &str,
+    w: u32,
+    font: &str,
+    rect: Option<&VideoRect>,
+    opacity: f32,
+) -> String {
     if watermark.trim().is_empty() {
         return "null".to_string();
     }
     let escaped = escape_drawtext(watermark);
-    let x = w.saturating_sub(24);
+    let alpha = opacity.clamp(0.05, 1.0);
+    let (x, y) = if let Some(r) = rect {
+        (format!("{}", r.x), r.y)
+    } else {
+        (format!("{}-text_w", w.saturating_sub(24)), 24)
+    };
     format!(
         "drawtext=fontfile='{font}':text='{escaped}':\
-         fontsize=22:fontcolor=0xFFFFFF@0.38:\
-         x={x}-text_w:y=24"
+         fontsize=22:fontcolor=0xFFFFFF@{alpha:.2}:\
+         x={x}:y={y}"
     )
 }
 
@@ -289,12 +652,26 @@ fn prepare_karaoke_ass(
     dest: &Path,
     audio_duration_ms: u64,
 ) -> Result<Option<PathBuf>> {
+    if !opts.karaoke_enabled {
+        return Ok(None);
+    }
     let words = match resolve_karaoke_words(opts, audio_duration_ms) {
         Some(w) if !w.is_empty() => w,
         _ => return Ok(None),
     };
     let ass_path = dest.with_extension("ass");
-    write_karaoke_ass(&words, &ass_path, opts.height)?;
+    let margin_v = opts
+        .karaoke_margin_v
+        .unwrap_or_else(|| 62u32.min(opts.height.saturating_sub(120)));
+    let font_size = opts.karaoke_font_size.unwrap_or(40);
+    write_karaoke_ass_styled(
+        &words,
+        &ass_path,
+        opts.height,
+        opts.width,
+        font_size,
+        margin_v,
+    )?;
     Ok(Some(ass_path))
 }
 
@@ -360,11 +737,12 @@ fn run_ffmpeg_render(
     dest: &Path,
     filter: &str,
     out_label: &str,
+    extra_images: &[PathBuf],
     opts: &ShareVideoExportOptions,
 ) -> Result<()> {
     emit_progress(opts, "render", 0.08, "Renderuję wideo…");
-    let child = Command::new("ffmpeg")
-        .arg("-y")
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-y")
         .arg("-loglevel")
         .arg("info")
         .arg("-loop")
@@ -372,7 +750,11 @@ fn run_ffmpeg_render(
         .arg("-i")
         .arg(cover)
         .arg("-i")
-        .arg(audio)
+        .arg(audio);
+    for img in extra_images {
+        cmd.arg("-loop").arg("1").arg("-i").arg(img);
+    }
+    let child = cmd
         .arg("-filter_complex")
         .arg(filter)
         .arg("-map")

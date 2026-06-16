@@ -401,6 +401,28 @@ impl Db {
             "ALTER TABLE chat_messages ADD COLUMN voice_profile_id TEXT",
             [],
         );
+
+        // === video exports library (2026-06-14) ===
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS video_exports (
+                id TEXT PRIMARY KEY,
+                generation_id TEXT NOT NULL REFERENCES generations(id) ON DELETE CASCADE,
+                template_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                thumb_path TEXT,
+                duration_ms INTEGER,
+                file_size_bytes INTEGER NOT NULL DEFAULT 0,
+                render_params_hash TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                source TEXT NOT NULL DEFAULT 'clipboard',
+                title TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_video_exports_created ON video_exports(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_video_exports_generation ON video_exports(generation_id, created_at DESC);
+            "#,
+        )?;
+
         Ok(Self {
             conn: Mutex::new(conn),
         })

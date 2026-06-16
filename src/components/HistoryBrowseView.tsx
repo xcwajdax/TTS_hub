@@ -34,6 +34,8 @@ import HistoryDetailPanel from "./history/HistoryDetailPanel";
 import HistoryCompactToolbar from "./history/HistoryCompactToolbar";
 import ProfileAvatarFilterBar from "./history/ProfileAvatarFilterBar";
 import HistoryBulkActionsBar from "./history/HistoryBulkActionsBar";
+import VideoLibraryPanel from "./video/VideoLibraryPanel";
+import { listVideoExports } from "../lib/videoTemplates";
 import { useAppView } from "../context/AppViewContext";
 import { usePlayback } from "../context/PlaybackContext";
 import { createFolder, createTag, pickArchiveFolderSettings } from "../api/tauri";
@@ -90,6 +92,7 @@ export default function HistoryBrowseView({
   const { installed: soundboardInstalled, enabled: soundboardEnabled } =
     useSoundboardPlugin();
   const [soundboardFilledCount, setSoundboardFilledCount] = useState(0);
+  const [videoExportCount, setVideoExportCount] = useState(0);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [profileFilter, setProfileFilter] = useState<ProfileFilterId>(
     () => loadHistoryProfileFilter(),
@@ -182,6 +185,12 @@ export default function HistoryBrowseView({
   }, [soundboardInstalled, scope]);
 
   useEffect(() => {
+    void listVideoExports(500, 0)
+      .then((list) => setVideoExportCount(list.length))
+      .catch(() => setVideoExportCount(0));
+  }, [scope]);
+
+  useEffect(() => {
     const onPlugins = () => {
       if (!soundboardInstalled) return;
       void getSoundboard()
@@ -203,9 +212,10 @@ export default function HistoryBrowseView({
       cursor: cursorFeed.length,
       bots: botsFeed.length,
       archive: archive.length,
+      video: videoExportCount,
       soundboard: soundboardFilledCount,
     }),
-    [session.length, cursorFeed.length, botsFeed.length, archive.length, soundboardFilledCount],
+    [session.length, cursorFeed.length, botsFeed.length, archive.length, videoExportCount, soundboardFilledCount],
   );
 
   const archiveFiltered = useMemo(() => {
@@ -306,7 +316,8 @@ export default function HistoryBrowseView({
   const showProfileFilters = scope === "session" || scope === "archive" || scope === "bots";
   const showSourceFilter = scope === "session" || scope === "archive";
   const showSoundboardTab = scope === "soundboard";
-  const showHistoryMain = !showSoundboardTab;
+  const showVideoTab = scope === "video";
+  const showHistoryMain = !showSoundboardTab && !showVideoTab;
   const showDetailPanel = showHistoryMain && Boolean(current);
   const listLayout = compactView ? "list" : "grid";
 
@@ -315,15 +326,18 @@ export default function HistoryBrowseView({
     cursor: "Cursor",
     bots: "Boty",
     archive: "Archiwum",
+    video: "Wideo",
     soundboard: "Soundboard",
   }[scope];
 
   const displayCount =
     scope === "cursor"
       ? cursorFeed.length
-      : scope === "soundboard"
-        ? soundboardFilledCount
-        : items.length;
+      : scope === "video"
+        ? videoExportCount
+        : scope === "soundboard"
+          ? soundboardFilledCount
+          : items.length;
 
   return (
     <div className="history-browse-view flex flex-col h-full min-w-0 overflow-hidden bg-panel">
@@ -334,9 +348,13 @@ export default function HistoryBrowseView({
             {scopeLabel} · {displayCount}{" "}
             {scope === "soundboard"
               ? "slotów"
-              : displayCount === 1
-                ? "pozycja"
-                : "pozycji"}
+              : scope === "video"
+                ? videoExportCount === 1
+                  ? "plik"
+                  : "plików"
+                : displayCount === 1
+                  ? "pozycja"
+                  : "pozycji"}
           </p>
         </div>
         <button type="button" className="btn text-xs shrink-0" onClick={onBackToTts}>
@@ -392,6 +410,13 @@ export default function HistoryBrowseView({
             <p className="p-4 text-sm text-muted text-center">
               Zainstaluj Soundboard w zakładce Rozszerzenia.
             </p>
+          )}
+
+          {showVideoTab && (
+            <VideoLibraryPanel
+              onError={onError}
+              onToast={onSoundboardToast}
+            />
           )}
 
           {showHistoryMain && (

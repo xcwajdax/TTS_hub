@@ -8,7 +8,7 @@ import {
 } from "../../lib/historyToolbar";
 import type { ArchiveFolder, ArchiveTag, FolderFilterId, Generation } from "../../types";
 
-const TAB_ORDER: HistoryScopeTab[] = ["session", "cursor", "bots", "archive", "soundboard"];
+const TAB_ORDER: HistoryScopeTab[] = ["session", "cursor", "bots", "archive", "video", "soundboard"];
 
 interface Props {
   scope: HistoryScopeTab;

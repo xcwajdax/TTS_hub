@@ -5,6 +5,7 @@ import type { TtsVoiceProfile } from "../appSettings";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../types";
 import { useRelativeTime } from "../hooks/useRelativeTime";
 import { promptExportGenerationAudio, promptExportGenerationMp4 } from "../lib/exportGenerationMp3";
+import { useVideoTemplatePicker } from "../hooks/useVideoTemplatePicker";
 import {
   deleteGeneration,
   updateGenerationTitle,
@@ -112,6 +113,7 @@ export default function HistoryItem({
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingVideo, setExportingVideo] = useState(false);
+  const { selectedId } = useVideoTemplatePicker();
   const playHandler = onPlay ?? onSelect;
   const inputRef = useRef<HTMLInputElement>(null);
   const relative = useRelativeTime(gen.created_at);
@@ -201,7 +203,7 @@ export default function HistoryItem({
   const handleExportVideo = async () => {
     setExportingVideo(true);
     try {
-      await promptExportGenerationMp4(gen, voiceProfiles);
+      await promptExportGenerationMp4(gen, voiceProfiles, selectedId);
     } catch (e) {
       onError(String(e));
     } finally {

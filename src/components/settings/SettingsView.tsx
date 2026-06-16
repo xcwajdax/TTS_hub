@@ -19,6 +19,7 @@ import AppearancePage from "./pages/AppearancePage";
 import AvatarsPage from "./pages/AvatarsPage";
 import OrganizationPage from "./pages/OrganizationPage";
 import MemoryPage from "./pages/MemoryPage";
+import VideoPage from "./pages/VideoPage";
 import AboutPage from "./pages/AboutPage";
 import { useAppView } from "../../context/AppViewContext";
 
@@ -88,7 +89,7 @@ export default function SettingsView({
       <div className="flex-1 min-h-0 flex">
         <SettingsRail active={tab} onSelect={setTab} />
         <main className="flex-1 min-h-0 min-w-0 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-6 py-5">
+          <div className={`mx-auto px-6 py-5 ${tab === "video" ? "max-w-6xl" : "max-w-3xl"}`}>
             {tab === "general" && (
               <GeneralPage
                 view={settings.view}
@@ -120,6 +121,14 @@ export default function SettingsView({
                 view={settings.view}
                 update={settings.update}
                 onError={onError}
+              />
+            )}
+            {tab === "video" && (
+              <VideoPage
+                view={settings.view}
+                update={settings.update}
+                onError={onError}
+                onSuccess={onSuccess}
               />
             )}
             {tab === "quick_hotkeys" && (

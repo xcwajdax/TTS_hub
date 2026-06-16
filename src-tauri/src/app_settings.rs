@@ -262,10 +262,18 @@ pub struct AppSettings {
     /// Expand the queue panel and switch to approval tab when a pending item arrives.
     #[serde(default = "default_safe_mode_auto_open_queue")]
     pub safe_mode_auto_open_queue: bool,
+    #[serde(default = "default_video_template_id")]
+    pub default_video_template_id: Option<String>,
+    #[serde(default = "default_true")]
+    pub auto_archive_mp4_on_clipboard: bool,
 }
 
 fn default_safe_mode_auto_open_queue() -> bool {
     true
+}
+
+fn default_video_template_id() -> Option<String> {
+    Some("builtin-whatsapp-karaoke".to_string())
 }
 
 fn default_minimax_enabled_languages() -> Vec<String> {
@@ -351,6 +359,8 @@ impl Default for AppSettings {
             timeline_view: default_timeline_view(),
             safe_mode: false,
             safe_mode_auto_open_queue: default_safe_mode_auto_open_queue(),
+            default_video_template_id: default_video_template_id(),
+            auto_archive_mp4_on_clipboard: true,
         }
     }
 }
