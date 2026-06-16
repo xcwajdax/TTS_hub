@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use tauri::AppHandle;
 use uuid::Uuid;
 
@@ -14,6 +14,7 @@ use crate::plugins::soundboard::{soundboard_settings_path, SoundboardSettings};
 use crate::plugins::state::PluginsState;
 use crate::minimax::MinimaxClient;
 use crate::voicebox::VoiceBoxClient;
+use crate::voicebox_server::VoiceboxServerProcess;
 
 pub struct AppState {
     pub paths: RwLock<AppPaths>,
@@ -34,6 +35,7 @@ pub struct AppState {
     pub soundboard: RwLock<SoundboardSettings>,
     pub plugins_state_path: std::path::PathBuf,
     pub plugins_state: RwLock<PluginsState>,
+    pub voicebox_server_child: Mutex<Option<VoiceboxServerProcess>>,
 }
 
 impl AppState {
@@ -89,6 +91,7 @@ impl AppState {
             soundboard: RwLock::new(soundboard),
             plugins_state_path,
             plugins_state: RwLock::new(plugins_state),
+            voicebox_server_child: Mutex::new(None),
         };
         state.persist_settings()?;
         {

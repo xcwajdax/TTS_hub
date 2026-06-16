@@ -27,8 +27,8 @@ export function useBroadcastPlaybackViz() {
       const audio = audioRef.current;
       if (!audio || audio.ended) return;
 
-      const loading =
-        !playing && audio.readyState < HAVE_FUTURE_DATA;
+      const isPlaying = !audio.paused && !audio.ended;
+      const loading = !isPlaying && audio.readyState < HAVE_FUTURE_DATA;
       const effectiveMuted = audio.muted || audio.volume === 0;
       const scaledLevels = (levelsRef.current ?? []).map((v) =>
         effectiveMuted ? 0 : v * audio.volume,
@@ -36,7 +36,7 @@ export function useBroadcastPlaybackViz() {
 
       const payload: PlaybackVizFramePayload = {
         levels: scaledLevels,
-        playing,
+        playing: isPlaying,
         muted: audio.muted,
         volume: audio.volume,
         currentTime: audio.currentTime,
@@ -52,5 +52,5 @@ export function useBroadcastPlaybackViz() {
     tick();
     const id = window.setInterval(tick, EMIT_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [audioRef, current, playing]);
+  }, [audioRef, current]);
 }

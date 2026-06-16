@@ -10,7 +10,7 @@ import type { HistoryGroupingMode } from "../lib/historyToolbar";
 import { profileVoiceId } from "../lib/voiceProfiles";
 import { useVoiceAvatar } from "../hooks/useAvatars";
 import HistoryItem from "./HistoryItem";
-import AvatarImage from "./avatars/AvatarImage";
+import ProviderAvatar from "./ProviderAvatar";
 
 interface Props {
   items: Generation[];
@@ -51,10 +51,12 @@ function ProfileGroupHeader({
   );
   return (
     <div className="flex items-center gap-2 min-w-0 px-1">
-      <AvatarImage
+      <ProviderAvatar
+        provider={(profile?.provider ?? "google") as TtsProvider}
         filePath={profile ? avatar?.path ?? null : null}
         fallbackLabel={label}
         size={32}
+        showProviderBadge={!!profile}
       />
       <h3 className="history-list__heading m-0 truncate flex-1">{label}</h3>
       <span className="text-[10px] text-muted tabular-nums shrink-0">{count}</span>

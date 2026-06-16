@@ -17,6 +17,7 @@
 
 :root,
 [data-skin="vibelife"] {
+  color-scheme: dark;
   --color-bg: 15 17 21;
   --color-panel: 23 26 33;
   --color-panel2: 31 35 44;
@@ -817,10 +818,150 @@ textarea:focus, input:focus, select:focus { outline: none; }
   @apply shrink-0 border-t border-border/30 pt-1.5 mt-0.5;
 }
 /* Aktywny profil — górny pasek edytora */
+.text-filters-bar {
+  min-height: 2.75rem;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.active-voice-profile-hero {
+  align-items: center;
+  height: 2.25rem;
+}
+
 .active-voice-profile-hero__avatar {
-  box-shadow:
-    0 0 0 1px rgb(var(--color-border) / 0.5),
-    0 4px 14px rgb(0 0 0 / 0.35);
+  display: block;
+  line-height: 0;
+}
+
+/* Kompaktowe selecty w pasku TTS */
+.toolbar-select {
+  height: 1.5rem;
+  max-width: 9rem;
+  padding: 0 1.35rem 0 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+  color: rgb(var(--color-text));
+  background-color: rgb(var(--color-panel2));
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 0;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%238a93a6' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.35rem center;
+  background-size: 8px 5px;
+}
+
+.toolbar-select option {
+  background-color: rgb(var(--color-panel2));
+  color: rgb(var(--color-text));
+}
+
+.toolbar-select--profile {
+  font-weight: 600;
+  color: rgb(var(--color-text-heading));
+  max-width: 10rem;
+  height: 2rem;
+  line-height: 2rem;
+}
+
+.tts-editor-surface {
+  background-color: rgb(var(--color-panel2));
+}
+
+.tts-editor-pane {
+  @apply flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden;
+}
+
+.tts-editor-pane__toolbar {
+  @apply shrink-0 border-b border-border px-2 py-0.5 bg-panel2;
+}
+
+.tts-editor-pane__footer {
+  @apply shrink-0 flex items-center justify-end gap-2 px-2 py-2 bg-panel2;
+}
+
+.tts-editor-content {
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tts-editor-content > div {
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tts-editor-surface .tiptap-editor {
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+  overflow-y: auto;
+  outline: none;
+  color: rgb(var(--color-text));
+  font-size: 0.875rem;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.tts-editor-surface .tiptap-editor p {
+  margin: 0;
+}
+
+.tts-editor-surface .tiptap-editor p + p {
+  margin-top: 0.5em;
+}
+
+.tts-editor-surface .tiptap-editor[data-empty="true"]::before {
+  color: rgb(var(--color-muted));
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.playback-bar__idle {
+  line-height: 1.35;
+}
+
+/* Pasek zakładek edytora TTS */
+.editor-tab-bar {
+  border-radius: 0;
+}
+
+.editor-tab {
+  border-radius: 0;
+}
+
+.editor-tab--active {
+  box-shadow: inset 0 -2px 0 rgb(var(--color-accent));
+}
+
+.editor-tab__input {
+  border-radius: 0;
+}
+
+.editor-tab-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8125rem;
+  color: rgb(var(--color-text));
+  background: transparent;
+  border: none;
+}
+
+.editor-tab-menu__item:hover {
+  background: rgb(var(--color-panel2));
 }
 
 /* Belka timeline — wyeksponowany avatar profilu */

@@ -2,7 +2,7 @@ import type { TtsVoiceProfile } from "../appSettings";
 import { useVoiceAvatar } from "../hooks/useAvatars";
 import { profileVoiceId } from "../lib/voiceProfiles";
 import type { TtsProvider } from "../types";
-import AvatarImage from "./avatars/AvatarImage";
+import ProviderAvatar from "./ProviderAvatar";
 
 type Size = "xs" | "sm" | "md";
 
@@ -79,7 +79,8 @@ export default function VoiceProfileBadge({
           className={`inline-flex items-center gap-1.5 ${className}`.trim()}
           title={title}
         >
-          <AvatarImage
+          <ProviderAvatar
+            provider={resolvedProvider}
             filePath={null}
             fallbackLabel="?"
             size={px}
@@ -93,7 +94,8 @@ export default function VoiceProfileBadge({
         className={`inline-flex items-center gap-1.5 text-[10px] text-muted italic ${className}`.trim()}
         title={title}
       >
-        <AvatarImage
+        <ProviderAvatar
+          provider={resolvedProvider}
           filePath={null}
           fallbackLabel="?"
           size={px}
@@ -112,7 +114,8 @@ export default function VoiceProfileBadge({
         className={`inline-flex items-center ${className}`.trim()}
         title={describeProfile(profile)}
       >
-        <AvatarImage
+        <ProviderAvatar
+          provider={resolvedProvider}
           filePath={avatarPath}
           fallbackLabel={profile.name}
           size={px}
@@ -127,7 +130,8 @@ export default function VoiceProfileBadge({
       className={`inline-flex items-center gap-1.5 min-w-0 ${className}`.trim()}
       title={describeProfile(profile)}
     >
-      <AvatarImage
+      <ProviderAvatar
+        provider={resolvedProvider}
         filePath={avatarPath}
         fallbackLabel={profile.name}
         size={px}

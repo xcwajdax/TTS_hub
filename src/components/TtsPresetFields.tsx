@@ -57,6 +57,7 @@ import { DEFAULT_TTS_MODEL, FALLBACK_TTS_MODELS, type TtsModelInfo } from "../tt
 import type { TtsProvider } from "../types";
 
 import type { SettingsState } from "./Settings";
+import { voiceboxModelForProfile } from "../lib/voiceboxProfile";
 
 import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
 import MinimaxAdvancedOptions from "./MinimaxAdvancedOptions";
@@ -352,9 +353,13 @@ export default function TtsPresetFields({
 
     if (provider === "voicebox") {
 
-      const model = (voiceboxModels[0] ?? FALLBACK_VOICEBOX_MODELS[0]).id;
-
       const profile = voiceboxProfiles[0];
+
+      const model = voiceboxModelForProfile(
+        profile,
+        (voiceboxModels[0] ?? FALLBACK_VOICEBOX_MODELS[0]).id,
+        voiceboxModels.length > 0 ? voiceboxModels : FALLBACK_VOICEBOX_MODELS,
+      );
 
       onChange({
 
@@ -432,6 +437,9 @@ export default function TtsPresetFields({
 
     const profile = voiceboxProfiles.find((p) => p.id === profileId);
 
+    const models =
+      voiceboxModels.length > 0 ? voiceboxModels : FALLBACK_VOICEBOX_MODELS;
+
     onChange({
 
       ...state,
@@ -441,6 +449,8 @@ export default function TtsPresetFields({
       voice: profile?.name ?? profileId,
 
       language: profile?.language ?? state.language,
+
+      model: voiceboxModelForProfile(profile, state.model, models),
 
     });
 
@@ -617,6 +627,18 @@ export default function TtsPresetFields({
         </label>
 
       )}
+
+      {state.provider === "voicebox" &&
+      voiceboxProfiles.find((p) => p.id === state.voiceboxProfileId)?.personality ? (
+        <label className="flex items-center gap-2 text-muted sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={state.voiceboxPersonalityEnabled}
+            onChange={(e) => update("voiceboxPersonalityEnabled", e.target.checked)}
+          />
+          Przepisz tekst w charakterze profilu (personality)
+        </label>
+      ) : null}
 
 
 

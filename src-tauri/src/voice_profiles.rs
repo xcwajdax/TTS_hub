@@ -28,6 +28,8 @@ pub struct TtsVoiceProfile {
     #[serde(default)]
     pub engine: Option<String>,
     #[serde(default)]
+    pub personality_enabled: Option<bool>,
+    #[serde(default)]
     pub minimax_speed: Option<f32>,
     #[serde(default)]
     pub minimax_vol: Option<f32>,
@@ -69,6 +71,7 @@ impl Default for TtsVoiceProfile {
             profile_id: None,
             language: None,
             engine: None,
+            personality_enabled: None,
             minimax_speed: None,
             minimax_vol: None,
             minimax_pitch: None,
@@ -195,6 +198,7 @@ pub fn apply_voice_profile_tts_params(req: &mut GenerateReq, profile: &TtsVoiceP
     req.profile_id = profile.profile_id.clone();
     req.language = profile.language.clone();
     req.engine = profile.engine.clone();
+    req.personality = profile.personality_enabled;
     req.minimax_speed = profile.minimax_speed;
     req.minimax_vol = profile.minimax_vol;
     req.minimax_pitch = profile.minimax_pitch;
@@ -277,6 +281,8 @@ mod tests {
             last_preview_at: None,
             shortcut: None,
             shortcut_enabled: false,
+            minimax_options: None,
+            personality_enabled: None,
         }];
 
         let req = GenerateReq {

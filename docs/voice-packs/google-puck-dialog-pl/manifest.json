@@ -1,0 +1,26 @@
+{
+  "format": "ttshub-voicepack",
+  "format_version": 1,
+  "id": "google-puck-dialog-pl",
+  "name": "Google — dialog PL (Kore + Puck)",
+  "description": "Preset multi-speaker do krótkich dialogów: Kore i Puck z etykietami mówców.",
+  "author": "TTS Hub",
+  "license": "CC-BY-4.0",
+  "tags": ["pl", "google", "dialog", "multi-speaker"],
+  "preview_text": "This is a voice preview.",
+  "requires": {
+    "providers": ["google"],
+    "min_app_version": "0.1.0"
+  },
+  "profile": {
+    "provider": "google",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Kore",
+    "style": "Naturalny dialog po polsku. Zachowaj emocje i tempo rozmowy.",
+    "multi_speaker": true,
+    "speakers": [
+      { "speaker": "Anna", "voice": "Kore" },
+      { "speaker": "Tomek", "voice": "Puck" }
+    ]
+  }
+}

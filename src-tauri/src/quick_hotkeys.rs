@@ -324,6 +324,7 @@ pub fn build_generate_req(
     let minimax_pitch = saved
         .and_then(|p| p.minimax_pitch)
         .or(preset.minimax_pitch);
+    let personality = saved.and_then(|p| p.personality_enabled);
 
     let multi_speaker = saved.and_then(|p| {
         if p.multi_speaker && !p.speakers.is_empty() {
@@ -352,7 +353,7 @@ pub fn build_generate_req(
         profile_id,
         language,
         engine,
-        personality: None,
+        personality,
         autoplay: preset.autoplay,
         source: Some("quick_hotkey".to_string()),
         conversation_id: None,

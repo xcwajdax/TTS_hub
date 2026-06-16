@@ -61,21 +61,19 @@ export default function BlockEditorPane({
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden border border-border rounded-lg bg-panel2">
+    <div className="tts-editor-pane">
       <EditorFormatToolbar editor={editor} />
-      <RichTextEditor
-        value={blockDoc}
-        initialHtml={initialHtml}
-        onChange={onBlockDocChange}
-        onEnterWithCtrl={onEnterWithCtrl}
-        placeholder={placeholder}
-        onEditorReady={setEditor}
-      />
-      {footerAction ? (
-        <div className="shrink-0 flex items-center justify-end gap-2 px-3 py-2 border-t border-border bg-panel2/80">
-          {footerAction}
-        </div>
-      ) : null}
+      <div className="tts-editor-surface flex-1 flex flex-col min-h-0 min-w-0">
+        <RichTextEditor
+          value={blockDoc}
+          initialHtml={initialHtml}
+          onChange={onBlockDocChange}
+          onEnterWithCtrl={onEnterWithCtrl}
+          placeholder={placeholder}
+          onEditorReady={setEditor}
+        />
+      </div>
+      {footerAction ? <div className="tts-editor-pane__footer tts-editor-surface">{footerAction}</div> : null}
     </div>
   );
 }

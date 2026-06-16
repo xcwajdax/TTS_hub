@@ -5,7 +5,7 @@ import {
   getAppSettings,
   setAppSettings,
 } from "../../api/tauri";
-import type { AppSettings, AppSettingsView, TtsProviderId } from "../../appSettings";
+import type { AppSettings, AppSettingsView, TtsProviderId, VoiceboxServerMode } from "../../appSettings";
 import { appSettingsViewToPayload, newApiProfile } from "../../appSettings";
 import { isTauriApp } from "../../lib/tauriEnv";
 import GoogleConfigStep from "./GoogleConfigStep";
@@ -35,6 +35,7 @@ export default function QuickSetupWizard({
   const [googleKey, setGoogleKey] = useState("");
   const [googleProfileName, setGoogleProfileName] = useState("Profil Google");
   const [voiceboxUrl, setVoiceboxUrl] = useState("http://127.0.0.1:17493");
+  const [voiceboxServerMode, setVoiceboxServerMode] = useState<VoiceboxServerMode>("bundled");
   const [minimaxKey, setMinimaxKey] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -47,6 +48,7 @@ export default function QuickSetupWizard({
       setVoiceboxUrl(
         v.voicebox_base_url?.trim() || v.effective_voicebox_url || "http://127.0.0.1:17493",
       );
+      setVoiceboxServerMode(v.voicebox_server_mode ?? "bundled");
       setMinimaxKey(v.minimax_api_key ?? "");
       const activeProfile = v.api_profiles.find((p) => p.id === v.active_api_id);
       if (activeProfile) {
@@ -84,6 +86,9 @@ export default function QuickSetupWizard({
       voicebox_base_url: selected.includes("voicebox")
         ? voiceboxUrl.trim() || null
         : view.voicebox_base_url ?? null,
+      voicebox_server_mode: selected.includes("voicebox")
+        ? voiceboxServerMode
+        : view.voicebox_server_mode ?? "external",
       minimax_api_key: selected.includes("minimax")
         ? minimaxKey.trim() || null
         : view.minimax_api_key ?? null,
@@ -208,7 +213,13 @@ export default function QuickSetupWizard({
             />
           )}
           {currentStep === "voicebox" && (
-            <VoiceboxConfigStep baseUrl={voiceboxUrl} onBaseUrlChange={setVoiceboxUrl} />
+            <VoiceboxConfigStep
+              baseUrl={voiceboxUrl}
+              effectiveUrl={view.effective_voicebox_url}
+              serverMode={voiceboxServerMode}
+              onBaseUrlChange={setVoiceboxUrl}
+              onServerModeChange={setVoiceboxServerMode}
+            />
           )}
           {currentStep === "minimax" && (
             <MinimaxConfigStep

@@ -11,6 +11,7 @@ import type { SettingsState } from "../components/Settings";
 import { DEFAULT_TTS_MODEL, FALLBACK_TTS_MODELS, type TtsModelInfo } from "../ttsModels";
 import { DEFAULT_MINIMAX_LANGUAGE, DEFAULT_MINIMAX_VOICE_ID } from "../appSettings";
 import { pickMinimaxVoiceForLanguage } from "./minimaxLanguages";
+import { voiceboxModelForProfile } from "./voiceboxProfile";
 
 export interface ProviderTab {
   id: TtsProvider;
@@ -68,8 +69,13 @@ export function switchProviderState(
   if (provider === state.provider) return state;
 
   if (provider === "voicebox") {
-    const model = (ctx.voiceboxModels[0] ?? FALLBACK_VOICEBOX_MODELS[0]).id;
     const profile = ctx.voiceboxProfiles[0];
+    const models = ctx.voiceboxModels.length > 0 ? ctx.voiceboxModels : FALLBACK_VOICEBOX_MODELS;
+    const model = voiceboxModelForProfile(
+      profile,
+      (ctx.voiceboxModels[0] ?? FALLBACK_VOICEBOX_MODELS[0]).id,
+      models,
+    );
     return {
       ...state,
       provider,

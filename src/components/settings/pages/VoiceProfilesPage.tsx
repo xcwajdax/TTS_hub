@@ -18,10 +18,15 @@ export default function VoiceProfilesPage({
   onSuccess,
   onProfileDeleted,
 }: Props) {
-  const { openMinimaxVoices } = useAppView();
+  const { openMinimaxVoices, openVoiceboxView } = useAppView();
 
   const handleEditProfile = (profile: TtsVoiceProfile) => {
     onSelectVoiceProfile(profile);
+    if (profile.provider === "voicebox") {
+      openVoiceboxView("tts_preset");
+      onSuccess?.(`Załadowano profil „${profile.name}" — edycja w Voice Box.`);
+      return;
+    }
     openMinimaxVoices("profile");
     onSuccess?.(`Załadowano profil „${profile.name}" do edycji w Głosach Minimax.`);
   };
@@ -30,7 +35,7 @@ export default function VoiceProfilesPage({
     <div className="flex flex-col gap-6 text-sm min-h-0">
       <SettingsPageHeader
         title="Profile głosu"
-        description="Profil głosu to zapisany preset TTS: provider, model, głos i opcjonalny skrót klawiszowy. Nie myl z kluczem API (zakładka Providery) ani z profilem serwera Voice Box. Nowy profil tworzysz w zakładce Głosy Minimax → Profil TTS albo przyciskiem na dole panelu w widoku TTS."
+        description="Profil głosu TTS Hub to zapisany preset syntezy: provider, model i parametry. To nie to samo co profil Voice Box na serwerze (zakładka Voice Box → Profile). Dla Minimax edytuj w Głosach Minimax; dla Voice Box — w zakładce Voice Box."
       />
       <div className="border border-border rounded-md overflow-hidden min-h-[24rem] flex flex-col">
         <VoiceProfilesListPanel

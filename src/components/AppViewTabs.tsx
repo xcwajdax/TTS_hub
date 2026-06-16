@@ -6,6 +6,7 @@ export type AppView =
   | "roleplay"
   | "history"
   | "minimax_voices"
+  | "voicebox"
   | "extensions"
   | "chat"
   | "settings";
@@ -21,6 +22,7 @@ interface Props {
   view: AppView;
   onViewChange: (view: AppView) => void;
   showMinimaxVoices?: boolean;
+  showVoicebox?: boolean;
 }
 
 function TabButton({
@@ -53,7 +55,7 @@ function TabButton({
   );
 }
 
-export default function AppViewTabs({ view, onViewChange, showMinimaxVoices }: Props) {
+export default function AppViewTabs({ view, onViewChange, showMinimaxVoices, showVoicebox }: Props) {
   const tabs: TabDef[] = [
     { id: "tts", label: "TTS", icon: "tab-tts" },
     { id: "roleplay", label: "Roleplay", icon: "tab-roleplay" },
@@ -63,6 +65,12 @@ export default function AppViewTabs({ view, onViewChange, showMinimaxVoices }: P
       label: "Głosy Minimax",
       icon: "tab-minimax",
       hidden: !showMinimaxVoices,
+    },
+    {
+      id: "voicebox",
+      label: "Voice Box",
+      icon: "provider-voicebox",
+      hidden: !showVoicebox,
     },
     { id: "extensions", label: "Rozszerzenia", icon: "tab-extensions" },
     { id: "chat", label: "Czat", icon: "tab-chat" },

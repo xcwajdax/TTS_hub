@@ -20,7 +20,7 @@ export default function SettingsSidebar({
   activeVoiceProfileId,
   onSelectVoiceProfile,
 }: Props) {
-  const { openSettingsTab, openMinimaxVoices } = useAppView();
+  const { openSettingsTab, openMinimaxVoices, openVoiceboxView } = useAppView();
 
   const handleSelectProfile = (profile: TtsVoiceProfile) => {
     onSelectVoiceProfile(profile);
@@ -29,6 +29,11 @@ export default function SettingsSidebar({
 
   const handleEditProfile = (profile: TtsVoiceProfile) => {
     onSelectVoiceProfile(profile);
+    if (profile.provider === "voicebox") {
+      openVoiceboxView("tts_preset");
+      onProfileEdited?.(`Załadowano profil „${profile.name}" — edycja w Voice Box.`);
+      return;
+    }
     openMinimaxVoices("profile");
     onProfileEdited?.(`Załadowano profil „${profile.name}" do edycji w Głosach Minimax.`);
   };

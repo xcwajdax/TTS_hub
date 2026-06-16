@@ -73,9 +73,9 @@ export default function PlaybackToastPanel({ model, frame, onHide, onClose }: Pr
         : null;
 
   const onTogglePlay = useCallback(() => {
-    setPlayOverride(!(playOverride ?? framePlaying));
+    setPlayOverride((prev) => !(prev ?? framePlaying));
     emitMain(PlaybackToastEvents.togglePlay);
-  }, [framePlaying, playOverride]);
+  }, [framePlaying]);
 
   const onRestart = useCallback(() => {
     setPlayOverride(true);
@@ -116,6 +116,7 @@ export default function PlaybackToastPanel({ model, frame, onHide, onClose }: Pr
         <PlaybackToastIdentity
           profileName={model.profileName}
           voiceAvatarPath={model.voiceAvatarPath}
+          provider={model.provider}
           source={model.source}
           size={AVATAR_SIZE}
         />

@@ -1,0 +1,23 @@
+{
+  "format": "ttshub-voicepack",
+  "format_version": 1,
+  "id": "google-kore-cieply-pl",
+  "name": "Google Kore — ciepła narracja PL",
+  "description": "Spokojny, ciepły głos Kore z promptem stylu po polsku.",
+  "author": "TTS Hub",
+  "license": "CC-BY-4.0",
+  "tags": ["pl", "google", "narracja", "kore"],
+  "preview_text": "This is a voice preview.",
+  "requires": {
+    "providers": ["google"],
+    "min_app_version": "0.1.0"
+  },
+  "profile": {
+    "provider": "google",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Kore",
+    "style": "Mów ciepło, wolno i wyraźnie po polsku.",
+    "multi_speaker": false,
+    "speakers": []
+  }
+}

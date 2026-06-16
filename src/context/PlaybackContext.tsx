@@ -19,7 +19,8 @@ import {
   savePlaybackRate,
   type PlaybackRate,
 } from "../lib/playbackPrefs";
-import { loadPlainTextIntoEditor } from "../lib/editorTextLoad";
+import { openGenerationInEditor } from "../lib/editorTextLoad";
+import { isGenerationPlayable } from "../lib/generationPlayback";
 import type { Generation } from "../types";
 
 export interface SelectOptions {
@@ -142,7 +143,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     enumerationNotice: audioOutputEnumerationNotice,
   } = useAudioOutputDevices();
 
-  const src = current ? playbackAudioSrc(current.id) : null;
+  const src =
+    current && isGenerationPlayable(current) ? playbackAudioSrc(current.id) : null;
 
   const applyCurrentSink = useCallback(async () => {
     const audio = audioRef.current;
@@ -238,7 +240,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const select = useCallback((g: Generation, options?: SelectOptions) => {
     if (options?.loadEditorText !== false) {
       setEditorText(g.text);
-      loadPlainTextIntoEditor(g.text);
+      openGenerationInEditor(g);
     }
     if (options?.autoPlay === false) {
       skipAutoplayRef.current = true;
@@ -346,6 +348,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
+        onError={() => {
+          console.warn("[playback] audio element failed to load:", src);
+        }}
       />
       <audio ref={clipAudioRef} className="sr-only" preload="auto" />
     </PlaybackContext.Provider>

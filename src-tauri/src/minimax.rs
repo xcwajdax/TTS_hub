@@ -811,7 +811,9 @@ impl MinimaxClient {
         let raw = resp.text().await.context("t2a http body")?;
 
         if options.stream {
-            return self.parse_http_stream_response(&raw, &options.audio.format);
+            return self
+                .parse_http_stream_response(&raw, &options.audio.format)
+                .await;
         }
 
         let parsed: serde_json::Value =
@@ -819,10 +821,10 @@ impl MinimaxClient {
         if !status.is_success() {
             return Err(anyhow!("Minimax HTTP T2A failed ({status}): {parsed}"));
         }
-        self.parse_http_sync_response(&parsed, options)
+        self.parse_http_sync_response(&parsed, options).await
     }
 
-    fn parse_http_sync_response(
+    async fn parse_http_sync_response(
         &self,
         response: &serde_json::Value,
         options: &MinimaxSynthesisOptions,
@@ -843,17 +845,32 @@ impl MinimaxClient {
             .filter(|s| !s.is_empty())
             .ok_or_else(|| anyhow!("Minimax returned no audio data"))?;
         let bytes = hex::decode(hex).context("decode audio hex")?;
+        let subtitle_url = response
+            .pointer("/data/subtitle_file")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let subtitle_bytes = if let Some(url) = subtitle_url {
+            self.download_url_bytes(&url).await.ok()
+        } else {
+            None
+        };
 
         Ok(MinimaxAudio {
             bytes,
             format,
-            subtitle_bytes: None,
+            subtitle_bytes,
         })
     }
 
-    fn parse_http_stream_response(&self, raw: &str, audio_format: &str) -> Result<MinimaxAudio> {
+    async fn parse_http_stream_response(
+        &self,
+        raw: &str,
+        audio_format: &str,
+    ) -> Result<MinimaxAudio> {
         let format = normalize_api_format(audio_format);
         let mut audio_data = Vec::new();
+        let mut subtitle_url: Option<String> = None;
 
         for line in raw.lines() {
             let line = line.trim();
@@ -882,6 +899,13 @@ impl MinimaxClient {
                 let part = hex::decode(hex).context("decode stream hex")?;
                 audio_data.extend_from_slice(&part);
             }
+            if let Some(url) = chunk
+                .pointer("/data/subtitle_file")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
+                subtitle_url = Some(url.to_string());
+            }
         }
 
         if audio_data.is_empty() {
@@ -904,10 +928,16 @@ impl MinimaxClient {
             return Err(anyhow!("Minimax HTTP stream returned no audio data"));
         }
 
+        let subtitle_bytes = if let Some(url) = subtitle_url {
+            self.download_url_bytes(&url).await.ok()
+        } else {
+            None
+        };
+
         Ok(MinimaxAudio {
             bytes: audio_data,
             format,
-            subtitle_bytes: None,
+            subtitle_bytes,
         })
     }
 
@@ -1019,7 +1049,9 @@ impl MinimaxClient {
                 .await
                 .context("t2a http stream")?;
             let raw = resp.text().await.context("stream body")?;
-            return self.parse_http_stream_response(&raw, &options.audio.format);
+            return self
+                .parse_http_stream_response(&raw, &options.audio.format)
+                .await;
         }
 
         self.generate_audio_http(model, text, voice_id, &options)

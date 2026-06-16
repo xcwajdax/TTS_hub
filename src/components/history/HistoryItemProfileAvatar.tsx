@@ -4,7 +4,7 @@ import { inferGenerationProvider } from "../../lib/avatars";
 import { getSourceUi, hexToRgba } from "../../lib/historySourceUi";
 import { profileVoiceId } from "../../lib/voiceProfiles";
 import type { Generation, GenerationSource, TtsProvider } from "../../types";
-import AvatarImage from "../avatars/AvatarImage";
+import ProviderAvatar from "../ProviderAvatar";
 
 interface Props {
   gen: Generation;
@@ -33,11 +33,13 @@ export default function HistoryItemProfileAvatar({
       className={`relative inline-flex shrink-0 ${className}`.trim()}
       title={`${displayName} · ${sourceUi.label}`}
     >
-      <AvatarImage
+      <ProviderAvatar
+        provider={provider}
         filePath={avatarPath}
         fallbackLabel={displayName}
         size={size}
         className="ring-1 ring-border/60"
+        badgePosition="top-left"
       />
       <SourceDot source={gen.source} color={sourceUi.defaultColor} />
     </span>

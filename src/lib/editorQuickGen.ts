@@ -17,6 +17,7 @@ function slotInlineSettingsState(slot: EditorQuickGenSlot): SettingsState {
     voiceboxProfileId: slot.profile_id ?? "",
     language: slot.language ?? "pl",
     style: slot.style ?? "",
+    voiceboxPersonalityEnabled: false,
     multiSpeaker: false,
     speakers: DEFAULT_SPEAKERS,
     minimaxSpeed: slot.minimax_speed ?? 1,

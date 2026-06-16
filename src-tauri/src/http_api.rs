@@ -9,7 +9,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::audio::AudioFormat;
@@ -28,8 +28,16 @@ use crate::minimax::MinimaxClient;
 use crate::state::AppState;
 use crate::text_filters::{self, TextFilterPreset};
 use crate::voice_samples;
+use crate::voice_pack;
+use crate::voicebox::{VoiceBoxHistoryQuery, VoiceBoxProfileCreate};
 
 type AppArc = Arc<AppState>;
+
+#[derive(Debug, Deserialize)]
+struct VoiceboxAddSampleBody {
+    file_path: String,
+    reference_text: String,
+}
 
 #[derive(Debug, Serialize)]
 struct ErrorBody {
@@ -82,11 +90,29 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/voicebox/health", get(voicebox_health))
-        .route("/voicebox/profiles", get(voicebox_profiles))
+        .route("/voicebox/profiles", get(voicebox_profiles).post(voicebox_create_profile_http))
+        .route(
+            "/voicebox/profiles/:id",
+            get(voicebox_get_profile_http)
+                .put(voicebox_update_profile_http)
+                .delete(voicebox_delete_profile_http),
+        )
+        .route(
+            "/voicebox/profiles/:id/samples",
+            get(voicebox_profile_samples_http).post(voicebox_add_profile_sample_http),
+        )
+        .route("/voicebox/samples/:id", delete(voicebox_delete_sample_http))
+        .route("/voicebox/history", get(voicebox_history_http))
+        .route(
+            "/voicebox/history/:id",
+            get(voicebox_get_history_http).delete(voicebox_delete_history_http),
+        )
         .route("/voicebox/models", get(voicebox_models))
         .route("/voices", get(voices))
         .route("/voice-samples", get(voice_samples_list))
         .route("/voice-samples/:model/:voice", get(voice_sample_audio))
+        .route("/voice-packs/catalog", get(voice_packs_catalog_http))
+        .route("/voice-packs/import", post(voice_packs_import_http))
         .route("/generate", post(generate))
         .route("/history", get(history))
         .route("/history/:id/archive", post(archive))
@@ -192,6 +218,112 @@ async fn voicebox_profiles(State(state): State<AppArc>) -> Response {
 async fn voicebox_models(State(state): State<AppArc>) -> Response {
     match state.voicebox.list_tts_models().await {
         Ok(models) => Json(models).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_create_profile_http(
+    State(state): State<AppArc>,
+    Json(body): Json<VoiceBoxProfileCreate>,
+) -> Response {
+    match state.voicebox.create_profile(&body).await {
+        Ok(profile) => Json(profile).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_get_profile_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.voicebox.get_profile(&id).await {
+        Ok(profile) => Json(profile).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_update_profile_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+    Json(body): Json<VoiceBoxProfileCreate>,
+) -> Response {
+    match state.voicebox.update_profile(&id, &body).await {
+        Ok(profile) => Json(profile).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_delete_profile_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.voicebox.delete_profile(&id).await {
+        Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_profile_samples_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.voicebox.list_profile_samples(&id).await {
+        Ok(samples) => Json(samples).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_add_profile_sample_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+    Json(body): Json<VoiceboxAddSampleBody>,
+) -> Response {
+    match state
+        .voicebox
+        .add_profile_sample(&id, &body.file_path, &body.reference_text)
+        .await
+    {
+        Ok(sample) => Json(sample).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_delete_sample_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.voicebox.delete_sample(&id).await {
+        Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_history_http(
+    State(state): State<AppArc>,
+    Query(query): Query<VoiceBoxHistoryQuery>,
+) -> Response {
+    match state.voicebox.list_history(&query).await {
+        Ok(list) => Json(list).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_get_history_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.voicebox.get_history_item(&id).await {
+        Ok(item) => Json(item).into_response(),
+        Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
+    }
+}
+
+async fn voicebox_delete_history_http(
+    State(state): State<AppArc>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.voicebox.delete_history_item(&id).await {
+        Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
         Err(e) => json_err(StatusCode::BAD_GATEWAY, e.to_string()),
     }
 }
@@ -322,6 +454,32 @@ async fn voice_sample_audio(
     };
     let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     audio_bytes_response(bytes, "audio/wav", range)
+}
+
+async fn voice_packs_catalog_http() -> Response {
+    match voice_pack::embedded_catalog() {
+        Ok(catalog) => Json(catalog).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct VoicePackImportBody {
+    url: String,
+}
+
+async fn voice_packs_import_http(
+    State(state): State<AppArc>,
+    Extension(app): Extension<AppHandle>,
+    Json(body): Json<VoicePackImportBody>,
+) -> Response {
+    match voice_pack::import_and_persist_profile_from_url(&state, &body.url).await {
+        Ok(profile) => {
+            let _ = app.emit("voice-pack:imported", &profile);
+            Json(profile).into_response()
+        }
+        Err(e) => json_err(StatusCode::BAD_REQUEST, e.to_string()),
+    }
 }
 
 async fn generate(

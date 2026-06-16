@@ -11,7 +11,7 @@ import { effectiveVoiceId } from "../../lib/voiceProfiles";
 import { isTauriApp } from "../../lib/tauriEnv";
 import type { SettingsState } from "../Settings";
 import AvatarCropModal from "./AvatarCropModal";
-import AvatarImage from "./AvatarImage";
+import ProviderAvatar from "../ProviderAvatar";
 
 interface Props {
   settings: SettingsState;
@@ -105,7 +105,8 @@ export default function VoiceAvatarControl({ settings, onError }: Props) {
     <div className="flex flex-col gap-2">
       <div className="text-xs text-muted">Awatar głosu</div>
       <div className="flex items-center gap-2 rounded-md border border-border bg-panel2/50 px-2 py-2">
-        <AvatarImage
+        <ProviderAvatar
+          provider={provider}
           filePath={avatarPath}
           fallbackLabel={voiceLabel}
           size={40}

@@ -19,6 +19,17 @@
     "core:tray:default",
     "dialog:default",
     "shell:default",
+    "shell:allow-spawn",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "voicebox-server",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
     "window-state:default",
     {
       "identifier": "shell:allow-open",

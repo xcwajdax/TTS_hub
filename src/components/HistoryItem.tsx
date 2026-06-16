@@ -4,8 +4,8 @@ import { formatModelLabel } from "../ttsModels";
 import type { TtsVoiceProfile } from "../appSettings";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../types";
 import { useRelativeTime } from "../hooks/useRelativeTime";
+import { promptExportGenerationAudio, promptExportGenerationMp4 } from "../lib/exportGenerationMp3";
 import {
-  copyGenerationAudioToClipboard,
   deleteGeneration,
   updateGenerationTitle,
 } from "../api/tauri";
@@ -110,6 +110,8 @@ export default function HistoryItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportingVideo, setExportingVideo] = useState(false);
   const playHandler = onPlay ?? onSelect;
   const inputRef = useRef<HTMLInputElement>(null);
   const relative = useRelativeTime(gen.created_at);
@@ -185,11 +187,25 @@ export default function HistoryItem({
     .map((id) => archiveTags.find((t) => t.id === id))
     .filter((t): t is ArchiveTag => Boolean(t));
 
-  const handleCopyAudio = async () => {
+  const handleExportAudio = async () => {
+    setExporting(true);
     try {
-      await copyGenerationAudioToClipboard(gen.id);
+      await promptExportGenerationAudio(gen, voiceProfiles);
     } catch (e) {
       onError(String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportVideo = async () => {
+    setExportingVideo(true);
+    try {
+      await promptExportGenerationMp4(gen, voiceProfiles);
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      setExportingVideo(false);
     }
   };
 
@@ -430,13 +446,27 @@ export default function HistoryItem({
             className="history-action-btn"
             onClick={(e) => {
               e.stopPropagation();
-              void handleCopyAudio();
+              void handleExportVideo();
             }}
-            title="Kopiuj plik audio"
-            aria-label="Kopiuj audio"
-            disabled={saving || !gen.file_path?.trim()}
+            title="Zapisz MP4 z okładką (WhatsApp)"
+            aria-label="Zapisz MP4"
+            disabled={saving || exporting || exportingVideo || !gen.file_path?.trim()}
           >
-            <Icon name="copy" size={ACTION_ICON} />
+            <Icon name="clip-external" size={ACTION_ICON} />
+          </button>
+
+          <button
+            type="button"
+            className="history-action-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleExportAudio();
+            }}
+            title="Zapisz MP3 z okładką i tytułem"
+            aria-label="Zapisz MP3"
+            disabled={saving || exporting || exportingVideo || !gen.file_path?.trim()}
+          >
+            <Icon name="save" size={ACTION_ICON} />
           </button>
 
           {onAssignSoundboard && gen.status === "done" && gen.file_path && (

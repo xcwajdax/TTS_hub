@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { Generation } from "../types";
 import type { SelectOptions } from "../context/PlaybackContext";
+import { isGenerationPlayable } from "../lib/generationPlayback";
 
 export interface PlayOrEnqueueResult {
   queued: boolean;
@@ -35,6 +36,9 @@ export function usePlaybackQueue(
 
   const playOrEnqueue = useCallback(
     (g: Generation, options?: SelectOptions): PlayOrEnqueueResult => {
+      if (!isGenerationPlayable(g)) {
+        return { queued: false, queueLength: 0 };
+      }
       if (playingRef.current) {
         const queueLength = enqueue(g);
         return { queued: true, queueLength };

@@ -36,6 +36,7 @@ function presetInlineSettingsState(preset: QuickHotkeyPreset): SettingsState {
     voiceboxProfileId: preset.profile_id ?? "",
     language: preset.language ?? "pl",
     style: preset.style ?? "",
+    voiceboxPersonalityEnabled: false,
     multiSpeaker: false,
     speakers: DEFAULT_SPEAKERS,
     minimaxSpeed: preset.minimax_speed ?? 1,

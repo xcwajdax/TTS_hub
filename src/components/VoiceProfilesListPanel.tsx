@@ -8,7 +8,9 @@ import {
   previewTextForProfile,
   setRerouteVoiceProfile,
   sortProfilesForChatList,
-} from "../lib/voiceProfiles";import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
+} from "../lib/voiceProfiles";
+import { exportVoicePackFromProfile, importVoicePackFromDialog } from "../lib/voicePack";
+import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import { shortcutDisplayLabel } from "../lib/quickHotkeyPreset";
 import type { Generation } from "../types";
 import VoiceProfileChatRow from "./VoiceProfileChatRow";
@@ -96,6 +98,34 @@ export default function VoiceProfilesListPanel({
     [onError, onProfileDeleted, onSuccess],
   );
 
+  const handleImportPack = useCallback(() => {
+    void (async () => {
+      try {
+        const profile = await importVoicePackFromDialog();
+        if (!profile) return;
+        onSelectProfile(profile);
+        onSuccess?.(`Zaimportowano Voice Pack „${profile.name}".`);
+      } catch (e) {
+        onError(String(e));
+      }
+    })();
+  }, [onError, onSelectProfile, onSuccess]);
+
+  const handleExportPack = useCallback(
+    (profile: TtsVoiceProfile) => {
+      void (async () => {
+        try {
+          const dest = await exportVoicePackFromProfile(profile);
+          if (!dest) return;
+          onSuccess?.(`Wyeksportowano Voice Pack „${profile.name}".`);
+        } catch (e) {
+          onError(String(e));
+        }
+      })();
+    },
+    [onError, onSuccess],
+  );
+
   if (sorted.length === 0) {
     return (
       <div
@@ -106,30 +136,44 @@ export default function VoiceProfilesListPanel({
         <p className="text-sm text-muted">Brak zapisanych profili głosu</p>
         <p className="text-[11px] text-muted/80 leading-relaxed max-w-sm">
           {variant === "settings"
-            ? "Użyj przycisku „Dodaj nowy profil” w widoku TTS albo przejdź do zakładki Głosy Minimax → Profil TTS."
-            : "Kliknij „Dodaj nowy profil” na dole panelu — otworzy się edytor w zakładce Głosy Minimax."}
+            ? "Dodaj profil w zakładce Voice Box lub Głosy Minimax, albo użyj „Dodaj do listy profili” przy profilu Voice Box."
+            : "Kliknij „Dodaj nowy profil” na dole lub dodaj profil Voice Box w zakładce Voice Box."}
         </p>
+        <button
+          type="button"
+          className="mt-2 text-xs text-accent hover:underline"
+          onClick={handleImportPack}
+        >
+          Importuj Voice Pack…
+        </button>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <p
-        className={`shrink-0 text-muted border-b border-border/50 leading-snug ${
-          variant === "settings"
-            ? "px-4 py-2 text-[11px]"
-            : "px-3 py-1.5 text-[10px]"
+      <div
+        className={`shrink-0 flex items-center justify-between gap-2 border-b border-border/50 ${
+          variant === "settings" ? "px-4 py-2" : "px-3 py-1.5"
         }`}
       >
-        Kliknij profil, aby go wybrać. Prawy przycisk — edycja, reroute globalny lub usunięcie.
-        {rerouteProfileId ? (
-          <>
-            {" "}
-            <span className="text-accent2 font-medium">Reroute aktywny.</span>
-          </>
-        ) : null}
-      </p>
+        <p className="text-muted leading-snug text-[10px] flex-1 min-w-0">
+          Kliknij profil, aby go wybrać. PPM — edycja, eksport Voice Pack, reroute lub usunięcie.
+          {rerouteProfileId ? (
+            <>
+              {" "}
+              <span className="text-accent2 font-medium">Reroute aktywny.</span>
+            </>
+          ) : null}
+        </p>
+        <button
+          type="button"
+          className="shrink-0 text-[10px] px-2 py-1 rounded border border-border/80 hover:border-accent/60 text-muted hover:text-foreground transition-colors"
+          onClick={handleImportPack}
+        >
+          Importuj pack
+        </button>
+      </div>
       <div
         className={`voice-profile-chat-list flex-1 min-h-0 overflow-y-auto ${
           variant === "settings" ? "px-1" : ""
@@ -180,6 +224,7 @@ export default function VoiceProfilesListPanel({
           anchorY={contextMenu.y}
           isReroute={isRerouteProfile(contextMenu.profile.id, rerouteProfileId)}
           onEditSettings={() => onEditProfile(contextMenu.profile)}
+          onExportPack={() => handleExportPack(contextMenu.profile)}
           onSetReroute={() => {
             void setRerouteVoiceProfile(contextMenu.profile.id)
               .then(() => {

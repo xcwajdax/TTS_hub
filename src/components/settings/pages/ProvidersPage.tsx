@@ -3,6 +3,7 @@ import {
   ALL_TTS_PROVIDERS,
   isProviderEnabled,
   type TtsProviderId,
+  type VoiceboxServerMode,
 } from "../../../appSettings";
 import { useAppView } from "../../../context/AppViewContext";
 import ProviderCard, { type ProviderStatus } from "../components/ProviderCard";
@@ -48,7 +49,7 @@ function providerStatus(
 }
 
 export default function ProvidersPage({ view, update, onError }: Props) {
-  const { openMinimaxVoices } = useAppView();
+  const { openMinimaxVoices, openVoiceboxView } = useAppView();
   const enabled = (view.enabled_providers?.length
     ? view.enabled_providers
     : ALL_TTS_PROVIDERS) as TtsProviderId[];
@@ -95,7 +96,10 @@ export default function ProvidersPage({ view, update, onError }: Props) {
             <VoiceboxProviderSection
               baseUrl={view.voicebox_base_url ?? ""}
               effectiveUrl={view.effective_voicebox_url}
+              serverMode={(view.voicebox_server_mode ?? "external") as VoiceboxServerMode}
               onBaseUrlChange={(v) => update("voicebox_base_url", v.trim() || null)}
+              onServerModeChange={(mode) => update("voicebox_server_mode", mode)}
+              onOpenVoiceboxView={() => openVoiceboxView()}
             />
           </ProviderCard>
 

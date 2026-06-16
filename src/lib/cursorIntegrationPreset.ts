@@ -11,6 +11,7 @@ export function cursorToSettingsState(cfg: CursorIntegration): SettingsState {
     voiceboxProfileId: cfg.profile_id ?? cfg.voice ?? "",
     language: cfg.language ?? "pl",
     style: cfg.style ?? "",
+    voiceboxPersonalityEnabled: false,
     multiSpeaker: false,
     speakers: [
       { speaker: "Mowca1", voice: "Kore" },

@@ -1,0 +1,26 @@
+{
+  "format": "ttshub-voicepack",
+  "format_version": 1,
+  "id": "minimax-kobieta-pl",
+  "name": "MiniMax — kobieta PL",
+  "description": "Preset żeński MiniMax speech-2.8-hd — narracja i lektorat po polsku.",
+  "author": "TTS Hub",
+  "license": "CC-BY-4.0",
+  "tags": ["pl", "minimax", "narracja", "kobieta"],
+  "preview_text": "This is a voice preview.",
+  "requires": {
+    "providers": ["minimax"],
+    "min_app_version": "0.1.0"
+  },
+  "profile": {
+    "provider": "minimax",
+    "model": "minimax:speech-2.8-hd",
+    "voice": "Polish_female_1_sample1",
+    "language": "pl",
+    "minimax_speed": 1.0,
+    "minimax_vol": 1.0,
+    "minimax_pitch": 0,
+    "multi_speaker": false,
+    "speakers": []
+  }
+}

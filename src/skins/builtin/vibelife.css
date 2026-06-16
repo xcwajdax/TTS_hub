@@ -1,0 +1,19 @@
+/* VIBELIFE — native controls follow dark palette */
+
+html[data-skin="vibelife"] {
+  color-scheme: dark;
+}
+
+html[data-skin="vibelife"] select.toolbar-select,
+html[data-skin="vibelife"] select.toolbar-select option {
+  background-color: rgb(var(--color-panel2));
+  color: rgb(var(--color-text));
+}
+
+html[data-skin="vibelife"] select.toolbar-select:focus {
+  border-color: rgb(var(--color-accent) / 0.55);
+}
+
+html[data-skin="vibelife"] .tts-editor-surface {
+  background-color: rgb(var(--color-panel2));
+}

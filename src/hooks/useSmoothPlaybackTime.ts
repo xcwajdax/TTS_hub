@@ -3,7 +3,7 @@ import { usePlayback } from "../context/PlaybackContext";
 
 interface Options {
   audioRef: RefObject<HTMLAudioElement | null>;
-  src: string;
+  src: string | null;
 }
 
 /** Płynna pozycja odtwarzania przez rAF; przy pauzie — timeupdate/seeked. */

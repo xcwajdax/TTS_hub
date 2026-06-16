@@ -3,6 +3,7 @@ import { formatModelLabel } from "../ttsModels";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../types";
 import { getAppSettings } from "../api/tauri";
 import { playbackAudioSrc } from "../api/tauri";
+import { isGenerationPlayable } from "../lib/generationPlayback";
 import { inferGenerationProvider } from "../lib/avatars";
 import { displayTitle } from "../lib/generationTitle";
 import { useVoiceAvatar } from "../hooks/useAvatars";
@@ -14,7 +15,7 @@ import {
 } from "../lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import type { SettingsState } from "./Settings";
-import AvatarImage from "./avatars/AvatarImage";
+import ProviderAvatar from "./ProviderAvatar";
 import PlaybackBarDetails from "./PlaybackBarDetails";
 import TokenCostLabel from "./TokenCostLabel";
 import WaveformPlayer from "./WaveformPlayer";
@@ -32,6 +33,7 @@ interface Props {
   tags?: ArchiveTag[];
   onHistoryChanged?: () => void;
   onError?: (e: string) => void;
+  onToast?: (message: string) => void;
 }
 
 const PLAYBACK_AVATAR_SIZE = 72;
@@ -47,6 +49,7 @@ export default function PlaybackBar({
   tags = [],
   onHistoryChanged,
   onError,
+  onToast,
 }: Props) {
   const [profiles, setProfiles] = useState<TtsVoiceProfile[]>([]);
 
@@ -97,7 +100,8 @@ export default function PlaybackBar({
 
   const avatarCol = (
     <div className="playback-bar__avatar-col shrink-0 flex flex-col items-center gap-1.5 w-[88px]">
-      <AvatarImage
+      <ProviderAvatar
+        provider={provider}
         filePath={voiceAvatar?.path ?? null}
         fallbackLabel={avatarLabel}
         size={PLAYBACK_AVATAR_SIZE}
@@ -121,12 +125,13 @@ export default function PlaybackBar({
       {current ? (
         <WaveformPlayer
           key={`${current.id}-${playNonce}`}
-          src={playbackAudioSrc(current.id)}
+          src={isGenerationPlayable(current) ? playbackAudioSrc(current.id) : null}
           current={current}
           folders={folders}
           tags={tags}
           onHistoryChanged={onHistoryChanged}
           onError={onError}
+          onToast={onToast}
           renderLayout={({ controls, timeline, modals, headerCorner }) => (
             <>
               <div className="playback-bar__layout flex gap-4 min-w-0 px-4 pt-3 pb-2">
@@ -165,11 +170,8 @@ export default function PlaybackBar({
           )}
         />
       ) : (
-        <div className="playback-bar__layout flex gap-4 min-w-0 px-4 py-3">
-          {avatarCol}
-          <div className="flex flex-col justify-center min-h-[72px] text-sm text-muted">
-            Brak aktywnej generacji. Wybierz profil i wygeneruj tekst powyżej.
-          </div>
+        <div className="playback-bar__idle px-4 py-2 text-sm text-muted">
+          Brak aktywnej generacji. Wybierz profil i wygeneruj tekst powyżej.
         </div>
       )}
     </div>

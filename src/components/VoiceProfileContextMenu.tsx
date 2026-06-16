@@ -7,6 +7,7 @@ interface Props {
   anchorY: number;
   isReroute: boolean;
   onEditSettings: () => void;
+  onExportPack: () => void;
   onSetReroute: () => void;
   onClearReroute: () => void;
   onDelete: () => void;
@@ -19,6 +20,7 @@ export default function VoiceProfileContextMenu({
   anchorY,
   isReroute,
   onEditSettings,
+  onExportPack,
   onSetReroute,
   onClearReroute,
   onDelete,
@@ -80,6 +82,17 @@ export default function VoiceProfileContextMenu({
         }}
       >
         Edytuj ustawienia profilu…
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="w-full text-left px-3 py-2 hover:bg-panel2/80 text-foreground transition-colors"
+        onClick={() => {
+          onExportPack();
+          onClose();
+        }}
+      >
+        Eksportuj Voice Pack…
       </button>
       {isReroute ? (
         <button

@@ -1,8 +1,14 @@
-import { getAppSettings, setAppSettings } from "../api/tauri";
+import { getAppSettings, setAppSettings, syncVoiceboxProfileAvatar } from "../api/tauri";
 import { appSettingsViewToPayload, type TtsVoiceProfile } from "../appSettings";
+import type { VoiceBoxProfile } from "../api/tauri";
+import type { TtsModelInfo } from "../ttsModels";
+import {
+  hubProfileMatchesVoiceboxServer,
+  voiceboxServerProfileToHubProfile,
+} from "./voiceboxProfile";
 import type { SettingsState } from "../components/Settings";
 import { defaultMinimaxSynthesisOptions } from "./minimaxOptions";
-import { inferGenerationProvider } from "./avatars";
+import { inferGenerationProvider, notifyAvatarsChanged } from "./avatars";
 import { VOICE_PROFILES_CHANGED } from "./voiceProfilesEvents";
 import type { Generation, SpeakerConfig, TtsProvider } from "../types";
 
@@ -41,6 +47,8 @@ export function settingsStateToVoiceProfile(
         ? state.language || null
         : null,
     engine: null,
+    personality_enabled:
+      state.provider === "voicebox" && state.voiceboxPersonalityEnabled ? true : null,
     minimax_speed: state.provider === "minimax" ? state.minimaxSpeed : null,
     minimax_vol: state.provider === "minimax" ? state.minimaxVol : null,
     minimax_pitch: state.provider === "minimax" ? state.minimaxPitch : null,
@@ -68,6 +76,7 @@ export function voiceProfileToSettingsState(profile: TtsVoiceProfile): SettingsS
     voiceboxProfileId: profile.profile_id ?? "",
     language: profile.language ?? "pl",
     style: profile.style ?? "",
+    voiceboxPersonalityEnabled: !!profile.personality_enabled,
     multiSpeaker: profile.multi_speaker,
     speakers,
     minimaxSpeed: profile.minimax_speed ?? 1,
@@ -199,6 +208,29 @@ export function sortProfilesForChatList(profiles: TtsVoiceProfile[]): TtsVoicePr
     if (tb !== ta) return tb - ta;
     return a.name.localeCompare(b.name, "pl");
   });
+}
+
+export async function addVoiceboxServerProfileToHubList(
+  vbProfile: VoiceBoxProfile,
+  models: TtsModelInfo[],
+): Promise<{ profile: TtsVoiceProfile; created: boolean }> {
+  const view = await getAppSettings();
+  const existing = view.voice_profiles ?? [];
+  const hit = existing.find((p) => hubProfileMatchesVoiceboxServer(p, vbProfile));
+  if (hit) {
+    return { profile: hit, created: false };
+  }
+  const profile = voiceboxServerProfileToHubProfile(vbProfile, models);
+  const { persistVoiceProfilesWithHotkeySync } = await import("./voiceProfileShortcuts");
+  await persistVoiceProfilesWithHotkeySync(view, [...existing, profile]);
+  if (vbProfile.avatar_path?.trim()) {
+    void syncVoiceboxProfileAvatar(vbProfile.id)
+      .then((ok) => {
+        if (ok) notifyAvatarsChanged();
+      })
+      .catch(() => {});
+  }
+  return { profile, created: true };
 }
 
 export async function setRerouteVoiceProfile(profileId: string | null): Promise<void> {

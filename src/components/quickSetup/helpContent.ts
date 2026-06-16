@@ -32,8 +32,13 @@ export const QUICK_SETUP_HELP: Record<QuickSetupHelpTopic, HelpSection> = {
   voicebox: {
     title: "Voice Box (lokalny)",
     body:
-      "Voice Box to lokalny serwer HTTP z profilami głosu. Uruchom aplikację Voice Box na tym komputerze i podaj adres (domyślnie http://127.0.0.1:17493). Test wywołuje endpoint /health — upewnij się, że firewall nie blokuje portu.",
-    links: [],
+      "Domyślnie TTS Hub uruchamia wbudowany fork backendu Voicebox (MIT) — nie musisz instalować osobnej aplikacji. Tryb zewnętrzny nadal działa: uruchom Voicebox osobno i podaj adres http://127.0.0.1:17493. Test wywołuje /health. Po pierwszym starcie pobierz model TTS w zakładce Voice Box.",
+    links: [
+      {
+        label: "Voicebox upstream (STT, dictation, Stories)",
+        href: "https://github.com/jamiepine/voicebox",
+      },
+    ],
   },
   minimax: {
     title: "MiniMax Portal",

@@ -241,12 +241,18 @@ pub struct AppSettings {
     #[serde(default = "default_minimax_enabled_languages")]
     pub minimax_enabled_languages: Vec<String>,
     pub voicebox_base_url: Option<String>,
+    /// `external` (default) | `bundled` (future sidecar) | `disabled`
+    #[serde(default = "default_voicebox_server_mode")]
+    pub voicebox_server_mode: String,
     pub minimax_api_key: Option<String>,
     #[serde(default)]
     pub minimax_provider_settings: MinimaxProviderSettings,
     /// Max non-archived temp history rows from prior app sessions (current session always kept).
     #[serde(default = "default_temp_history_max")]
     pub temp_history_max: u32,
+    /// Initial row count (and load-more step) for the sidebar "Ostatnie generacje" panel.
+    #[serde(default = "default_quick_history_page_size")]
+    pub quick_history_page_size: u32,
     /// Main playback bar waveform: bars | bars-detailed | line
     #[serde(default = "default_timeline_view")]
     pub timeline_view: String,
@@ -294,8 +300,19 @@ fn default_temp_history_max() -> u32 {
     100
 }
 
+pub const MIN_QUICK_HISTORY_PAGE_SIZE: u32 = 5;
+pub const MAX_QUICK_HISTORY_PAGE_SIZE: u32 = 100;
+
+fn default_quick_history_page_size() -> u32 {
+    30
+}
+
 fn default_timeline_view() -> String {
     "bars".to_string()
+}
+
+fn default_voicebox_server_mode() -> String {
+    "external".to_string()
 }
 
 const TIMELINE_VIEWS: &[&str] = &["bars", "bars-detailed", "line"];
@@ -326,9 +343,11 @@ impl Default for AppSettings {
             enabled_providers: Vec::new(),
             minimax_enabled_languages: default_minimax_enabled_languages(),
             voicebox_base_url: None,
+            voicebox_server_mode: default_voicebox_server_mode(),
             minimax_api_key: None,
             minimax_provider_settings: MinimaxProviderSettings::default(),
             temp_history_max: default_temp_history_max(),
+            quick_history_page_size: default_quick_history_page_size(),
             timeline_view: default_timeline_view(),
             safe_mode: false,
             safe_mode_auto_open_queue: default_safe_mode_auto_open_queue(),
@@ -451,6 +470,11 @@ impl AppSettings {
             self.temp_history_max = MIN_TEMP_HISTORY_MAX;
         } else if self.temp_history_max > MAX_TEMP_HISTORY_MAX {
             self.temp_history_max = MAX_TEMP_HISTORY_MAX;
+        }
+        if self.quick_history_page_size < MIN_QUICK_HISTORY_PAGE_SIZE {
+            self.quick_history_page_size = MIN_QUICK_HISTORY_PAGE_SIZE;
+        } else if self.quick_history_page_size > MAX_QUICK_HISTORY_PAGE_SIZE {
+            self.quick_history_page_size = MAX_QUICK_HISTORY_PAGE_SIZE;
         }
         self.active_skin_id = self.active_skin_id.trim().to_string();
         if self.active_skin_id.is_empty() {

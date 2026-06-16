@@ -83,6 +83,8 @@ export default function RichTextEditor({
 }: RichTextEditorProps) {
   const prevBlocksRef = useRef<Block[]>(value.blocks);
   prevBlocksRef.current = value.blocks;
+  const placeholderRef = useRef(placeholder ?? "");
+  placeholderRef.current = placeholder ?? "";
 
   const extensions = useMemo(
     () => [
@@ -101,8 +103,8 @@ export default function RichTextEditor({
     editable: !disabled,
     editorProps: {
       attributes: {
-        class:
-          "tiptap-editor prose prose-invert prose-sm max-w-none focus:outline-none min-h-0 p-3",
+        class: "tiptap-editor focus:outline-none",
+        "data-placeholder": placeholderRef.current,
       },
       handleKeyDown(_view, event) {
         if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -150,6 +152,20 @@ export default function RichTextEditor({
 
   useEffect(() => {
     if (!editor) return;
+    const root = editor.view.dom as HTMLElement;
+    const sync = () => {
+      root.dataset.placeholder = placeholder ?? "";
+      root.dataset.empty = editor.isEmpty ? "true" : "false";
+    };
+    sync();
+    editor.on("update", sync);
+    return () => {
+      editor.off("update", sync);
+    };
+  }, [editor, placeholder]);
+
+  useEffect(() => {
+    if (!editor) return;
     const ids = new Set(excludedBlockIds ?? []);
     editor.view.dispatch(editor.state.tr.setMeta(excludedKey, { ids }));
   }, [editor, excludedBlockIds]);
@@ -159,14 +175,5 @@ export default function RichTextEditor({
     return () => onEditorReady?.(null);
   }, [editor, onEditorReady]);
 
-  return (
-    <div className="flex-1 w-full min-h-0 min-w-0 overflow-auto relative">
-      {editor && editor.isEmpty && placeholder && (
-        <div className="pointer-events-none absolute top-3 left-3 text-sm text-muted whitespace-pre-line">
-          {placeholder}
-        </div>
-      )}
-      <EditorContent editor={editor} className="h-full min-h-[120px]" />
-    </div>
-  );
+  return <EditorContent editor={editor} className="tts-editor-content" />;
 }

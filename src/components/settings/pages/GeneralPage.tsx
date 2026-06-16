@@ -6,10 +6,13 @@ import {
 } from "../../../api/tauri";
 import {
   DEFAULT_MAX_CONCURRENT_JOBS,
+  DEFAULT_QUICK_HISTORY_PAGE_SIZE,
   DEFAULT_TEMP_HISTORY_MAX,
   MAX_CONCURRENT_JOBS,
+  MAX_QUICK_HISTORY_PAGE_SIZE,
   MAX_TEMP_HISTORY_MAX,
   MIN_CONCURRENT_JOBS,
+  MIN_QUICK_HISTORY_PAGE_SIZE,
   MIN_TEMP_HISTORY_MAX,
   type SaveMode,
 } from "../../../appSettings";
@@ -236,6 +239,32 @@ export default function GeneralPage({ view, update, onError, onSuccess }: Props)
           />
           <span className="text-[11px]">
             Limit dotyczy poprzednich uruchomień; bieżąca sesja jest zawsze zachowana w całości.
+          </span>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted max-w-xs">
+          Liczba ostatnich generacji w panelu bocznym
+          <input
+            type="number"
+            className="field"
+            min={MIN_QUICK_HISTORY_PAGE_SIZE}
+            max={MAX_QUICK_HISTORY_PAGE_SIZE}
+            value={view.quick_history_page_size ?? DEFAULT_QUICK_HISTORY_PAGE_SIZE}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              if (!Number.isNaN(n)) {
+                update(
+                  "quick_history_page_size",
+                  Math.min(
+                    MAX_QUICK_HISTORY_PAGE_SIZE,
+                    Math.max(MIN_QUICK_HISTORY_PAGE_SIZE, n),
+                  ),
+                );
+              }
+            }}
+          />
+          <span className="text-[11px]">
+            Ile wierszy pokazać na start w „Ostatnie generacje”; przycisk „Załaduj więcej”
+            dokłada tyle samo.
           </span>
         </label>
       </SettingsSection>

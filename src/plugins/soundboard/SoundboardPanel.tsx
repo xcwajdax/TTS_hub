@@ -16,6 +16,7 @@ import { notifyPluginsChanged } from "../events";
 import type { Generation } from "../../types";
 import type { SoundboardPublicView, SoundboardSlotPublic } from "../types";
 import { displayTitle } from "../../lib/generationTitle";
+import { mergeSessionAndArchiveHistory } from "../../lib/generationPlayback";
 import { isTauriApp } from "../../lib/tauriEnv";
 
 export const SOUNDBOARD_SLOTS_CHANGED = "soundboard:slots-changed";
@@ -99,7 +100,7 @@ export default function SoundboardPanel({
         listHistory("session"),
         listHistory("archive"),
       ]);
-      const done = [...session, ...archive].filter(
+      const done = mergeSessionAndArchiveHistory(session, archive).filter(
         (g) => g.status === "done" && g.file_path,
       );
       setHistoryItems(done.slice(0, 80));

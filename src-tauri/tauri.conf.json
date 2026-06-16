@@ -86,6 +86,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/voicebox-server"],
     "resources": ["../.cursor-hooks/"],
     "icon": [
       "icons/32x32.png",

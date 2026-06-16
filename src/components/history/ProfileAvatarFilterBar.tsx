@@ -7,7 +7,7 @@ import {
 } from "../../lib/historyToolbar";
 import type { ProfileFilterId } from "../../lib/historyProfileGroups";
 import { profileVoiceId } from "../../lib/voiceProfiles";
-import AvatarImage from "../avatars/AvatarImage";
+import ProviderAvatar from "../ProviderAvatar";
 import HistoryToolbarRow from "./HistoryToolbarRow";
 
 interface Props {
@@ -22,6 +22,7 @@ interface Props {
 function ProfileChip({
   profileId,
   label,
+  provider,
   avatarPath,
   count,
   active,
@@ -29,6 +30,7 @@ function ProfileChip({
 }: {
   profileId: string;
   label: string;
+  provider: TtsProvider;
   avatarPath: string | null;
   count: number;
   active: boolean;
@@ -45,7 +47,12 @@ function ProfileChip({
       title={`${label} (${count})`}
       onClick={onClick}
     >
-      <AvatarImage filePath={avatarPath} fallbackLabel={label} size={28} />
+      <ProviderAvatar
+        provider={provider}
+        filePath={avatarPath}
+        fallbackLabel={label}
+        size={28}
+      />
       <span className="text-[9px] truncate max-w-[40px]">{label}</span>
       {count > 0 && (
         <span className="text-[8px] tabular-nums text-muted/70 leading-none">{count}</span>
@@ -65,6 +72,7 @@ function ProfileChipInner({ profile, count, active, onClick }: {
     <ProfileChip
       profileId={profile.id}
       label={profile.name}
+      provider={profile.provider as TtsProvider}
       avatarPath={avatar?.path ?? null}
       count={count}
       active={active}
@@ -127,7 +135,14 @@ export default function ProfileAvatarFilterBar({
             title={`Bez profilu (${unprofiledCount})`}
             onClick={() => onChange("__none__")}
           >
-            <AvatarImage filePath={null} fallbackLabel="?" size={28} className="opacity-60" />
+            <ProviderAvatar
+              provider="google"
+              filePath={null}
+              fallbackLabel="?"
+              size={28}
+              className="opacity-60"
+              showProviderBadge={false}
+            />
             <span className="text-[9px] truncate max-w-[40px]">Bez profilu</span>
             <span className="text-[8px] tabular-nums text-muted/70">{unprofiledCount}</span>
           </button>

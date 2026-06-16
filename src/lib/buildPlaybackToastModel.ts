@@ -41,6 +41,7 @@ export async function buildPlaybackToastModel(
     title: displayTitle(gen),
     profileName: profile?.name ?? gen.voice?.trim() ?? null,
     voiceAvatarPath,
+    provider,
     source: {
       label: sourceUi.label,
       color: sourceUi.defaultColor,

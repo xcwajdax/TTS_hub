@@ -33,13 +33,14 @@ interface LayoutParts {
 }
 
 interface Props {
-  src: string;
+  src: string | null;
   className?: string;
   current?: Generation | null;
   folders?: ArchiveFolder[];
   tags?: ArchiveTag[];
   onHistoryChanged?: () => void;
   onError?: (e: string) => void;
+  onToast?: (message: string) => void;
   renderLayout?: (parts: LayoutParts) => ReactNode;
 }
 
@@ -57,6 +58,7 @@ export default function WaveformPlayer({
   tags = [],
   onHistoryChanged,
   onError,
+  onToast,
   renderLayout,
 }: Props) {
   const { audioRef, playing, togglePlay, seekTo, playbackRate, setPlaybackRate } = usePlayback();
@@ -67,7 +69,7 @@ export default function WaveformPlayer({
   const [textModalOpen, setTextModalOpen] = useState(false);
 
   const barCount = timelineViewBarCount(timelineMode);
-  const { peaks, duration: decodedDuration, loading } = useAudioWaveform(src, barCount);
+  const { peaks, duration: decodedDuration, loading, error: waveformError } = useAudioWaveform(src, barCount);
   const { currentTime, duration, setTimeImmediate, setDurationExternal } = useSmoothPlaybackTime({
     audioRef,
     src,
@@ -78,10 +80,16 @@ export default function WaveformPlayer({
   const progress = duration > 0 ? currentTime / duration : 0;
   const effectiveMuted = muted || volume === 0;
   const volumePercent = Math.round(volume * 100);
+  const awaitingAudio = !src;
 
   useEffect(() => {
     if (decodedDuration != null) setDurationExternal(decodedDuration);
   }, [decodedDuration, setDurationExternal]);
+
+  useEffect(() => {
+    if (!waveformError || !onError) return;
+    onError(`Nie udało się wczytać audio: ${waveformError}`);
+  }, [waveformError, onError]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -191,11 +199,11 @@ export default function WaveformPlayer({
         <button
           type="button"
           onClick={togglePlay}
-          disabled={loading}
+          disabled={loading || awaitingAudio}
           className="shrink-0 w-8 h-8 flex items-center justify-center text-muted hover:text-accent transition-colors disabled:opacity-40"
           aria-label={playing ? "Pauza" : "Odtwarzaj"}
         >
-          {loading ? (
+          {loading || awaitingAudio ? (
             <Icon name="spinner" size={16} spin className="opacity-80" />
           ) : (
             <Icon name={playing ? "pause" : "play"} size={16} />
@@ -309,6 +317,7 @@ export default function WaveformPlayer({
           tags={tags}
           onChanged={onHistoryChanged ?? (() => undefined)}
           onError={onError ?? (() => undefined)}
+          onToast={onToast}
           onClose={() => setContextMenu(null)}
         />
       )}
