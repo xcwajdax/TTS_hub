@@ -5,6 +5,11 @@ import { blockDocToSourceText, plainTextToBlockDoc } from "../../components/text
 import { isDocEmpty } from "../../components/editor/types";
 import { writeTextFile } from "../../api/tauri";
 import { isTauriApp } from "../tauriEnv";
+import {
+  EDITOR_ACTIVATE_TAB_EVENT,
+  takePendingTabActivate,
+  type EditorActivateTabDetail,
+} from "../editorTextLoad";
 import { findGenerationById } from "./findGeneration";
 import {
   incrementTabTitle,
@@ -107,10 +112,27 @@ export function useEditorTabs({ defaultFilterPresetId, onTabActivated }: UseEdit
     [state.activeTabId, state.tabs, commit, activateTab],
   );
 
-  const addTab = useCallback(() => {
+  useEffect(() => {
+    const activateById = (tabId: string) => {
+      switchTab(tabId);
+    };
+
+    const pending = takePendingTabActivate();
+    if (pending) activateById(pending);
+
+    const onActivate = (ev: Event) => {
+      const tabId = (ev as CustomEvent<EditorActivateTabDetail>).detail?.tabId;
+      if (tabId) activateById(tabId);
+    };
+
+    window.addEventListener(EDITOR_ACTIVATE_TAB_EVENT, onActivate);
+    return () => window.removeEventListener(EDITOR_ACTIVATE_TAB_EVENT, onActivate);
+  }, [switchTab]);
+
+  const addTab = useCallback((voiceProfileId?: string | null) => {
     const id = nanoid(10);
     const title = nextDefaultTabTitle(state.tabs.map((t) => t.title));
-    const tab = createEmptyTab(id, title, defaultFilterRef.current);
+    const tab = createEmptyTab(id, title, defaultFilterRef.current, voiceProfileId ?? null);
     commit((prev) => ({
       ...prev,
       activeTabId: id,

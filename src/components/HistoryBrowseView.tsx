@@ -27,6 +27,7 @@ import {
 } from "../lib/historyProfileGroups";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import HistoryGroupedList from "./HistoryGroupedList";
+import { filterGenerationsByTextQuery } from "../lib/globalSearch/match";
 import CursorFeed from "./CursorFeed";
 import BotsFeed from "./BotsFeed";
 import HistoryScopeRail from "./history/HistoryScopeRail";
@@ -103,6 +104,7 @@ export default function HistoryBrowseView({
   const [folderFilter, setFolderFilter] = useState<FolderFilterId>("__all__");
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [compactView, setCompactView] = useState(loadHistoryCompactView);
+  const [textSearch, setTextSearch] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [tempHistoryMax, setTempHistoryMax] = useState<number | undefined>();
@@ -244,16 +246,26 @@ export default function HistoryBrowseView({
   const sourceFilteredItems =
     sourceFilter === "all" ? baseItems : baseItems.filter((g) => g.source === sourceFilter);
 
+  const textFilteredItems = useMemo(
+    () => filterGenerationsByTextQuery(sourceFilteredItems, textSearch),
+    [sourceFilteredItems, textSearch],
+  );
+
+  const filteredCursorFeed = useMemo(
+    () => filterGenerationsByTextQuery(cursorFeed, textSearch),
+    [cursorFeed, textSearch],
+  );
+
   const profileCounts = useMemo(
-    () => countGenerationsByProfile(sourceFilteredItems, voiceProfiles),
-    [sourceFilteredItems, voiceProfiles],
+    () => countGenerationsByProfile(textFilteredItems, voiceProfiles),
+    [textFilteredItems, voiceProfiles],
   );
 
   const unprofiledCount = profileCounts.get("__none__") ?? 0;
 
   const items = useMemo(
-    () => filterGenerationsByProfile(sourceFilteredItems, voiceProfiles, profileFilter),
-    [sourceFilteredItems, voiceProfiles, profileFilter],
+    () => filterGenerationsByProfile(textFilteredItems, voiceProfiles, profileFilter),
+    [textFilteredItems, voiceProfiles, profileFilter],
   );
 
   const handlePickFolder = async () => {
@@ -332,7 +344,7 @@ export default function HistoryBrowseView({
 
   const displayCount =
     scope === "cursor"
-      ? cursorFeed.length
+      ? filteredCursorFeed.length
       : scope === "video"
         ? videoExportCount
         : scope === "soundboard"
@@ -357,9 +369,37 @@ export default function HistoryBrowseView({
                   : "pozycji"}
           </p>
         </div>
-        <button type="button" className="btn text-xs shrink-0" onClick={onBackToTts}>
-          ← Wróć do TTS
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {showHistoryMain && (
+            <div className="history-browse-view__search">
+              <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden className="history-browse-view__search-icon">
+                <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <input
+                type="search"
+                className="history-browse-view__search-input"
+                placeholder="Szukaj…"
+                value={textSearch}
+                onChange={(e) => setTextSearch(e.target.value)}
+                aria-label="Szukaj w historii"
+              />
+              {textSearch.trim() && (
+                <button
+                  type="button"
+                  className="history-browse-view__search-clear"
+                  onClick={() => setTextSearch("")}
+                  aria-label="Wyczyść wyszukiwanie"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          )}
+          <button type="button" className="btn text-xs shrink-0" onClick={onBackToTts}>
+            ← Wróć do TTS
+          </button>
+        </div>
       </header>
 
       <div
@@ -430,7 +470,7 @@ export default function HistoryBrowseView({
                     setProfileFilter(next);
                     saveHistoryProfileFilter(next);
                   }}
-                  totalCount={sourceFilteredItems.length}
+                  totalCount={textFilteredItems.length}
                   unprofiledCount={unprofiledCount}
                 />
               )}
@@ -459,7 +499,7 @@ export default function HistoryBrowseView({
 
               <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
                 {scope === "cursor" && (
-                  <CursorFeed items={cursorFeed} currentId={currentId} onPlay={onSelect} />
+                  <CursorFeed items={filteredCursorFeed} currentId={currentId} onPlay={onSelect} />
                 )}
 
                 {scope === "bots" && (
@@ -503,13 +543,15 @@ export default function HistoryBrowseView({
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
                     emptyMessage={
-                      scope === "session"
-                        ? "Brak generacji w historii sesji. Wygeneruj coś w zakładce TTS."
-                        : selectedTagIds.size > 0
-                          ? "Brak pozycji z wybranymi tagami."
-                          : folderFilter === "__all__"
-                            ? "Archiwum jest puste. Zapisz generacje z panelu timeline."
-                            : "Brak pozycji w tym folderze."
+                      textSearch.trim()
+                        ? `Brak wyników dla „${textSearch.trim()}”.`
+                        : scope === "session"
+                          ? "Brak generacji w historii sesji. Wygeneruj coś w zakładce TTS."
+                          : selectedTagIds.size > 0
+                            ? "Brak pozycji z wybranymi tagami."
+                            : folderFilter === "__all__"
+                              ? "Archiwum jest puste. Zapisz generacje z panelu timeline."
+                              : "Brak pozycji w tym folderze."
                     }
                   />
                 )}

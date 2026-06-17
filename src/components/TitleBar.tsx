@@ -6,6 +6,7 @@ import TitleBarAudioOutput from "./TitleBarAudioOutput";
 import TitleBarSafeModeToggle from "./TitleBarSafeModeToggle";
 import TitleBarSkinSwitcher from "./TitleBarSkinSwitcher";
 import { isTauriApp } from "../lib/tauriEnv";
+import { openGlobalSearch } from "../lib/globalSearch/events";
 import { appExit, appRestart } from "../api/tauri";
 
 type MenuId =
@@ -13,6 +14,7 @@ type MenuId =
   | "open_archive"
   | "save"
   | "save_as"
+  | "search"
   | "settings"
   | "minimax_voices"
   | "quick_setup"
@@ -46,6 +48,8 @@ const MENUS: { label: string; items: MenuEntry[] }[] = [
   {
     label: "Edycja",
     items: [
+      { id: "search", label: "Szukaj… (Ctrl+K)" },
+      { separator: true, label: "" },
       { id: "settings", label: "Ustawienia…" },
       { id: "minimax_voices", label: "Głosy Minimax…" },
       { id: "quick_setup", label: "Szybka konfiguracja…" },
@@ -60,6 +64,10 @@ const MENUS: { label: string; items: MenuEntry[] }[] = [
 ];
 
 async function runMenuAction(id: MenuId) {
+  if (id === "search") {
+    openGlobalSearch();
+    return;
+  }
   if (id === "restart") {
     await appRestart();
     return;
@@ -199,6 +207,21 @@ export default function TitleBar() {
         <img src="/favicon.svg" alt="" className="title-bar__logo" width={16} height={16} draggable={false} />
         <span className="title-bar__title">TTS Hub</span>
       </div>
+
+      <button
+        type="button"
+        className="title-bar__search"
+        onClick={() => openGlobalSearch()}
+        title="Szukaj (Ctrl+K)"
+        aria-label="Szukaj w historii, szkicach i plikach"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden className="title-bar__search-icon">
+          <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <span className="title-bar__search-label">Szukaj…</span>
+        <kbd className="title-bar__search-kbd">Ctrl+K</kbd>
+      </button>
 
       <TitleBarAudioOutput />
       <TitleBarSafeModeToggle />

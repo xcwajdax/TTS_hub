@@ -8,6 +8,8 @@ import { useGenerationsHistory } from "./hooks/useGenerationsHistory";
 import SettingsSidebar from "./components/SettingsSidebar";
 import { useTtsSettings } from "./hooks/useTtsSettings";
 import RecoveryModal from "./components/RecoveryModal";
+import GlobalSearchModal from "./components/globalSearch/GlobalSearchModal";
+import { GLOBAL_SEARCH_OPEN_EVENT } from "./lib/globalSearch/events";
 import { PlaybackProvider, usePlayback } from "./context/PlaybackContext";
 import { JobsProvider, useJobs } from "./context/JobsContext";
 import type { Generation } from "./types";
@@ -67,6 +69,7 @@ interface AppInnerProps {
   setSettingsTabState: (tab: SettingsTabId) => void;
   settingsTab: SettingsTabId;
   onStartProductTour: () => void;
+  onGoToHistoryScope: (scope: HistoryScopeTab) => void;
 }
 
 function AppInner({
@@ -81,11 +84,13 @@ function AppInner({
   setSettingsTabState,
   settingsTab,
   onStartProductTour,
+  onGoToHistoryScope,
 }: AppInnerProps) {
   const { current, playing, playNonce, select, audioRef, setEditorText, playClip } = usePlayback();
   const { onDone } = useJobs();
   useBroadcastPlaybackViz();
   const [showRecovery, setShowRecovery] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const {
     session,
@@ -163,6 +168,23 @@ function AppInner({
     },
     [clearQueue, quickHistoryItems, select, setAppViewState],
   );
+
+  useEffect(() => {
+    const open = () => setSearchOpen(true);
+    window.addEventListener(GLOBAL_SEARCH_OPEN_EVENT, open);
+    return () => window.removeEventListener(GLOBAL_SEARCH_OPEN_EVENT, open);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || e.key.toLowerCase() !== "k") return;
+      e.preventDefault();
+      setSearchOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     refresh();
@@ -724,6 +746,21 @@ function AppInner({
           }}
           onError={setError}
         />
+        <GlobalSearchModal
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          session={session}
+          archive={archive}
+          cursorFeed={cursorFeed}
+          botsFeed={botsFeed}
+          onSelectHistory={(g, play) => {
+            if (play) handlePlayGeneration(g);
+            else handleSelectGeneration(g);
+          }}
+          onGoToView={setAppViewState}
+          onGoToHistoryScope={onGoToHistoryScope}
+          onError={setError}
+        />
         {error && (
           <div
             className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
@@ -827,6 +864,10 @@ export default function App() {
                   setSettingsTabState={setSettingsTab}
                   settingsTab={settingsTab}
                   onStartProductTour={() => setOnboardingRestart((n) => n + 1)}
+                  onGoToHistoryScope={(scope) => {
+                    setAppView("history");
+                    setHistoryInitialScope(scope);
+                  }}
                 />
               </div>
               <OnboardingOrchestrator
