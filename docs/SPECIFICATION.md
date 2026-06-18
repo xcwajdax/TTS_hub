@@ -73,7 +73,14 @@ Proporcje siatki (desktop):
 - Własne ścieżki folderów **temp** i **archive**.
 - **Maks. generacji w historii sesji (temp)** — limit globalny dla poprzednich uruchomień (domyślnie 100, zakres 10–500).
 - **Szybkie skróty TTS** — globalne presety dla zaznaczonego tekstu; mogą wskazywać zapisany profil głosu.
+- **Safe Mode** — nowe joby zatrzymywane w statusie `pending_approval` do ręcznego lub HTTP-owego zatwierdzenia.
 - **Rozszerzenia** — wbudowany soundboard z 8 slotami, plikami lub generacjami z historii oraz skrótami globalnymi.
+
+### 4.6 Roleplay i czat
+
+- **Roleplay** — wielogłosowe projekty z paletą postaci, segmentami i kolejką generowania do późniejszego odsłuchu/miksu.
+- **Czat** — sesje rozmów (`chat_sessions`) i wiadomości (`chat_messages`) mogą linkować wygenerowane audio, profil głosu oraz źródło integracji.
+- **Atrybucja origin** — zewnętrzne klienty HTTP mogą oznaczać generacje wolnym `origin.kind` (np. `telegram`, `discord`, `webhook`, `cli`) i potem pobierać własną historię.
 
 ## 5. Modele TTS (domyślny zestaw)
 
@@ -99,7 +106,7 @@ Lista może być rozszerzana dynamicznie przez API Google.
 
 ## 7. Lokalne API
 
-Szczegóły: [API.md](./API.md) — port **8765**, brak auth, tylko loopback.
+Szczegóły: [API.md](./API.md) — port **8765**, brak auth, tylko loopback. Publiczny kontrakt obejmuje generowanie, historię, foldery, kolejkę jobów (`/jobs/*`), zatwierdzanie Safe Mode, sesje czatu (`/chat/*`), lokalny licznik użycia (`/usage`) i feedy dla zewnętrznych originów.
 
 ## 8. Wymagania niefunkcjonalne
 
