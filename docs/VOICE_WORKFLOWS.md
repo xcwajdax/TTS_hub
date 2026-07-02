@@ -9,7 +9,7 @@ Ten dokument opisuje bieżące przepływy głosowe po stronie aplikacji Tauri. O
 | Profile głosu | `src/components/SaveVoiceProfileFooter.tsx`, `src/components/VoiceProfilesListPanel.tsx`, `src/lib/voiceProfiles.ts` | `src-tauri/src/voice_profiles.rs`, pole `voice_profiles` w `settings.json` |
 | Skróty szybkiego TTS | `src/components/QuickHotkeysPanel.tsx`, `src/lib/voiceProfileShortcuts.ts` | `src-tauri/src/quick_hotkeys.rs`, global shortcut plugin Tauri |
 | Soundboard | `src/plugins/soundboard/SoundboardPanel.tsx`, `src/plugins/useSoundboardPlugin.ts` | `src-tauri/src/plugins/soundboard.rs`, `src-tauri/src/global_shortcuts.rs` |
-| Wyjście audio | `src/components/TitleBarAudioOutput.tsx`, `src/lib/audioOutputDevice.ts`, `src/context/PlaybackContext.tsx` | `src-tauri/src/audio_output_devices.rs`, `src-tauri/src/webview_media_permissions.rs` |
+| Wyjście audio | `src/components/StatusBarAudioOutput.tsx`, `src/lib/audioOutputDevice.ts`, `src/context/PlaybackContext.tsx` | `src-tauri/src/audio_output_devices.rs`, `src-tauri/src/webview_media_permissions.rs` |
 
 ## Profile głosu
 

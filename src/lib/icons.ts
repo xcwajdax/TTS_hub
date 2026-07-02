@@ -84,6 +84,7 @@ export type IconSlug =
   | "provider-add"
   | "provider-profiles"
   | "tab-tts"
+  | "tab-voice-profiles"
   | "tab-roleplay"
   | "tab-history"
   | "tab-minimax"
@@ -130,6 +131,7 @@ export const ICON_SRC: Record<IconSlug, string> = {
   "provider-add": providerAddUrl,
   "provider-profiles": providerProfilesUrl,
   "tab-tts": tabTtsUrl,
+  "tab-voice-profiles": providerProfilesUrl,
   "tab-roleplay": tabRoleplayUrl,
   "tab-history": tabHistoryUrl,
   "tab-minimax": tabMinimaxUrl,

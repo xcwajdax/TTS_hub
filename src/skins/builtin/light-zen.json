@@ -31,5 +31,13 @@
     "color-blockquote-text": "78 72 92",
     "icon-filter": "brightness(0) saturate(100%) invert(22%) sepia(12%) saturate(1200%) hue-rotate(210deg) brightness(95%) contrast(92%)"
   },
+  "transition": {
+    "pattern": "squares",
+    "durationMs": 3200,
+    "waveSpeed": 420,
+    "falloff": 0.36,
+    "noise": 0.12,
+    "lift": 26
+  },
   "css": "light-zen.css"
 }

@@ -18,25 +18,25 @@ export default function VoiceProfilesPage({
   onSuccess,
   onProfileDeleted,
 }: Props) {
-  const { openMinimaxVoices, openVoiceboxView } = useAppView();
+  const { openVoiceProfiles } = useAppView();
 
   const handleEditProfile = (profile: TtsVoiceProfile) => {
     onSelectVoiceProfile(profile);
-    if (profile.provider === "voicebox") {
-      openVoiceboxView("tts_preset");
-      onSuccess?.(`Załadowano profil „${profile.name}" — edycja w Voice Box.`);
-      return;
-    }
-    openMinimaxVoices("profile");
-    onSuccess?.(`Załadowano profil „${profile.name}" do edycji w Głosach Minimax.`);
+    openVoiceProfiles();
+    onSuccess?.(`Załadowano profil „${profile.name}" do edycji.`);
   };
 
   return (
     <div className="flex flex-col gap-6 text-sm min-h-0">
       <SettingsPageHeader
         title="Profile głosu"
-        description="Profil głosu TTS Hub to zapisany preset syntezy: provider, model i parametry. To nie to samo co profil Voice Box na serwerze (zakładka Voice Box → Profile). Dla Minimax edytuj w Głosach Minimax; dla Voice Box — w zakładce Voice Box."
+        description="Profil głosu TTS Hub to zapisany preset syntezy: provider, model i parametry. Edytuj w zakładce Profile Głosu (między TTS a Roleplay). Profil Voice Box na serwerze to osobna zakładka Voice Box → Profile."
       />
+      <div className="flex gap-2">
+        <button type="button" className="btn-primary text-xs" onClick={() => openVoiceProfiles()}>
+          Otwórz edytor profili →
+        </button>
+      </div>
       <div className="border border-border rounded-md overflow-hidden min-h-[24rem] flex flex-col">
         <VoiceProfilesListPanel
           variant="settings"

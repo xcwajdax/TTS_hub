@@ -131,6 +131,9 @@ pub struct GenerateReq {
     /// The history and chat UI render this as a badge (avatar + name).
     #[serde(default)]
     pub voice_profile_id: Option<String>,
+    /// Optional human label for project/session context (badge in history; not the title).
+    #[serde(default)]
+    pub context_label: Option<String>,
 }
 
 /// Where a generation came from — populated by external callers (Telegram
@@ -226,12 +229,11 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
     let char_count: i64 = req.text.chars().count() as i64;
     let estimated_tokens: i64 = (char_count + 2) / 3;
 
-    let safe_mode = state
-        .settings
-        .read()
-        .map_err(|e| err(e))?
-        .safe_mode;
-    let initial_status = if safe_mode {
+    let safe_mode = settings.safe_mode;
+    let privacy_mode = settings.privacy_mode.clone();
+    let is_incognito = privacy_mode == crate::app_settings::PRIVACY_MODE_INCOGNITO;
+    let is_private = privacy_mode == crate::app_settings::PRIVACY_MODE_PRIVATE;
+    let initial_status = if safe_mode && !is_incognito {
         STATUS_PENDING_APPROVAL
     } else {
         STATUS_QUEUED
@@ -263,8 +265,16 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         prompt_tokens: None,
         output_tokens: None,
         total_tokens: None,
-        folder_id: matched_folder_id,
-        ui_color: None,
+        folder_id: if is_incognito {
+            None
+        } else {
+            matched_folder_id
+        },
+        ui_color: if is_private {
+            Some(crate::app_settings::PRIVATE_UI_COLOR.to_string())
+        } else {
+            None
+        },
         tag_ids: None,
         original_prompt: req.original_prompt.clone(),
         chat_session_id: None, // set after chat message is created below
@@ -287,7 +297,26 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         // (one-off TTS, legacy callers, external messengers that don't know
         // about voice profiles).
         voice_profile_id: req.voice_profile_id.clone(),
+        context_label: req
+            .context_label
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        is_private,
     };
+
+    if is_incognito {
+        state.ephemeral.insert(gen.clone());
+        if initial_status == STATUS_QUEUED {
+            let queue = state
+                .job_queue()
+                .ok_or_else(|| "job queue not initialized".to_string())?;
+            queue.enqueue(id.clone()).map_err(err)?;
+        } else {
+            emit_pending_approval(state, &gen);
+        }
+        return Ok(gen);
+    }
 
     // === chat-window extension (2026-06-06) ===
     // If chat_session_id is provided, auto-create the session if it doesn't
@@ -376,6 +405,12 @@ fn emit_safe_mode_changed(state: &AppArc, enabled: bool) {
     }
 }
 
+fn emit_privacy_mode_changed(state: &AppArc, mode: &str) {
+    if let Some(app) = state.app_handle.get() {
+        let _ = app.emit("privacy_mode:changed", mode);
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct BulkApprovalResult {
     pub approved: usize,
@@ -456,6 +491,54 @@ pub fn set_safe_mode(enabled: bool, state: State<'_, AppArc>) -> Result<bool, St
     state.persist_settings().map_err(err)?;
     emit_safe_mode_changed(state.inner(), enabled);
     Ok(enabled)
+}
+
+#[tauri::command]
+pub fn set_privacy_mode(mode: String, state: State<'_, AppArc>) -> Result<String, String> {
+    let prev = {
+        let mut settings = state.settings.write().map_err(err)?;
+        let prev = settings.privacy_mode.clone();
+        settings.privacy_mode = mode;
+        settings.normalize();
+        let next = settings.privacy_mode.clone();
+        (prev, next)
+    };
+    if prev.0 == crate::app_settings::PRIVACY_MODE_INCOGNITO
+        && prev.1 != crate::app_settings::PRIVACY_MODE_INCOGNITO
+    {
+        let _ = state.inner().purge_ephemeral_generations();
+    }
+    state.persist_settings().map_err(err)?;
+    emit_privacy_mode_changed(state.inner(), &prev.1);
+    Ok(prev.1)
+}
+
+#[tauri::command]
+pub fn cycle_privacy_mode(state: State<'_, AppArc>) -> Result<String, String> {
+    let (prev, next) = {
+        let mut settings = state.settings.write().map_err(err)?;
+        let prev = settings.privacy_mode.clone();
+        let next = match settings.privacy_mode.as_str() {
+            crate::app_settings::PRIVACY_MODE_PRIVATE => {
+                crate::app_settings::PRIVACY_MODE_INCOGNITO.to_string()
+            }
+            crate::app_settings::PRIVACY_MODE_INCOGNITO => {
+                crate::app_settings::PRIVACY_MODE_NORMAL.to_string()
+            }
+            _ => crate::app_settings::PRIVACY_MODE_PRIVATE.to_string(),
+        };
+        settings.privacy_mode = next.clone();
+        settings.normalize();
+        (prev, settings.privacy_mode.clone())
+    };
+    if prev == crate::app_settings::PRIVACY_MODE_INCOGNITO
+        && next != crate::app_settings::PRIVACY_MODE_INCOGNITO
+    {
+        let _ = state.inner().purge_ephemeral_generations();
+    }
+    state.persist_settings().map_err(err)?;
+    emit_privacy_mode_changed(state.inner(), &next);
+    Ok(next)
 }
 
 #[tauri::command]
@@ -565,26 +648,39 @@ pub fn list_jobs(scope: String, state: State<'_, AppArc>) -> Result<Vec<Generati
         ],
         _ => return Err("invalid scope".into()),
     };
-    state.db.list_by_statuses(statuses).map_err(err)
+    let mut db_rows = state.db.list_by_statuses(statuses).map_err(err)?;
+    let mut ephemeral_rows = state.ephemeral.list_by_statuses(statuses);
+    db_rows.append(&mut ephemeral_rows);
+    Ok(db_rows)
 }
 
 #[tauri::command]
 pub fn cancel_job(id: String, state: State<'_, AppArc>) -> Result<(), String> {
-    let row = state
-        .db
-        .get(&id)
-        .map_err(err)?
-        .ok_or_else(|| "not found".to_string())?;
+    let ephemeral = state.is_ephemeral(&id);
+    let row = if ephemeral {
+        state.ephemeral.get(&id)
+    } else {
+        state.db.get(&id).map_err(err)?
+    }
+    .ok_or_else(|| "not found".to_string())?;
     match row.status.as_str() {
         "queued" => {
-            // Worker will pick it up and immediately mark cancelled.
             if let Some(q) = state.job_queue() {
                 q.request_cancel(&id);
             }
-            state
-                .db
-                .update_status(&id, STATUS_CANCELLED, None)
-                .map_err(err)?;
+            if ephemeral {
+                state.ephemeral.update_status(&id, STATUS_CANCELLED, None);
+                if let Some(g) = state.ephemeral.remove(&id) {
+                    if !g.file_path.is_empty() {
+                        let _ = std::fs::remove_file(&g.file_path);
+                    }
+                }
+            } else {
+                state
+                    .db
+                    .update_status(&id, STATUS_CANCELLED, None)
+                    .map_err(err)?;
+            }
             Ok(())
         }
         "running" => {
@@ -1283,11 +1379,7 @@ pub fn export_generation_mp4_to_path(
     template_id: Option<String>,
     state: State<'_, AppArc>,
 ) -> Result<(), String> {
-    let g = state
-        .db
-        .get(&id)
-        .map_err(err)?
-        .ok_or_else(|| "not found".to_string())?;
+    let g = resolve_generation_or_err(state.inner(), &id)?;
     let src = resolve_share_mp4_path(&state, &g, None, template_id)?;
     let dest = PathBuf::from(&dest_path);
     if src == dest {
@@ -1300,6 +1392,32 @@ pub fn export_generation_mp4_to_path(
     Ok(())
 }
 
+fn resolve_generation_or_err(state: &AppArc, id: &str) -> Result<Generation, String> {
+    state
+        .resolve_generation(id)
+        .map_err(err)?
+        .ok_or_else(|| "not found".to_string())
+}
+
+/// For private generations, copy to a clearly named temp file before sharing via clipboard.
+fn clipboard_share_path(state: &AppArc, src: &Path, gen: &Generation) -> Result<PathBuf, String> {
+    if !gen.is_private {
+        return Ok(src.to_path_buf());
+    }
+    let paths = read_paths(state)?;
+    let share_dir = paths.temp.join("clipboard_share");
+    std::fs::create_dir_all(&share_dir).map_err(err)?;
+    let stem = src
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("plik");
+    let dst = share_dir.join(format!("PRYWATNE_{stem}"));
+    if dst != src {
+        let _ = std::fs::copy(src, &dst).map_err(err)?;
+    }
+    Ok(dst)
+}
+
 #[tauri::command]
 pub async fn copy_generation_mp4_to_clipboard(
     id: String,
@@ -1309,11 +1427,7 @@ pub async fn copy_generation_mp4_to_clipboard(
 ) -> Result<(), String> {
     use crate::video_export::Mp4ExportProgress;
 
-    let g = state
-        .db
-        .get(&id)
-        .map_err(err)?
-        .ok_or_else(|| "not found".to_string())?;
+    let g = resolve_generation_or_err(state.inner(), &id)?;
 
     let _ = app.emit(
         "mp4-export-progress",
@@ -1339,18 +1453,20 @@ pub async fn copy_generation_mp4_to_clipboard(
     .await
     .map_err(|e| format!("{e}"))??;
 
+    let clip_path = clipboard_share_path(state.inner(), &path, &g)?;
     let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("schowek: {e}"))?;
     clipboard
         .set()
-        .file_list(&[path.as_path()])
+        .file_list(&[clip_path.as_path()])
         .map_err(|e| format!("kopiowanie do schowka: {e}"))?;
 
+    let is_ephemeral = state.is_ephemeral(&id);
     let auto_archive = state
         .settings
         .read()
         .map(|s| s.auto_archive_mp4_on_clipboard)
         .unwrap_or(true);
-    if auto_archive {
+    if auto_archive && !is_ephemeral {
         let tpl = resolve_template_id(state.inner(), template_id)?;
         let _ = maybe_archive_mp4(state.inner(), &g, &path, &tpl, "clipboard");
     }
@@ -1586,6 +1702,7 @@ fn maybe_archive_mp4(
         &hash,
         source,
         title,
+        gen.is_private,
     );
     insert_archived_export(state, &record)
 }
@@ -1909,20 +2026,17 @@ pub fn copy_generation_audio_to_clipboard(
     format: Option<String>,
     state: State<'_, AppArc>,
 ) -> Result<(), String> {
-    let g = state
-        .db
-        .get(&id)
-        .map_err(err)?
-        .ok_or_else(|| "not found".to_string())?;
+    let g = resolve_generation_or_err(state.inner(), &id)?;
     let target = format
         .as_deref()
         .and_then(AudioFormat::from_str)
         .unwrap_or(AudioFormat::Mp3);
     let path = resolve_clipboard_audio_path(&state, &g, target)?;
+    let clip_path = clipboard_share_path(state.inner(), &path, &g)?;
     let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("schowek: {e}"))?;
     clipboard
         .set()
-        .file_list(&[path.as_path()])
+        .file_list(&[clip_path.as_path()])
         .map_err(|e| format!("kopiowanie do schowka: {e}"))?;
     Ok(())
 }
@@ -3126,6 +3240,37 @@ pub async fn pick_voice_pack_export_path(
         vec![("Voice Pack TTS Hub", vec!["ttshub-voice"])],
     )
     .await
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportFastWorkPortableReq {
+    pub profile_id: String,
+    pub dest_parent_dir: String,
+    #[serde(default)]
+    pub shortcut: Option<String>,
+}
+
+#[tauri::command]
+pub fn export_fast_work_portable(
+    req: ExportFastWorkPortableReq,
+    app: AppHandle,
+    state: State<'_, AppArc>,
+) -> Result<crate::fast_work_export::FastWorkExportResult, String> {
+    crate::fast_work_export::export_portable(
+        &app,
+        state.inner(),
+        req.profile_id.trim(),
+        PathBuf::from(req.dest_parent_dir.trim()).as_path(),
+        req.shortcut,
+        &state.env_minimax_key,
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+pub async fn pick_fast_work_export_folder(app: AppHandle) -> Result<Option<String>, String> {
+    pick_folder_dialog(&app).await
 }
 
 #[tauri::command]

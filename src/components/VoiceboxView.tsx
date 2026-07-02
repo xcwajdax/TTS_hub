@@ -5,9 +5,10 @@ import type { TtsProviderId, TtsVoiceProfile } from "../appSettings";
 import { voiceboxModelForProfile, hubProfileMatchesVoiceboxServer } from "../lib/voiceboxProfile";
 import { addVoiceboxServerProfileToHubList } from "../lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
+import { getMockAppSettingsView } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import { useAppView } from "../context/AppViewContext";
-import Settings, { type SettingsState } from "./Settings";
-import SaveVoiceProfileFooter from "./SaveVoiceProfileFooter";
+import type { SettingsState } from "./Settings";
 import type { TtsModelInfo } from "../ttsModels";
 import {
   DEFAULT_VOICEBOX_SECTION,
@@ -19,7 +20,6 @@ import VoiceboxHistorySection from "./voicebox/VoiceboxHistorySection";
 interface Props {
   initialSection?: VoiceboxSection;
   settings: SettingsState;
-  voices: string[];
   voiceboxProfiles: VoiceBoxProfile[];
   voiceboxModels: TtsModelInfo[];
   voiceboxHealth: VoiceBoxHealth | null;
@@ -27,14 +27,12 @@ interface Props {
   onRefreshVoicebox: () => Promise<void>;
   onError: (m: string) => void;
   onSuccess?: (m: string) => void;
-  onProfileSaved?: (m: string) => void;
   enabledProviders?: TtsProviderId[];
 }
 
 export default function VoiceboxView({
   initialSection = DEFAULT_VOICEBOX_SECTION,
   settings,
-  voices,
   voiceboxProfiles,
   voiceboxModels,
   voiceboxHealth,
@@ -42,7 +40,6 @@ export default function VoiceboxView({
   onRefreshVoicebox,
   onError,
   onSuccess,
-  onProfileSaved,
   enabledProviders,
 }: Props) {
   const { onBackToTts } = useAppView();
@@ -52,6 +49,10 @@ export default function VoiceboxView({
   const isEnabled = !enabledProviders || enabledProviders.includes("voicebox");
 
   const refreshHubProfiles = () => {
+    if (isMockUiMode()) {
+      setHubProfiles(getMockAppSettingsView().voice_profiles ?? []);
+      return;
+    }
     void getAppSettings()
       .then((view) => setHubProfiles(view.voice_profiles ?? []))
       .catch(() => setHubProfiles([]));
@@ -140,7 +141,6 @@ export default function VoiceboxView({
           label={`Profile (${voiceboxProfiles.length})`}
         />
         <SubTab active={section === "history"} onClick={() => setSection("history")} label="Historia serwera" />
-        <SubTab active={section === "tts_preset"} onClick={() => setSection("tts_preset")} label="Preset TTS" />
       </nav>
 
       <main className="flex-1 min-h-0 min-w-0 overflow-y-auto">
@@ -184,34 +184,6 @@ export default function VoiceboxView({
             </>
           )}
 
-          {section === "tts_preset" && (
-            <>
-              <header className="flex flex-col gap-1">
-                <h2 className="text-lg font-semibold">Preset TTS (Voice Box)</h2>
-                <p className="text-xs text-muted">
-                  Szybki test syntezy z wybranym profilem Voice Box. Zapisz jako profil głosu TTS
-                  Hub ze skrótem klawiszowym.
-                </p>
-              </header>
-              <div className="border border-border rounded-md overflow-hidden bg-panel2/20">
-                <Settings
-                  state={{ ...settings, provider: "voicebox" }}
-                  voices={voices}
-                  voiceboxProfiles={voiceboxProfiles}
-                  voiceboxModels={voiceboxModels}
-                  voiceboxHealth={voiceboxHealth}
-                  enabledProviders={enabledProviders}
-                  onChange={onSettingsChange}
-                  onError={onError}
-                />
-                <SaveVoiceProfileFooter
-                  settings={{ ...settings, provider: "voicebox" }}
-                  onError={onError}
-                  onSuccess={onProfileSaved ?? onSuccess}
-                />
-              </div>
-            </>
-          )}
         </div>
       </main>
     </div>

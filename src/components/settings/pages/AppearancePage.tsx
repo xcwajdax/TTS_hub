@@ -16,7 +16,7 @@ export default function AppearancePage({ view, update, onError }: Props) {
         <h2 className="text-lg font-semibold">Wygląd</h2>
         <p className="text-xs text-muted">
           Skórka interfejsu i styl dolnego paska z falą dźwiękową. Szybki przełącznik skórek
-          znajdziesz też w pasku tytułu okna.
+          jest w dolnej stopce okna (prostokąty + ikona palety).
         </p>
       </header>
 

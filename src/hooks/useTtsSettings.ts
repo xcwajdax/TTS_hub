@@ -22,6 +22,11 @@ import { effectiveMinimaxEnabledLanguages } from "../lib/minimaxLanguages";
 import { DEFAULT_MINIMAX_LANGUAGE } from "../appSettings";
 import { defaultMinimaxSynthesisOptions } from "../lib/minimaxOptions";
 import type { SettingsState } from "../components/Settings";
+import {
+  MOCK_GOOGLE_VOICES,
+  MOCK_VOICEBOX_PROFILES,
+} from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import { isTauriApp } from "../lib/tauriEnv";
 import { notifyAvatarsChanged } from "../lib/avatars";
 import { DEFAULT_TTS_MODEL, type TtsModelInfo } from "../ttsModels";
@@ -62,6 +67,23 @@ export function useTtsSettings(onError: (message: string) => void) {
   const [minimaxStatus, setMinimaxStatus] = useState<MinimaxHealth | null>(null);
 
   const refreshVoicebox = useCallback(async () => {
+    if (isMockUiMode()) {
+      setVoiceboxProfiles(MOCK_VOICEBOX_PROFILES);
+      setVoiceboxModels([{ id: "voicebox:chatterbox", display_name: "Chatterbox (mock)" }]);
+      setVoiceboxStatus({
+        status: "ok",
+        model_loaded: true,
+        model_downloaded: true,
+        model_size: "mock",
+        gpu_available: false,
+        gpu_type: null,
+        vram_used_mb: null,
+        backend_type: "mock",
+        backend_variant: null,
+        gpu_compatibility_warning: null,
+      });
+      return;
+    }
     if (!isTauriApp()) return;
     const [profiles, models, health] = await Promise.all([
       listVoiceboxProfiles().catch(() => [] as VoiceBoxProfile[]),
@@ -90,6 +112,26 @@ export function useTtsSettings(onError: (message: string) => void) {
   }, []);
 
   useEffect(() => {
+    if (isMockUiMode()) {
+      setVoices(MOCK_GOOGLE_VOICES);
+      setMinimaxModels([{ id: "speech-2.8-hd", display_name: "Speech 2.8 HD (mock)" }]);
+      setMinimaxPresets([
+        {
+          voice_id: "Polish_female_1_sample1",
+          display_name: "Polish Female 1 (mock)",
+          language: "pl",
+        },
+      ]);
+      setMinimaxCloned([]);
+      setMinimaxLanguages([
+        { code: "pl", language_boost: "pl", display_name: "Polski" },
+        { code: "en", language_boost: "en", display_name: "English" },
+      ]);
+      setMinimaxEnabledLangs(["pl", "en"]);
+      setMinimaxStatus({ configured: true, ok: true, message: "Mock" });
+      void refreshVoicebox();
+      return;
+    }
     if (!isTauriApp()) return;
     listVoices().then(setVoices).catch((e) => onError(String(e)));
     void refreshVoicebox();

@@ -1,0 +1,72 @@
+---
+description: TTS Hub — po udanej implementacji canvas tematyczny + wspólny overview z roadmapą
+alwaysApply: true
+---
+
+# Canvas po implementacji
+
+Po **każdej udanej implementacji** (feature, bugfix, refaktor z weryfikacją) wykonaj **dwa** kroki dokumentacji w Cursor Canvas:
+
+1. **Canvas tematyczny** — nowy lub zaktualizowany plik dla danego tematu.
+2. **Wspólny canvas** — zawsze uaktualnij `tts-hub-overview.canvas.tsx` (roadmapa + indeks).
+
+## Kiedy obowiązuje
+
+- **Tak:** zmiany w kodzie zakończone sukcesem (testy, typecheck lub ręczna weryfikacja).
+- **Nie:** sama odpowiedź na pytanie, plan bez kodu, nieudana próba, drobna literówka bez wpływu na architekturę.
+
+## Gdzie zapisywać
+
+Katalog IDE (jedyny poprawny):
+
+`%USERPROFILE%\.cursor\projects\c-Users-user-Documents-VIBELIFE2026-TTS-hub\canvases\`
+
+| Plik | Rola |
+|------|------|
+| `tts-hub-overview.canvas.tsx` | **Wspólny hub** — architektura, roadmapa, indeks canvasów |
+| `<temat-kebab-case>.canvas.tsx` | Dokumentacja jednego tematu / feature |
+
+- **Nowa funkcja** → nowy canvas tematyczny + wpis w overview.
+- **Kontynuacja tematu** → uaktualnij ten sam canvas tematyczny + overview.
+
+Przed zapisem sprawdź `canvases/` — unikaj duplikatów nazw.
+
+## Wspólny canvas — `tts-hub-overview.canvas.tsx`
+
+Po każdej udanej implementacji **zawsze** uaktualnij ten plik:
+
+- **`UPDATED_AT`** — data ostatniej zmiany (YYYY-MM-DD).
+- **Roadmapa** — tabela faz / funkcji ze statusem: `done` · `active` · `planned`.
+  - `done` — wdrożone i zweryfikowane; przenieś tu po zamknięciu tematu.
+  - `active` — trwa praca lub częściowo wdrożone.
+  - `planned` — z `.cursor/plans/*.plan.md` lub uzgodniony backlog.
+- **Indeks canvasów** — wiersz: temat · nazwa pliku · jedna linia opisu; dodaj nowy canvas tematyczny.
+- **Statystyki / architektura** — tylko gdy implementacja to zmienia (nie przepisuj całego pliku bez potrzeby).
+
+Roadmapa to **żywy dokument** — nie duplikuj pełnej treści planów; linkuj plan lub canvas tematyczny w kolumnie „Źródło”.
+
+## Canvas tematyczny
+
+Przeczytaj skill **canvas** (`~/.cursor/skills-cursor/canvas/SKILL.md`).
+
+Zawartość (wybierz sensowne sekcje):
+
+- tytuł i kontekst (co i po co),
+- zmienione / nowe pliki,
+- przepływ lub architektura,
+- weryfikacja (komendy, ścieżki UI),
+- status i następne kroki.
+
+## W odpowiedzi w czacie
+
+Podaj linki markdown (pełna ścieżka absolutna):
+
+- do canvasa tematycznego (jeśli powstał lub się zmienił),
+- do **[tts-hub-overview](…/tts-hub-overview.canvas.tsx)** — zawsze po implementacji.
+
+Jedno zdanie o otwarciu obok czatu — tylko przy pierwszym canvasie w wątku.
+
+## Wyjątki
+
+- Użytkownik prosi **nie** tworzyć canvasa.
+- Zmiana tylko w `.cursor/rules/` — overview opcjonalny, chyba że dotyczy roadmapy samej reguły canvas.

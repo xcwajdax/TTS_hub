@@ -35,10 +35,20 @@ Zastąp placeholdery z `capture-promo-assets.mjs` prawdziwymi nagraniami OBS (10
 
 ## Regeneracja placeholderów (dev preview)
 
+Tryb **mockup** wypełnia UI przykładowymi danymi bez backendu Tauri:
+
+```text
+http://127.0.0.1:1420?mock=1
+```
+
+lub `npm run dev:mock` (zmienna `VITE_MOCK_UI=1`).
+
 ```powershell
 npm run dev
 node docs/promo/capture/capture-promo-assets.mjs
 ```
+
+Skrypt capture domyślnie otwiera `?mock=1`. Baner mockup jest usuwany przed screenshotem.
 
 ## GIF hotkey (README)
 

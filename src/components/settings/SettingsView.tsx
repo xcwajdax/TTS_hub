@@ -4,7 +4,11 @@ import { syncSaveFormatFromSettings } from "../../audioFormats";
 import { normalizeTimelineViewMode } from "../../lib/timelineView";
 import { useTimelineView } from "../../context/TimelineViewContext";
 import SettingsRail from "./SettingsRail";
-import type { SettingsTabId } from "./settingsTabs";
+import SettingsHub from "./SettingsHub";
+import {
+  SETTINGS_OVERVIEW_TAB,
+  type SettingsViewTab,
+} from "./settingsTabs";
 import { useSettingsView } from "./useSettingsView";
 import type { TtsVoiceProfile } from "../../appSettings";
 import GeneralPage from "./pages/GeneralPage";
@@ -28,7 +32,7 @@ interface Props {
   onSuccess?: (m: string) => void;
   onOrganizationChanged?: () => void;
   onLocalDataCleared?: () => void;
-  initialTab?: SettingsTabId;
+  initialTab?: SettingsViewTab;
   activeVoiceProfileId?: string | null;
   onSelectVoiceProfile?: (profile: TtsVoiceProfile) => void;
   onVoiceProfileDeleted?: (profileId: string) => void;
@@ -46,7 +50,7 @@ export default function SettingsView({
 }: Props) {
   const settings = useSettingsView({ onError, onSuccess });
   const { onBackToTts } = useAppView();
-  const [tab, setTab] = useState<SettingsTabId>(initialTab ?? "general");
+  const [tab, setTab] = useState<SettingsViewTab>(initialTab ?? SETTINGS_OVERVIEW_TAB);
   const { setMode: syncTimelineView } = useTimelineView();
 
   useEffect(() => {
@@ -89,7 +93,21 @@ export default function SettingsView({
       <div className="flex-1 min-h-0 flex">
         <SettingsRail active={tab} onSelect={setTab} />
         <main className="flex-1 min-h-0 min-w-0 overflow-y-auto">
-          <div className={`mx-auto px-6 py-5 ${tab === "video" ? "max-w-6xl" : "max-w-3xl"}`}>
+          <div
+            className={`mx-auto px-6 py-5 ${
+              tab === SETTINGS_OVERVIEW_TAB
+                ? "max-w-6xl"
+                : tab === "video"
+                  ? "max-w-6xl"
+                  : "max-w-3xl"
+            }`}
+          >
+            {tab === SETTINGS_OVERVIEW_TAB ? (
+              <SettingsHub
+                onSelect={setTab}
+                showVoiceProfiles={!!onSelectVoiceProfile}
+              />
+            ) : null}
             {tab === "general" && (
               <GeneralPage
                 view={settings.view}

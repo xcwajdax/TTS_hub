@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-fast-work
 dist-ssr
 *.local
 .vscode
@@ -7,6 +8,8 @@ dist-ssr
 src-tauri/target
 target/
 src-tauri/gen
+src-tauri/resources/fast-work/*
+!src-tauri/resources/fast-work/README.md
 src-tauri/binaries/voicebox-server-*
 !src-tauri/binaries/README.md
 voicebox-backend/.venv

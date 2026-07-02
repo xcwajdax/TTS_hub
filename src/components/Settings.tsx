@@ -28,9 +28,14 @@ import type { SpeakerConfig, TtsModel, TtsProvider } from "../types";
 import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
 import VoiceSamplePlayButton from "./VoiceSamplePlayButton";
 import VoiceSamples from "./VoiceSamples";
-import { PROVIDER_TABS } from "../lib/providerSwitch";
+import { PROVIDER_TABS, switchProviderState } from "../lib/providerSwitch";
 import type { MinimaxSynthesisOptions } from "../lib/minimaxOptions";
+import { type ReactNode } from "react";
 import MinimaxAdvancedOptions from "./MinimaxAdvancedOptions";
+import ProfileFieldShell from "./voiceProfiles/fields/ProfileFieldShell";
+import ProfileSliderField from "./voiceProfiles/fields/ProfileSliderField";
+import VpFormItem from "./voiceProfiles/VpFormItem";
+import Icon from "./Icon";
 
 import { voiceboxModelForProfile } from "../lib/voiceboxProfile";
 
@@ -59,6 +64,12 @@ interface Props {
   enabledProviders?: TtsProviderId[];
   onChange: (s: SettingsState) => void;
   onError?: (message: string) => void;
+  /** Show provider card picker (voice profiles editor). */
+  showProviderPicker?: boolean;
+  /** When false, hide Minimax advanced block. */
+  advancedMode?: boolean;
+  /** Scrub numbers + field tooltips for voice profiles editor. */
+  enhancedFields?: boolean;
 }
 
 const FALLBACK_VOICEBOX_MODELS: TtsModelInfo[] = [
@@ -76,6 +87,9 @@ export default function Settings({
   enabledProviders,
   onChange,
   onError,
+  showProviderPicker = false,
+  advancedMode = true,
+  enhancedFields = false,
 }: Props) {
   const providerOptions = PROVIDER_TABS.filter((o) =>
     isProviderEnabled(enabledProviders, o.id),
@@ -253,40 +267,92 @@ export default function Settings({
     }
   };
 
+  const vp = enhancedFields;
+  const fc = (wide?: boolean) => (vp ? `vp-field${wide ? " vp-field--wide" : ""}` : "field");
+  const lc = vp ? "vp-form__label" : "flex flex-col gap-1 text-xs text-muted";
+  const hint = vp ? "vp-hint" : "text-[10px] text-muted/80 truncate";
+  const FW = ({ full, children }: { full?: boolean; children: ReactNode }) =>
+    vp ? <VpFormItem full={full}>{children}</VpFormItem> : <>{children}</>;
+
   return (
-    <div className="grid grid-cols-1 gap-3 p-3 bg-panel/40">
-      <label className="flex flex-col gap-1 text-xs text-muted">
-        Tryb
-        <button
-          className={`field text-left ${state.multiSpeaker ? "text-accent2" : ""}`}
-          onClick={() => update("multiSpeaker", state.provider === "google" ? !state.multiSpeaker : false)}
-          type="button"
-          disabled={state.provider !== "google"}
-        >
-          {state.multiSpeaker ? "Multi-speaker" : "Single-speaker"}
-        </button>
-      </label>
+    <div className={vp ? "vp-form" : "grid grid-cols-1 gap-3 p-3 bg-panel/40"}>
+      {showProviderPicker && (
+        <FW full>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-muted">Provider</span>
+            <div className="vp-provider-row" role="group" aria-label="Provider TTS">
+              {visibleProviders.map((p) => {
+                const active = state.provider === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="vp-provider-btn"
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (p.id === state.provider) return;
+                      onChange(
+                        switchProviderState(state, p.id, {
+                          voices,
+                          voiceboxModels,
+                          voiceboxProfiles,
+                          minimaxModels,
+                          minimaxLanguages,
+                          minimaxPresets,
+                          minimaxCloned,
+                          models,
+                          enabledLangs: minimaxEnabledLangs,
+                        }),
+                      );
+                    }}
+                  >
+                    <Icon name={p.icon} size={14} className="shrink-0 opacity-90" />
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </FW>
+      )}
 
-      <label className="flex flex-col gap-1 text-xs text-muted">
-        Model TTS
-        <select className="field" value={state.model} onChange={(e) => update("model", e.target.value)}>
-          {activeModels.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.display_name} — {m.id}
-            </option>
-          ))}
-        </select>
-        {selected && (
-          <span className="text-[10px] text-muted/80 truncate" title={selected.id}>
-            API id: {selected.id}
-          </span>
-        )}
-      </label>
+      <FW>
+        <label className={lc}>
+          Tryb
+          <button
+            className={`${fc()} text-left ${state.multiSpeaker ? "text-accent2" : ""}`}
+            onClick={() => update("multiSpeaker", state.provider === "google" ? !state.multiSpeaker : false)}
+            type="button"
+            disabled={state.provider !== "google"}
+          >
+            {state.multiSpeaker ? "Multi-speaker" : "Single-speaker"}
+          </button>
+        </label>
+      </FW>
 
-      <label className="flex flex-col gap-1 text-xs text-muted">
+      <FW>
+        <label className={lc}>
+          Model TTS
+          <select className={fc()} value={state.model} onChange={(e) => update("model", e.target.value)}>
+            {activeModels.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.display_name} — {m.id}
+              </option>
+            ))}
+          </select>
+          {selected && (
+            <span className={hint} title={selected.id}>
+              API id: {selected.id}
+            </span>
+          )}
+        </label>
+      </FW>
+
+      <FW full={vp && state.provider === "google"}>
+        <label className={lc}>
         {state.provider === "voicebox" ? "Profil" : state.provider === "minimax" ? "Głos (voice_id)" : "Glos"}
         {state.provider === "voicebox" ? (
-          <select className="field" value={state.voiceboxProfileId} onChange={(e) => updateVoiceboxProfile(e.target.value)}>
+          <select className={fc()} value={state.voiceboxProfileId} onChange={(e) => updateVoiceboxProfile(e.target.value)}>
             {voiceboxProfiles.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} · {p.language}
@@ -295,7 +361,7 @@ export default function Settings({
           </select>
         ) : state.provider === "minimax" ? (
           <div className="flex flex-col gap-2">
-            <select className="field" value={state.voice} onChange={(e) => update("voice", e.target.value)}>
+            <select className={fc(true)} value={state.voice} onChange={(e) => update("voice", e.target.value)}>
               {minimaxVoiceOptions.length === 0 ? (
                 <option value={state.voice}>{state.voice}</option>
               ) : (
@@ -309,7 +375,7 @@ export default function Settings({
             <div className="flex flex-col gap-1">
               <button
                 type="button"
-                className="btn text-xs w-full"
+                className={`${vp ? "vp-provider-btn" : "btn text-xs"} max-w-[var(--vp-field-max,100%)]`}
                 disabled={syncingVoices || !minimaxStatus?.configured}
                 onClick={() => void runSyncMinimaxVoices()}
               >
@@ -327,12 +393,12 @@ export default function Settings({
           />
         )}
         {state.provider === "voicebox" && (
-          <span className="text-[10px] text-muted/80 truncate" title={selectedVoiceboxProfile?.id}>
+          <span className={hint} title={selectedVoiceboxProfile?.id}>
             {selectedVoiceboxProfile ? selectedVoiceboxProfile.id : "Brak profili Voice Box"}
           </span>
         )}
         {state.provider === "minimax" && (
-          <span className="text-[10px] text-muted/80 truncate" title={minimaxStatusLabel}>
+          <span className={hint} title={minimaxStatusLabel}>
             {minimaxStatusLabel}
             {minimaxSyncedAt
               ? ` · zsynchronizowano ${new Date(minimaxSyncedAt * 1000).toLocaleString("pl-PL")}`
@@ -340,19 +406,23 @@ export default function Settings({
           </span>
         )}
       </label>
+      </FW>
 
       {state.provider === "voicebox" && (
-        <label className="flex flex-col gap-1 text-xs text-muted">
+        <FW>
+        <label className={lc}>
           Jezyk
-          <input className="field" value={state.language} onChange={(e) => update("language", e.target.value)} placeholder="pl" />
-          <span className="text-[10px] text-muted/80 truncate" title={voiceboxStatusLabel}>
+          <input className={fc()} value={state.language} onChange={(e) => update("language", e.target.value)} placeholder="pl" />
+          <span className={hint} title={voiceboxStatusLabel}>
             {voiceboxStatusLabel}
           </span>
         </label>
+        </FW>
       )}
 
       {state.provider === "voicebox" && selectedVoiceboxProfile?.personality ? (
-        <label className="flex items-center gap-2 text-xs text-muted sm:col-span-2">
+        <FW full>
+        <label className={`${lc} !flex-row items-center gap-2`}>
           <input
             type="checkbox"
             checked={state.voiceboxPersonalityEnabled}
@@ -360,13 +430,15 @@ export default function Settings({
           />
           Przepisz tekst w charakterze profilu (personality)
         </label>
+        </FW>
       ) : null}
 
       {state.provider === "minimax" && (
-        <label className="flex flex-col gap-1 text-xs text-muted">
+        <FW>
+        <label className={lc}>
           Język
           <select
-            className="field"
+            className={fc()}
             value={state.language || DEFAULT_MINIMAX_LANGUAGE}
             onChange={(e) => updateMinimaxLanguage(e.target.value)}
           >
@@ -377,51 +449,112 @@ export default function Settings({
             ))}
           </select>
         </label>
+        </FW>
       )}
 
       {state.provider === "minimax" && (
         <>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            Speed
-            <input
-              className="field"
-              type="number"
-              min={0.5}
-              max={2}
-              step={0.1}
-              value={state.minimaxSpeed}
-              onChange={(e) => update("minimaxSpeed", Number(e.target.value) || 1)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            Vol
-            <input
-              className="field"
-              type="number"
-              min={0}
-              max={10}
-              step={0.1}
-              value={state.minimaxVol}
-              onChange={(e) => update("minimaxVol", Number(e.target.value) || 1)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            Pitch
-            <input
-              className="field"
-              type="number"
-              min={-12}
-              max={12}
-              step={1}
-              value={state.minimaxPitch}
-              onChange={(e) => update("minimaxPitch", Number(e.target.value) || 0)}
-            />
-          </label>
+          {enhancedFields ? (
+            <>
+              <FW>
+              <ProfileFieldShell
+                label="Speed"
+                tooltip="Tempo mowy MiniMax."
+                defaultHint="1.0"
+                voiceProfileUi
+                onContextMenuReset={() => update("minimaxSpeed", 1)}
+              >
+                <ProfileSliderField
+                  value={state.minimaxSpeed}
+                  min={0.5}
+                  max={2}
+                  step={0.1}
+                  onChange={(v) => update("minimaxSpeed", v)}
+                />
+              </ProfileFieldShell>
+              </FW>
+              <FW>
+              <ProfileFieldShell
+                label="Vol"
+                tooltip="Głośność wyjściowa."
+                defaultHint="1.0"
+                voiceProfileUi
+                onContextMenuReset={() => update("minimaxVol", 1)}
+              >
+                <ProfileSliderField
+                  value={state.minimaxVol}
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  onChange={(v) => update("minimaxVol", v)}
+                />
+              </ProfileFieldShell>
+              </FW>
+              <FW>
+              <ProfileFieldShell
+                label="Pitch"
+                tooltip="Transpozycja głosu w półtonach."
+                defaultHint="0"
+                voiceProfileUi
+                onContextMenuReset={() => update("minimaxPitch", 0)}
+              >
+                <ProfileSliderField
+                  value={state.minimaxPitch}
+                  min={-12}
+                  max={12}
+                  step={1}
+                  onChange={(v) => update("minimaxPitch", v)}
+                />
+              </ProfileFieldShell>
+              </FW>
+            </>
+          ) : (
+            <>
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                Speed
+                <input
+                  className="field"
+                  type="number"
+                  min={0.5}
+                  max={2}
+                  step={0.1}
+                  value={state.minimaxSpeed}
+                  onChange={(e) => update("minimaxSpeed", Number(e.target.value) || 1)}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                Vol
+                <input
+                  className="field"
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  value={state.minimaxVol}
+                  onChange={(e) => update("minimaxVol", Number(e.target.value) || 1)}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                Pitch
+                <input
+                  className="field"
+                  type="number"
+                  min={-12}
+                  max={12}
+                  step={1}
+                  value={state.minimaxPitch}
+                  onChange={(e) => update("minimaxPitch", Number(e.target.value) || 0)}
+                />
+              </label>
+            </>
+          )}
           {clonedVoiceIds.has(state.voice) && (
+            <FW full>
             <MinimaxCloneVolumeControl
               voiceId={state.voice}
               presetVol={state.minimaxVol}
               cloned={minimaxCloned}
+              voiceProfileUi={enhancedFields}
               onClonedUpdated={(v) =>
                 setMinimaxCloned((prev) =>
                   prev.map((c) => (c.voice_id === v.voice_id ? v : c)),
@@ -429,48 +562,60 @@ export default function Settings({
               }
               onError={onError}
             />
+            </FW>
           )}
-          <MinimaxAdvancedOptions
-            model={state.model}
-            options={state.minimaxOptions}
-            onChange={(minimaxOptions) => onChange({ ...state, minimaxOptions })}
-          />
+          {advancedMode ? (
+            <FW full>
+            <MinimaxAdvancedOptions
+              model={state.model}
+              options={state.minimaxOptions}
+              onChange={(minimaxOptions) => onChange({ ...state, minimaxOptions })}
+              compact
+              voiceProfileUi={enhancedFields}
+            />
+            </FW>
+          ) : null}
         </>
       )}
 
-      <label className="flex flex-col gap-1 text-xs text-muted">
+      <FW full={vp}>
+      <label className={lc}>
         Styl (opcjonalny prompt sterujacy, np. "Powiedz to wesolo szeptem")
         <input
-          className="field"
+          className={fc(true)}
           value={state.style}
           onChange={(e) => update("style", e.target.value)}
           placeholder='np. Say in a spooky whisper: lub "Powiedz to spokojnie:"'
           disabled={state.provider === "minimax"}
         />
       </label>
+      </FW>
 
       {state.provider === "voicebox" && (
-        <div className="text-[10px] text-muted">
+        <FW full>
+        <div className={vp ? "vp-hint" : "text-[10px] text-muted"}>
           Probki Gemini sa ukryte dla Voice Box. Profile Voice Box korzystaja z probek zapisanych w lokalnym serwerze.
         </div>
+        </FW>
       )}
 
       {state.provider === "google" && state.multiSpeaker && (
-        <div className="grid grid-cols-1 gap-3">
-          <p className="text-[10px] text-muted">
+        <FW full>
+        <div className={vp ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : "grid grid-cols-1 gap-3"}>
+          <p className={`${vp ? "vp-hint col-span-full" : "text-[10px] text-muted"}`}>
             W trybie multi-speaker nazwy mówców w tekście muszą zgadzać się z polami poniżej (np. Mowca1:, Mowca2:).
           </p>
           {state.speakers.map((sp, i) => (
-            <div key={i} className="grid grid-cols-1 gap-2">
-              <label className="flex flex-col gap-1 text-xs text-muted">
+            <div key={i} className={vp ? "contents" : "grid grid-cols-1 gap-2"}>
+              <label className={lc}>
                 Nazwa mowcy {i + 1}
-                <input className="field" value={sp.speaker} onChange={(e) => updateSpeaker(i, { speaker: e.target.value })} />
+                <input className={fc()} value={sp.speaker} onChange={(e) => updateSpeaker(i, { speaker: e.target.value })} />
               </label>
-              <label className="flex flex-col gap-1 text-xs text-muted">
+              <label className={lc}>
                 Glos {i + 1}
-                <div className="flex items-stretch gap-1">
+                <div className="flex items-stretch gap-1 max-w-[var(--vp-field-max,100%)]">
                   <select
-                    className="field flex-1 min-w-0"
+                    className={`${fc()} flex-1 min-w-0`}
                     value={sp.voice}
                     onChange={(e) => updateSpeaker(i, { voice: e.target.value })}
                   >
@@ -490,6 +635,7 @@ export default function Settings({
             </div>
           ))}
         </div>
+        </FW>
       )}
     </div>
   );

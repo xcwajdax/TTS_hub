@@ -7,6 +7,8 @@ import {
   listTags,
 } from "../api/tauri";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../types";
+import { getMockHistoryState } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import { isTauriApp } from "../lib/tauriEnv";
 
 export interface GenerationsHistoryState {
@@ -31,6 +33,17 @@ export function useGenerationsHistory(onError: (e: string) => void) {
   const [interrupted, setInterrupted] = useState<Generation[]>([]);
 
   const refresh = useCallback(async () => {
+    if (isMockUiMode()) {
+      const mock = getMockHistoryState();
+      setSession(mock.session);
+      setCurrentSessionId(mock.currentSessionId);
+      setArchive(mock.archive);
+      setFolders(mock.folders);
+      setTags(mock.tags);
+      setCursorFeed(mock.cursorFeed);
+      setBotsFeed(mock.botsFeed);
+      return;
+    }
     if (!isTauriApp()) return;
     try {
       const [s, a, f, t, cursor, bots, sid] = await Promise.all([
@@ -55,6 +68,10 @@ export function useGenerationsHistory(onError: (e: string) => void) {
   }, [onError]);
 
   const refreshInterrupted = useCallback(async () => {
+    if (isMockUiMode()) {
+      setInterrupted([]);
+      return [];
+    }
     if (!isTauriApp()) return [];
     try {
       const list = await listJobs("interrupted");

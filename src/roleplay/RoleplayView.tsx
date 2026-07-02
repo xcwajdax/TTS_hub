@@ -23,6 +23,8 @@ import type {
   SaveRoleplayProjectReq,
 } from "./types";
 import { parsePalette } from "./types";
+import { getMockAppSettingsView, getMockRoleplayProject, MOCK_ROLEPLAY_PROJECTS } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 
 interface Props {
   onError: (msg: string) => void;
@@ -39,6 +41,10 @@ export default function RoleplayView({ onError, onToast }: Props) {
   const [busy, setBusy] = useState(false);
 
   const refreshProjects = useCallback(async () => {
+    if (isMockUiMode()) {
+      setProjects(MOCK_ROLEPLAY_PROJECTS);
+      return;
+    }
     try {
       setProjects(await roleplayListProjects());
     } catch (e) {
@@ -48,6 +54,10 @@ export default function RoleplayView({ onError, onToast }: Props) {
 
   useEffect(() => {
     void refreshProjects();
+    if (isMockUiMode()) {
+      setProfiles(getMockAppSettingsView().voice_profiles ?? []);
+      return;
+    }
     void getAppSettings().then((s) => setProfiles(s.voice_profiles ?? []));
   }, [refreshProjects]);
 
@@ -62,6 +72,17 @@ export default function RoleplayView({ onError, onToast }: Props) {
   );
 
   const openProject = async (id: string) => {
+    if (isMockUiMode()) {
+      const mockProject = getMockRoleplayProject(id);
+      if (!mockProject) {
+        onError("Tryb mockup — brak przykładowego projektu dla tego wpisu.");
+        return;
+      }
+      setProject(mockProject);
+      setPalette(parsePalette(mockProject.palette_json));
+      setPhase("script");
+      return;
+    }
     try {
       const p = await roleplayLoadProject(id);
       setProject(p);
@@ -73,6 +94,10 @@ export default function RoleplayView({ onError, onToast }: Props) {
   };
 
   const createProject = async () => {
+    if (isMockUiMode()) {
+      onError("Tryb mockup — tworzenie projektu roleplay jest wyłączone.");
+      return;
+    }
     const name = window.prompt("Nazwa projektu audiobooka:", "Nowy rozdział");
     if (!name?.trim()) return;
     try {
@@ -89,6 +114,11 @@ export default function RoleplayView({ onError, onToast }: Props) {
 
   const saveProject = async (nextPhase?: RoleplayPhase) => {
     if (!project) return;
+    if (isMockUiMode()) {
+      if (nextPhase) setPhase(nextPhase);
+      else onToast("Tryb mockup — zapis tylko lokalny (bez backendu).");
+      return;
+    }
     setBusy(true);
     try {
       const req: SaveRoleplayProjectReq = {
@@ -123,6 +153,10 @@ export default function RoleplayView({ onError, onToast }: Props) {
 
   const startGeneration = async () => {
     if (!project) return;
+    if (isMockUiMode()) {
+      onError("Tryb mockup — generowanie audiobooka jest wyłączone.");
+      return;
+    }
     setBusy(true);
     try {
       await saveProject();
@@ -140,6 +174,10 @@ export default function RoleplayView({ onError, onToast }: Props) {
 
   const deleteCurrent = async () => {
     if (!project || !window.confirm("Usunąć ten projekt?")) return;
+    if (isMockUiMode()) {
+      setProject(null);
+      return;
+    }
     try {
       await roleplayDeleteProject(project.id);
       setProject(null);

@@ -31,5 +31,14 @@
     "color-blockquote-text": "140 200 140",
     "icon-filter": "brightness(0) saturate(100%) invert(84%) sepia(21%) saturate(746%) hue-rotate(72deg) brightness(103%) contrast(101%)"
   },
+  "transition": {
+    "pattern": "matrix-columns",
+    "durationMs": 4200,
+    "waveSpeed": 360,
+    "falloff": 0.45,
+    "noise": 0.24,
+    "lift": 40,
+    "matrixGlyphs": true
+  },
   "css": "matrix.css"
 }

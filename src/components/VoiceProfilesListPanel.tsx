@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getAppSettings } from "../api/tauri";
 import type { TtsVoiceProfile } from "../appSettings";
+import { getMockAppSettingsView } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import {
   deleteVoiceProfile,
   isRerouteProfile,
@@ -16,6 +18,7 @@ import type { Generation } from "../types";
 import VoiceProfileChatRow from "./VoiceProfileChatRow";
 import VoiceProfileContextMenu from "./VoiceProfileContextMenu";
 import VoiceProfileShortcutFooter from "./VoiceProfileShortcutFooter";
+import FastWorkExportDialog from "./FastWorkExportDialog";
 
 interface Props {
   variant?: "sidebar" | "settings";
@@ -45,8 +48,15 @@ export default function VoiceProfilesListPanel({
     x: number;
     y: number;
   } | null>(null);
+  const [fastWorkExportProfile, setFastWorkExportProfile] = useState<TtsVoiceProfile | null>(null);
 
   const refresh = () => {
+    if (isMockUiMode()) {
+      const view = getMockAppSettingsView();
+      setProfiles(view.voice_profiles ?? []);
+      setRerouteProfileId(view.reroute_voice_profile_id ?? null);
+      return;
+    }
     void getAppSettings()
       .then((view) => {
         setProfiles(view.voice_profiles ?? []);
@@ -225,6 +235,7 @@ export default function VoiceProfilesListPanel({
           isReroute={isRerouteProfile(contextMenu.profile.id, rerouteProfileId)}
           onEditSettings={() => onEditProfile(contextMenu.profile)}
           onExportPack={() => handleExportPack(contextMenu.profile)}
+          onExportFastWork={() => setFastWorkExportProfile(contextMenu.profile)}
           onSetReroute={() => {
             void setRerouteVoiceProfile(contextMenu.profile.id)
               .then(() => {
@@ -243,6 +254,14 @@ export default function VoiceProfilesListPanel({
           }}
           onDelete={() => handleDeleteProfile(contextMenu.profile)}
           onClose={() => setContextMenu(null)}
+        />
+      ) : null}
+      {fastWorkExportProfile ? (
+        <FastWorkExportDialog
+          profile={fastWorkExportProfile}
+          onClose={() => setFastWorkExportProfile(null)}
+          onSuccess={onSuccess}
+          onError={onError}
         />
       ) : null}
     </div>

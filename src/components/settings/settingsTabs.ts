@@ -19,6 +19,11 @@ export const SETTINGS_TAB_IDS = [
 
 export type SettingsTabId = (typeof SETTINGS_TAB_IDS)[number];
 
+/** Landing grid before opening a specific settings page. */
+export type SettingsViewTab = SettingsTabId | "overview";
+
+export const SETTINGS_OVERVIEW_TAB = "overview" as const;
+
 export type SettingsTabGroup = "tts" | "integrations" | "system";
 
 export interface SettingsTabMeta {

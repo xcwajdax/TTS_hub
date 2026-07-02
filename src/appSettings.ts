@@ -26,6 +26,8 @@ export {
 
 export type SaveMode = "manual" | "auto";
 
+export type PrivacyMode = "normal" | "private" | "incognito";
+
 export type TtsProviderId = "google" | "voicebox" | "minimax";
 export type VoiceboxServerMode = "external" | "bundled" | "disabled";
 
@@ -269,6 +271,7 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     quick_history_page_size: view.quick_history_page_size ?? DEFAULT_QUICK_HISTORY_PAGE_SIZE,
     timeline_view: normalizeTimelineViewMode(view.timeline_view),
     safe_mode: view.safe_mode ?? false,
+    privacy_mode: view.privacy_mode ?? "normal",
     safe_mode_auto_open_queue: view.safe_mode_auto_open_queue ?? true,
     default_video_template_id: view.default_video_template_id ?? "builtin-whatsapp-karaoke",
     auto_archive_mp4_on_clipboard: view.auto_archive_mp4_on_clipboard ?? true,
@@ -314,6 +317,8 @@ export interface AppSettings {
   timeline_view?: TimelineViewMode;
   /** Hold new generations for manual approval before synthesis. */
   safe_mode?: boolean;
+  /** normal | private | incognito */
+  privacy_mode?: PrivacyMode;
   /** Expand queue panel and show approval tab when a new pending item arrives. */
   safe_mode_auto_open_queue?: boolean;
   default_video_template_id?: string | null;
@@ -357,6 +362,26 @@ export interface McpIntegrationStatus {
 export interface AppBuildInfo {
   version: string;
   git_hash: string | null;
+}
+
+export type UpdateCheckStatus = "up_to_date" | "update_available" | "error";
+
+export interface UpdateChangelogSections {
+  whats_new: string[];
+  fixed: string[];
+  other: string[];
+}
+
+export interface UpdateCheckResult {
+  status: UpdateCheckStatus;
+  current_version: string;
+  latest_version: string | null;
+  published_at: string | null;
+  release_page_url: string | null;
+  download_url: string | null;
+  sections: UpdateChangelogSections;
+  total_change_count: number;
+  error_message: string | null;
 }
 
 export interface CursorInstallReport {

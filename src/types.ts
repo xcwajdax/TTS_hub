@@ -40,6 +40,8 @@ export interface GenerateRequest {
   // session is attached, on `chat_messages.voice_profile_id` too) so the
   // history items and chat bubbles can render the profile avatar/name.
   voice_profile_id?: string | null;
+  /** Optional project/session label (badge in history; title unchanged). */
+  context_label?: string | null;
 }
 
 export type GenerationSource = "manual" | "http" | "cursor" | "cursor-skill" | "quick_hotkey";
@@ -137,6 +139,8 @@ export interface Generation {
   // `<VoiceProfileBadge>` (avatar + name). When null, the UI falls back to
   // fuzzy matching on (provider, model, voice) — or to a bare "voice" label.
   voice_profile_id?: string | null;
+  context_label?: string | null;
+  is_private?: boolean;
 }
 
 export interface UsageTotals {

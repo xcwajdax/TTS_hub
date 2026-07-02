@@ -35,6 +35,8 @@ pwsh -File docs/promo/scripts/assemble-promo-full.ps1
 
 Pełny scenariusz z cue obrazu: [scripts/promo-narration.md](scripts/promo-narration.md)
 
+Brief portfolio / voiceover (Lyric Visualizer itd.): [../voiceover-brief-preset.md](../voiceover-brief-preset.md)
+
 ## Persony
 
 | Persona | Głos | Kolor |

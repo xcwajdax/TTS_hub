@@ -8,6 +8,7 @@ import type {
   CursorInstallReport,
   McpIntegrationStatus,
   TtsVoiceProfile,
+  UpdateCheckResult,
 } from "../appSettings";
 import type {
   ArchiveFolder,
@@ -149,6 +150,14 @@ export interface BulkApprovalResult {
 
 export async function setSafeMode(enabled: boolean): Promise<boolean> {
   return invoke<boolean>("set_safe_mode", { enabled });
+}
+
+export async function setPrivacyMode(mode: string): Promise<string> {
+  return invoke<string>("set_privacy_mode", { mode });
+}
+
+export async function cyclePrivacyMode(): Promise<string> {
+  return invoke<string>("cycle_privacy_mode");
 }
 
 export async function approveGenerations(ids: string[]): Promise<BulkApprovalResult> {
@@ -688,6 +697,10 @@ export async function getAppBuildInfo(): Promise<AppBuildInfo> {
   return invoke<AppBuildInfo>("get_app_build_info");
 }
 
+export async function checkForUpdates(force = false): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>("check_for_updates", { force });
+}
+
 export async function getMcpIntegrationStatus(): Promise<McpIntegrationStatus> {
   return invoke<McpIntegrationStatus>("get_mcp_integration_status");
 }
@@ -803,6 +816,30 @@ export async function pickVoicePackArchive(): Promise<string | null> {
 
 export async function pickVoicePackExportPath(packId: string): Promise<string | null> {
   return invoke<string | null>("pick_voice_pack_export_path", { packId });
+}
+
+export interface FastWorkExportResult {
+  destDir: string;
+  configPath: string;
+  launcherPath?: string | null;
+}
+
+export async function exportFastWorkPortable(
+  profileId: string,
+  destParentDir: string,
+  shortcut?: string | null,
+): Promise<FastWorkExportResult> {
+  return invoke<FastWorkExportResult>("export_fast_work_portable", {
+    req: {
+      profileId,
+      destParentDir,
+      shortcut: shortcut ?? null,
+    },
+  });
+}
+
+export async function pickFastWorkExportFolder(): Promise<string | null> {
+  return invoke<string | null>("pick_fast_work_export_folder");
 }
 
 export type AvatarInfo = {

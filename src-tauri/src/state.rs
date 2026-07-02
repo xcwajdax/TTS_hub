@@ -7,6 +7,7 @@ use crate::app_settings::AppSettings;
 use crate::config::Config;
 use crate::db::Db;
 use crate::google::GoogleTts;
+use crate::ephemeral::EphemeralStore;
 use crate::job_queue::JobQueue;
 use crate::roleplay::queue::RoleplayQueue;
 use crate::paths::AppPaths;
@@ -36,6 +37,7 @@ pub struct AppState {
     pub plugins_state_path: std::path::PathBuf,
     pub plugins_state: RwLock<PluginsState>,
     pub voicebox_server_child: Mutex<Option<VoiceboxServerProcess>>,
+    pub ephemeral: EphemeralStore,
 }
 
 impl AppState {
@@ -93,6 +95,7 @@ impl AppState {
             plugins_state_path,
             plugins_state: RwLock::new(plugins_state),
             voicebox_server_child: Mutex::new(None),
+            ephemeral: EphemeralStore::new(),
         };
         state.persist_settings()?;
         {
@@ -166,5 +169,27 @@ impl AppState {
             }
         }
         Ok(())
+    }
+
+    /// Delete incognito temp files and clear the in-memory registry.
+    pub fn purge_ephemeral_generations(&self) -> Result<()> {
+        let paths = self.ephemeral.purge();
+        for p in paths {
+            if !p.is_empty() {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn resolve_generation(&self, id: &str) -> Result<Option<crate::db::Generation>> {
+        if let Some(g) = self.ephemeral.get(id) {
+            return Ok(Some(g));
+        }
+        self.db.get(id)
+    }
+
+    pub fn is_ephemeral(&self, id: &str) -> bool {
+        self.ephemeral.contains(id)
     }
 }

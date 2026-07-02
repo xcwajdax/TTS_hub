@@ -68,6 +68,19 @@
       "preview_mime": "audio/mpeg",
       "download_path": "docs/voice-packs/dist/minimax-mezczyzna-pl.ttshub-voice",
       "folder": "minimax-mezczyzna-pl"
+    },
+    {
+      "id": "topkek-portfolio-brief-pl",
+      "name": "TOPKEK — brief portfolio PL",
+      "description": "Luźny voiceover portfolio (~90–100 wpm) z presetem filtra brief.",
+      "author": "TOPKEK",
+      "license": "CC-BY-4.0",
+      "tags": ["pl", "topkek", "portfolio", "voiceover", "brief"],
+      "provider": "minimax",
+      "preview_url": "https://github.com/xcwajdax/TTS_hub/raw/main/docs/samples/minimax-polish-male.mp3",
+      "preview_mime": "audio/mpeg",
+      "download_path": "docs/voice-packs/dist/topkek-portfolio-brief-pl.ttshub-voice",
+      "folder": "topkek-portfolio-brief-pl"
     }
   ]
 }

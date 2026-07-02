@@ -18,6 +18,13 @@ import VoiceProfileBadge from "../components/VoiceProfileBadge";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import type { ChatMessage, ChatSession } from "./types";
 import { getAppSettings } from "../api/tauri";
+import {
+  getMockAppSettingsView,
+  getMockChatMessages,
+  MOCK_CHAT_SESSION_ID,
+  MOCK_CHAT_SESSIONS,
+} from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 
 interface Props {
   onError: (msg: string | null) => void;
@@ -43,6 +50,10 @@ export default function ChatView({ onError, onToast, voiceProfiles: voiceProfile
     if (voiceProfilesProp) return;
     let cancelled = false;
     const refresh = async () => {
+      if (isMockUiMode()) {
+        if (!cancelled) setVoiceProfilesState(getMockAppSettingsView().voice_profiles ?? []);
+        return;
+      }
       try {
         const view = await getAppSettings();
         if (!cancelled) setVoiceProfilesState(view.voice_profiles ?? []);
@@ -71,6 +82,10 @@ export default function ChatView({ onError, onToast, voiceProfiles: voiceProfile
   }, [messages, voiceProfiles]);
 
   const refreshSessions = async () => {
+    if (isMockUiMode()) {
+      setSessions(MOCK_CHAT_SESSIONS);
+      return;
+    }
     try {
       const list = await api.chatListSessions();
       setSessions(list);
@@ -80,6 +95,10 @@ export default function ChatView({ onError, onToast, voiceProfiles: voiceProfile
   };
 
   const refreshMessages = async (sessionId: string) => {
+    if (isMockUiMode()) {
+      setMessages(getMockChatMessages(sessionId));
+      return;
+    }
     try {
       const list = await api.chatListMessages(sessionId);
       setMessages(list);
@@ -90,6 +109,10 @@ export default function ChatView({ onError, onToast, voiceProfiles: voiceProfile
 
   useEffect(() => {
     void refreshSessions();
+    if (isMockUiMode()) {
+      setActiveSessionId(MOCK_CHAT_SESSION_ID);
+      return;
+    }
     const un1 = listen("chat:session_changed", () => {
       void refreshSessions();
     });
@@ -115,6 +138,10 @@ export default function ChatView({ onError, onToast, voiceProfiles: voiceProfile
   }, [activeSessionId]);
 
   const handleCreate = async () => {
+    if (isMockUiMode()) {
+      onError("Tryb mockup — tworzenie sesji czatu jest wyłączone.");
+      return;
+    }
     setLoading(true);
     try {
       const s = await api.chatCreateSession(newSource);

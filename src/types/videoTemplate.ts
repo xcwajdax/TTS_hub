@@ -102,6 +102,7 @@ export interface VideoExportRecord {
   createdAt: number;
   source: string;
   title: string | null;
+  isPrivate?: boolean;
 }
 
 export const BUILTIN_WHATSAPP_TEMPLATE_ID = "builtin-whatsapp-karaoke";

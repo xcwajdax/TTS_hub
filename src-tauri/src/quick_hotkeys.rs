@@ -373,6 +373,7 @@ pub fn build_generate_req(
         // Quick hotkey path uses the preset's optional `voice_profile_id`
         // so history items carry the badge back to the saved profile.
         voice_profile_id: preset.voice_profile_id.clone(),
+        context_label: None,
     }
 }
 

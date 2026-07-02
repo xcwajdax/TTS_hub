@@ -8,6 +8,7 @@ mod config;
 mod cursor_integration;
 mod editor_quick_gen;
 mod db;
+mod ephemeral;
 mod google;
 mod http_api;
 mod job_queue;
@@ -39,6 +40,10 @@ mod video_export;
 mod video_template;
 mod video_library;
 mod video_commands;
+mod portable_paths;
+mod fast_work;
+mod fast_work_export;
+mod updater;
 
 use std::sync::Arc;
 
@@ -47,6 +52,17 @@ use tauri::Emitter;
 use tauri::RunEvent;
 
 pub fn run() {
+    #[cfg(feature = "fast-work")]
+    {
+        fast_work::run(tauri::generate_context!("tauri.fast-work.conf.json"));
+    }
+
+    #[cfg(not(feature = "fast-work"))]
+    run_full();
+}
+
+#[cfg(not(feature = "fast-work"))]
+fn run_full() {
     let app_state = match state::AppState::initialize() {
         Ok(s) => Arc::new(s),
         Err(e) => {
@@ -88,6 +104,8 @@ pub fn run() {
             commands::delete_folder_rule,
             commands::list_jobs,
             commands::set_safe_mode,
+            commands::set_privacy_mode,
+            commands::cycle_privacy_mode,
             commands::approve_generations,
             commands::reject_generations,
             commands::cancel_job,
@@ -171,6 +189,7 @@ pub fn run() {
             commands::get_session_id,
             commands::get_cursor_integration_status,
             commands::get_app_build_info,
+            updater::check_for_updates,
             commands::get_mcp_integration_status,
             commands::install_cursor_hooks,
             commands::uninstall_cursor_hooks,
@@ -186,6 +205,8 @@ pub fn run() {
             commands::pick_skin_export_path,
             commands::export_voice_profile_pack,
             commands::import_voice_profile_pack,
+            commands::export_fast_work_portable,
+            commands::pick_fast_work_export_folder,
             commands::pick_voice_pack_archive,
             commands::pick_voice_pack_export_path,
             commands::import_voice_profile_pack_from_url,
@@ -356,6 +377,7 @@ pub fn run() {
         .run(move |_app, event| {
             if matches!(event, RunEvent::Exit) {
                 crate::voicebox_server::stop_child(&app_state_for_exit.voicebox_server_child);
+                let _ = app_state_for_exit.purge_ephemeral_generations();
             }
         });
 }

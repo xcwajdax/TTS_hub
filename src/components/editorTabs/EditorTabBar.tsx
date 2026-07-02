@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { EditorTab } from "../../lib/editorTabs/types";
 import type { UseEditorTabsReturn } from "../../lib/editorTabs/useEditorTabs";
+import EditorTabAddButton from "./EditorTabAddButton";
 import EditorTabItem from "./EditorTabItem";
 
 interface Props {
@@ -37,15 +38,7 @@ export default function EditorTabBar({ tabsApi, trailing }: Props) {
   return (
     <div className="editor-tab-bar flex shrink-0 items-stretch border-b border-border bg-panel min-h-[2rem]">
       <div className="flex flex-1 min-w-0 items-stretch overflow-x-auto scrollbar-thin">
-        <button
-          type="button"
-          className="editor-tab-bar__add shrink-0 px-2.5 text-muted hover:text-heading hover:bg-panel2 border-r border-border/60"
-          title="Nowa zakładka"
-          aria-label="Nowa zakładka"
-          onClick={addTab}
-        >
-          +
-        </button>
+        <EditorTabAddButton onAddTab={addTab} />
         {tabs.map((tab: EditorTab) => (
           <EditorTabItem
             key={tab.id}

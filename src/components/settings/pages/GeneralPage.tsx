@@ -15,6 +15,7 @@ import {
   MIN_QUICK_HISTORY_PAGE_SIZE,
   MIN_TEMP_HISTORY_MAX,
   type SaveMode,
+  type PrivacyMode,
 } from "../../../appSettings";
 import type { AudioFormat } from "../../../types";
 import SettingsPageHeader from "../components/SettingsPageHeader";
@@ -147,6 +148,29 @@ export default function GeneralPage({ view, update, onError, onSuccess }: Props)
           W trybie bezpiecznym wszystkie źródła (edytor, Cursor, skróty, HTTP, roleplay) trafiają do
           zakładki „Zatwierdź”. Odrzucone pozycje pozostają w bazie ze statusem odrzuconym.
         </p>
+      </SettingsSection>
+
+      <SettingsSection title="Prywatność" borderTop>
+        <p className="text-[11px] text-muted mb-2">
+          Cykl w pasku tytułu: domyślny → prywatny → incognito. Ustawienie zapisuje się automatycznie.
+        </p>
+        {(["normal", "private", "incognito"] as PrivacyMode[]).map((mode) => (
+          <label key={mode} className="flex items-start gap-2 cursor-pointer mb-1.5">
+            <input
+              type="radio"
+              name="privacy_mode"
+              checked={(view.privacy_mode ?? "normal") === mode}
+              onChange={() => update("privacy_mode", mode)}
+            />
+            <span>
+              {mode === "normal" && "Domyślny — standardowy zapis w historii"}
+              {mode === "private" &&
+                "Prywatny — zapis z oznaczeniem PRYWATNE; potwierdzenie przed skopiowaniem do schowka"}
+              {mode === "incognito" &&
+                "Incognito — bez zapisu do historii; tylko odtwarzanie bieżącej generacji"}
+            </span>
+          </label>
+        ))}
       </SettingsSection>
 
       <SettingsSection title="Historia" borderTop>

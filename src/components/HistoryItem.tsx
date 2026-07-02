@@ -28,6 +28,7 @@ import HistoryItemInlinePlayback from "./history/HistoryItemInlinePlayback";
 import HistoryTokenInfoButton from "./history/HistoryTokenInfoButton";
 import SoundboardAssignMenu from "./history/SoundboardAssignMenu";
 import HistoryItemProfileAvatar from "./history/HistoryItemProfileAvatar";
+import PrivateBadge from "./history/PrivateBadge";
 
 interface Props {
   gen: Generation;
@@ -282,6 +283,7 @@ export default function HistoryItem({
             <span className="truncate text-[11px] font-semibold text-heading">
               {profileDisplayName}
             </span>
+            {gen.is_private && <PrivateBadge />}
             <FileStatusBadge gen={gen} folderLabel={folderLabel} tempHistoryMax={tempHistoryMax} />
           </div>
           <span
@@ -290,6 +292,9 @@ export default function HistoryItem({
               isPlaying ? "text-accent2" : "text-muted",
             ].join(" ")}
           >
+            {gen.context_label ? (
+              <span className="text-accent2/90 mr-1">[{gen.context_label}]</span>
+            ) : null}
             {titleLabel}
           </span>
         </div>
@@ -337,6 +342,7 @@ export default function HistoryItem({
               <span className="text-[13px] font-semibold text-heading truncate">
                 {profileDisplayName}
               </span>
+              {gen.is_private && <PrivateBadge />}
               <FileStatusBadge gen={gen} folderLabel={folderLabel} tempHistoryMax={tempHistoryMax} />
               <span
                 className="text-[9px] rounded px-1 py-0.5"

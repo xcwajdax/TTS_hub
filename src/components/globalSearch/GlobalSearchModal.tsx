@@ -10,6 +10,8 @@ import type { Generation } from "../../types";
 import type { AppView } from "../AppViewTabs";
 import type { HistoryScopeTab } from "../../lib/historyToolbar";
 import GlobalSearchResultRow, { globalSearchEmptyHint } from "./GlobalSearchResultRow";
+import { MOCK_VIDEO_EXPORTS } from "../../lib/mockUi";
+import { isMockUiMode } from "../../lib/mockUi/isMockUiMode";
 import GlobalSearchScopeChips from "./GlobalSearchScopeChips";
 
 interface Props {
@@ -63,6 +65,11 @@ export default function GlobalSearchModal({
 
   useEffect(() => {
     if (!open) return;
+    if (isMockUiMode()) {
+      setVideoExports(MOCK_VIDEO_EXPORTS);
+      setLoadingVideo(false);
+      return;
+    }
     let cancelled = false;
     setLoadingVideo(true);
     void listVideoExports(500, 0)
@@ -137,6 +144,12 @@ export default function GlobalSearchModal({
       if (result.fileKind === "video" && result.videoExportId) {
         onGoToView("history");
         onGoToHistoryScope("video");
+        onClose();
+        return;
+      }
+
+      if (isMockUiMode()) {
+        onError("Tryb mockup — otwieranie pliku w eksploratorze jest wyłączone.");
         onClose();
         return;
       }

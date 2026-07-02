@@ -6,6 +6,8 @@ import {
   type VoiceBoxHistoryItem,
   type VoiceBoxProfile,
 } from "../../api/tauri";
+import { getMockVoiceboxHistory } from "../../lib/mockUi";
+import { isMockUiMode } from "../../lib/mockUi/isMockUiMode";
 import { voiceboxPayloadToObjectUrl } from "../../lib/voiceboxAudio";
 
 const PAGE_SIZE = 30;
@@ -37,6 +39,13 @@ export default function VoiceboxHistorySection({ profiles, onError, onSuccess }:
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const load = useCallback(async () => {
+    if (isMockUiMode()) {
+      const res = getMockVoiceboxHistory();
+      setItems(res.items);
+      setTotal(res.total);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await voiceboxListHistory({
@@ -69,6 +78,10 @@ export default function VoiceboxHistorySection({ profiles, onError, onSuccess }:
   );
 
   const playItem = async (id: string) => {
+    if (isMockUiMode()) {
+      onError("Tryb mockup — odtwarzanie historii Voice Box jest wyłączone.");
+      return;
+    }
     try {
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);

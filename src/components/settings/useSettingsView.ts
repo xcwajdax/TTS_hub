@@ -9,6 +9,8 @@ import {
   DEFAULT_TEMP_HISTORY_MAX,
   type AppSettingsView,
 } from "../../appSettings";
+import { getMockAppSettingsView } from "../../lib/mockUi";
+import { isMockUiMode } from "../../lib/mockUi/isMockUiMode";
 import { isTauriApp } from "../../lib/tauriEnv";
 import { syncSaveFormatFromSettings } from "../../audioFormats";
 import { dispatchAppSettingsChanged } from "../../lib/appSettingsEvents";
@@ -50,6 +52,14 @@ export function useSettingsView({
   const savingRef = useRef(false);
 
   const load = useCallback(async () => {
+    if (isMockUiMode()) {
+      setView({
+        ...getMockAppSettingsView(),
+        history_click_to_play: loadClickToPlay(),
+        history_compact_view: loadCompactView(),
+      });
+      return;
+    }
     if (!isTauriApp()) return;
     try {
       const v = await getAppSettings();

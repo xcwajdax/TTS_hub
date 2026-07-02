@@ -2,10 +2,10 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
-import TitleBarAudioOutput from "./TitleBarAudioOutput";
+import TitleBarPrivacyToggle from "./TitleBarPrivacyToggle";
 import TitleBarSafeModeToggle from "./TitleBarSafeModeToggle";
-import TitleBarSkinSwitcher from "./TitleBarSkinSwitcher";
 import { isTauriApp } from "../lib/tauriEnv";
+import type { PrivacyMode } from "../lib/privacyMode";
 import { openGlobalSearch } from "../lib/globalSearch/events";
 import { appExit, appRestart } from "../api/tauri";
 
@@ -113,6 +113,7 @@ function MaximizeIcon({ restored }: { restored: boolean }) {
 export default function TitleBar() {
   const [maximized, setMaximized] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [privacyMode, setPrivacyMode] = useState<PrivacyMode>("normal");
   const barRef = useRef<HTMLElement>(null);
 
   const syncMaximized = useCallback(async () => {
@@ -158,7 +159,11 @@ export default function TitleBar() {
   };
 
   return (
-    <header ref={barRef} className="title-bar shrink-0">
+    <header
+      ref={barRef}
+      className="title-bar shrink-0"
+      data-privacy-mode={privacyMode}
+    >
       <nav className="title-bar__menus" aria-label="Menu aplikacji">
         {MENUS.map((menu) => (
           <div key={menu.label} className="title-bar__menu-wrap">
@@ -199,33 +204,48 @@ export default function TitleBar() {
       </nav>
 
       <div
-        className="title-bar__drag"
+        className="title-bar__brand"
         data-tauri-drag-region
         onDoubleClick={onDragDoubleClick}
         title="Przeciągnij, podwójne kliknięcie — maksymalizuj"
       >
         <img src="/favicon.svg" alt="" className="title-bar__logo" width={16} height={16} draggable={false} />
-        <span className="title-bar__title">TTS Hub</span>
+        <span className="title-bar__title">
+          TTS Hub
+          {privacyMode === "private" && (
+            <span className="title-bar__privacy-label"> — Prywatny</span>
+          )}
+          {privacyMode === "incognito" && (
+            <span className="title-bar__privacy-label"> — Incognito</span>
+          )}
+        </span>
       </div>
 
-      <button
-        type="button"
-        className="title-bar__search"
-        onClick={() => openGlobalSearch()}
-        title="Szukaj (Ctrl+K)"
-        aria-label="Szukaj w historii, szkicach i plikach"
+      <div
+        className="title-bar__center"
+        data-tauri-drag-region
+        onDoubleClick={onDragDoubleClick}
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden className="title-bar__search-icon">
-          <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        <span className="title-bar__search-label">Szukaj…</span>
-        <kbd className="title-bar__search-kbd">Ctrl+K</kbd>
-      </button>
+        <button
+          type="button"
+          className="title-bar__search chrome-field chrome-field--wide"
+          onClick={() => openGlobalSearch()}
+          onMouseDown={(e) => e.stopPropagation()}
+          title="Szukaj (Ctrl+K)"
+          aria-label="Szukaj w historii, szkicach i plikach"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden className="title-bar__search-icon">
+            <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <span className="title-bar__search-label">Szukaj w historii, szkicach i plikach…</span>
+          <kbd className="title-bar__search-kbd">Ctrl+K</kbd>
+        </button>
+      </div>
 
-      <TitleBarAudioOutput />
+      <div className="title-bar__trailing">
       <TitleBarSafeModeToggle />
-      <TitleBarSkinSwitcher />
+      <TitleBarPrivacyToggle onModeChange={setPrivacyMode} />
 
       <div className="title-bar__controls">
         <button
@@ -255,6 +275,7 @@ export default function TitleBar() {
         >
           <Icon name="close" size={14} className="title-bar__control-icon" />
         </button>
+      </div>
       </div>
     </header>
   );

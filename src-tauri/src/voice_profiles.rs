@@ -312,6 +312,7 @@ mod tests {
             chat_role: None,
             origin: None,
             voice_profile_id: None,
+            context_label: None,
         };
 
         let out = apply_reroute_if_configured(&settings, req);
@@ -360,6 +361,7 @@ mod tests {
             chat_role: None,
             origin: None,
             voice_profile_id: Some("segment-profile".to_string()),
+            context_label: None,
         };
 
         let out = apply_reroute_if_configured(&settings, req);

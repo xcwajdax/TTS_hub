@@ -14,6 +14,7 @@ $PreviewMap = @{
     'google-puck-dialog-pl'   = 'google-kore.wav'
     'minimax-kobieta-pl'      = 'minimax-polish-female.mp3'
     'minimax-mezczyzna-pl'    = 'minimax-polish-male.mp3'
+    'topkek-portfolio-brief-pl' = 'minimax-polish-male.mp3'
 }
 
 if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }

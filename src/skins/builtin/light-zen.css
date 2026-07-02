@@ -10,7 +10,7 @@ html[data-skin="light-zen"] .title-bar {
   border-bottom-color: rgb(var(--color-accent) / 0.22);
 }
 
-html[data-skin="light-zen"] .title-bar__skin-btn--active {
+html[data-skin="light-zen"] .status-bar__skin-btn--active {
   background: rgb(var(--color-accent-soft));
   color: rgb(var(--color-accent));
   box-shadow: inset 0 0 0 1px rgb(var(--color-accent) / 0.45);

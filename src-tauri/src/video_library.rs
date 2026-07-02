@@ -21,6 +21,8 @@ pub struct VideoExportRecord {
     pub created_at: i64,
     pub source: String,
     pub title: Option<String>,
+    #[serde(default)]
+    pub is_private: bool,
 }
 
 pub fn videos_archive_dir(archive_root: &Path) -> PathBuf {
@@ -38,8 +40,8 @@ pub fn insert_video_export(db: &Db, record: &VideoExportRecord) -> Result<()> {
     conn.execute(
         r#"INSERT INTO video_exports (
             id, generation_id, template_id, file_path, thumb_path,
-            duration_ms, file_size_bytes, render_params_hash, created_at, source, title
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)"#,
+            duration_ms, file_size_bytes, render_params_hash, created_at, source, title, is_private
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)"#,
         rusqlite::params![
             record.id,
             record.generation_id,
@@ -52,6 +54,7 @@ pub fn insert_video_export(db: &Db, record: &VideoExportRecord) -> Result<()> {
             record.created_at,
             record.source,
             record.title,
+            record.is_private as i32,
         ],
     )?;
     Ok(())
@@ -61,7 +64,7 @@ pub fn list_video_exports(db: &Db, limit: u32, offset: u32) -> Result<Vec<VideoE
     let conn = db.conn();
     let mut stmt = conn.prepare(
         r#"SELECT id, generation_id, template_id, file_path, thumb_path,
-                  duration_ms, file_size_bytes, render_params_hash, created_at, source, title
+                  duration_ms, file_size_bytes, render_params_hash, created_at, source, title, is_private
            FROM video_exports
            ORDER BY created_at DESC
            LIMIT ?1 OFFSET ?2"#,
@@ -74,7 +77,7 @@ pub fn get_video_export(db: &Db, id: &str) -> Result<Option<VideoExportRecord>> 
     let conn = db.conn();
     let mut stmt = conn.prepare(
         r#"SELECT id, generation_id, template_id, file_path, thumb_path,
-                  duration_ms, file_size_bytes, render_params_hash, created_at, source, title
+                  duration_ms, file_size_bytes, render_params_hash, created_at, source, title, is_private
            FROM video_exports WHERE id = ?1"#,
     )?;
     let mut rows = stmt.query(rusqlite::params![id])?;
@@ -115,6 +118,7 @@ fn map_video_export_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VideoExport
         created_at: row.get(8)?,
         source: row.get(9)?,
         title: row.get(10)?,
+        is_private: row.get::<_, Option<i32>>(11)?.unwrap_or(0) != 0,
     })
 }
 

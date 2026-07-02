@@ -25,6 +25,7 @@ import { useCursorIntegration } from "./hooks/useCursorIntegration";
 import { usePlaybackToastBridge } from "./hooks/usePlaybackToastBridge";
 import AppStatusBar from "./components/AppStatusBar";
 import BrowserOnlyBanner from "./components/BrowserOnlyBanner";
+import MockUiBootstrap from "./components/MockUiBootstrap";
 import TitleBar from "./components/TitleBar";
 import AppViewTabs, { type AppView } from "./components/AppViewTabs";
 import type { HistoryScopeTab } from "./lib/historyToolbar";
@@ -36,23 +37,27 @@ import { PLUGINS_CHANGED } from "./plugins/events";
 import type { PluginManifest } from "./plugins/types";
 import { isCursorPlaybackSource } from "./lib/cursorSource";
 import { isTauriApp } from "./lib/tauriEnv";
+import { isMockUiMode, MOCK_PLUGINS } from "./lib/mockUi";
 import { usePlaybackQueue } from "./hooks/usePlaybackQueue";
 import { TimelineViewProvider } from "./context/TimelineViewContext";
 import { SkinProvider } from "./skins/SkinProvider";
+import { SkinTransitionProvider } from "./skins/transition/SkinTransitionProvider";
 import RoleplayView from "./roleplay/RoleplayView";
 import ChatView from "./chat/ChatView";
 import SettingsView from "./components/settings/SettingsView";
 import MinimaxVoicesView from "./components/MinimaxVoicesView";
 import VoiceboxView from "./components/VoiceboxView";
+import VoiceProfilesView from "./components/voiceProfiles/VoiceProfilesView";
 import { DEFAULT_MINIMAX_VOICES_SECTION, type MinimaxVoicesSection } from "./components/minimaxVoicesSections";
 import {
   DEFAULT_VOICEBOX_SECTION,
   type VoiceboxSection,
 } from "./components/voicebox/voiceboxSections";
 import { AppViewContext, type AppViewNav } from "./context/AppViewContext";
-import type { SettingsTabId } from "./components/settings/settingsTabs";
+import type { SettingsViewTab } from "./components/settings/settingsTabs";
 import type { TtsProviderId, TtsVoiceProfile } from "./appSettings";
 import { mergeSessionAndArchiveHistory, isGenerationPlayable } from "./lib/generationPlayback";
+import { getPrivacyModeSnapshot } from "./lib/privacyMode";
 import { voiceProfileToSettingsState } from "./lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "./lib/voiceProfilesEvents";
 
@@ -66,8 +71,8 @@ interface AppInnerProps {
   onBackToHub: () => void;
   onNavigateExtensions: () => void;
   setAppViewState: (v: AppView) => void;
-  setSettingsTabState: (tab: SettingsTabId) => void;
-  settingsTab: SettingsTabId;
+  setSettingsTabState: (tab: SettingsViewTab) => void;
+  settingsTab: SettingsViewTab;
   onStartProductTour: () => void;
   onGoToHistoryScope: (scope: HistoryScopeTab) => void;
 }
@@ -120,6 +125,10 @@ function AppInner({
   const lastHandledCursorIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (isMockUiMode()) {
+      setEnabledProviders(["google", "minimax", "voicebox"]);
+      return;
+    }
     if (!isTauriApp()) return;
     let mounted = true;
     void getAppSettings().then((view) => {
@@ -145,7 +154,7 @@ function AppInner({
     (g: Generation) => {
       clearQueue();
       const fresh = quickHistoryItems.find((x) => x.id === g.id) ?? g;
-      if (!isGenerationPlayable(fresh)) {
+      if (!isMockUiMode() && !isGenerationPlayable(fresh)) {
         setError("To nagranie nie jest jeszcze gotowe lub plik audio nie istnieje.");
         return;
       }
@@ -159,7 +168,7 @@ function AppInner({
     (g: Generation) => {
       clearQueue();
       const fresh = quickHistoryItems.find((x) => x.id === g.id) ?? g;
-      if (!isGenerationPlayable(fresh)) {
+      if (!isMockUiMode() && !isGenerationPlayable(fresh)) {
         setError("To nagranie nie jest jeszcze gotowe lub plik audio nie istnieje.");
         return;
       }
@@ -192,7 +201,9 @@ function AppInner({
     void refreshInterrupted().then((list) => {
       if (list.length > 0) setShowRecovery(true);
     });
-    if (isTauriApp()) {
+    if (isMockUiMode()) {
+      setPlugins(MOCK_PLUGINS);
+    } else if (isTauriApp()) {
       void getPlugins()
         .then(setPlugins)
         .catch(() => setPlugins(BUILTIN_PLUGIN_STUBS));
@@ -212,14 +223,21 @@ function AppInner({
 
   useEffect(() => {
     return onDone((g) => {
-      void refresh();
+      const incognito = getPrivacyModeSnapshot() === "incognito";
+      if (!incognito) {
+        void refresh();
+      }
       if (!isGenerationPlayable(g)) return;
       // Cursor / skill / quick_hotkey autoplay: generation:ready → dedicated listeners.
       if (isCursorPlaybackSource(g.source) && cfg.autoplay) return;
       if (g.source === "quick_hotkey") return;
+      if (incognito) {
+        select(g, { loadEditorText: true, autoPlay: true });
+        return;
+      }
       playOrEnqueue(g, { loadEditorText: false });
     });
-  }, [onDone, refresh, playOrEnqueue, cfg.autoplay]);
+  }, [onDone, refresh, playOrEnqueue, cfg.autoplay, select]);
 
   useEffect(() => {
     if (!lastCursor) return;
@@ -258,6 +276,9 @@ function AppInner({
   }, [select, clearQueue]);
 
   const onGenerated = (g: Generation) => {
+    if (getPrivacyModeSnapshot() === "incognito") {
+      return;
+    }
     if (isGenerationPlayable(g)) {
       playOrEnqueue(g, { loadEditorText: false });
     }
@@ -371,10 +392,21 @@ function AppInner({
         setAppViewState("settings");
       },
       openMinimaxVoices: (section = DEFAULT_MINIMAX_VOICES_SECTION) => {
+        if (String(section) === "profile") {
+          setAppViewState("voice_profiles");
+          return;
+        }
         setMinimaxVoicesSection(section);
         setAppViewState("minimax_voices");
       },
+      openVoiceProfiles: () => {
+        setAppViewState("voice_profiles");
+      },
       openVoiceboxView: (section = DEFAULT_VOICEBOX_SECTION) => {
+        if (String(section) === "tts_preset") {
+          setAppViewState("voice_profiles");
+          return;
+        }
         setVoiceboxSection(section);
         setAppViewState("voicebox");
       },
@@ -388,7 +420,7 @@ function AppInner({
     setEditorText,
     onRefresh: refresh,
     onError: setError,
-    onOpenSettings: () => nav.openSettingsTab("general"),
+    onOpenSettings: () => nav.openSettingsTab("overview"),
     onOpenMinimaxVoices: () => nav.openMinimaxVoices(),
     onOpenQuickHotkeys: () => nav.openSettingsTab("quick_hotkeys"),
     onOpenQuickSetup: () => {
@@ -436,26 +468,57 @@ function AppInner({
     );
   }
 
-  if (appView === "minimax_voices") {
+  if (appView === "voice_profiles") {
     return (
       <AppViewContext.Provider value={nav}>
-        <MinimaxVoicesView
-          initialSection={minimaxVoicesSection}
+        <VoiceProfilesView
           settings={ttsSettings.settings}
           voices={ttsSettings.voices}
           voiceboxProfiles={ttsSettings.voiceboxProfiles}
           voiceboxModels={ttsSettings.voiceboxModels}
           voiceboxHealth={ttsSettings.voiceboxStatus}
           enabledProviders={enabledProviders}
+          activeVoiceProfileId={activeVoiceProfileId}
           onSettingsChange={ttsSettings.setSettings}
+          onSelectVoiceProfile={applyVoiceProfile}
           onError={setError}
           onSuccess={(msg) => {
             setToast(msg);
             window.setTimeout(() => setToast(null), 2500);
           }}
-          onProfileSaved={(msg) => {
+        />
+        {error && (
+          <div
+            className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setError(null)}
+            title="Kliknij aby zamknac"
+          >
+            {error}
+          </div>
+        )}
+        {toast && (
+          <div
+            className="fixed bottom-4 left-4 max-w-md bg-emerald-900/80 border border-emerald-700 text-emerald-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+            onClick={() => setToast(null)}
+            title="Kliknij aby zamknac"
+          >
+            {toast}
+          </div>
+        )}
+      </AppViewContext.Provider>
+    );
+  }
+
+  if (appView === "minimax_voices") {
+    return (
+      <AppViewContext.Provider value={nav}>
+        <MinimaxVoicesView
+          initialSection={minimaxVoicesSection}
+          enabledProviders={enabledProviders}
+          onError={setError}
+          onSuccess={(msg) => {
             setToast(msg);
-            window.setTimeout(() => setToast(null), 3500);
+            window.setTimeout(() => setToast(null), 2500);
           }}
           onSettingsChanged={() => void refresh()}
         />
@@ -487,7 +550,6 @@ function AppInner({
         <VoiceboxView
           initialSection={voiceboxSection}
           settings={ttsSettings.settings}
-          voices={ttsSettings.voices}
           voiceboxProfiles={ttsSettings.voiceboxProfiles}
           voiceboxModels={ttsSettings.voiceboxModels}
           voiceboxHealth={ttsSettings.voiceboxStatus}
@@ -498,10 +560,6 @@ function AppInner({
           onSuccess={(msg) => {
             setToast(msg);
             window.setTimeout(() => setToast(null), 2500);
-          }}
-          onProfileSaved={(msg) => {
-            setToast(msg);
-            window.setTimeout(() => setToast(null), 3500);
           }}
         />
         {error && (
@@ -791,12 +849,16 @@ export default function App() {
   const [historyInitialScope, setHistoryInitialScope] = useState<HistoryScopeTab | undefined>(
     undefined,
   );
-  const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
+  const [settingsTab, setSettingsTab] = useState<SettingsViewTab>("overview");
   const [onboardingRestart, setOnboardingRestart] = useState(0);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [enabledProviders, setEnabledProviders] = useState<TtsProviderId[] | undefined>();
 
   useEffect(() => {
+    if (isMockUiMode()) {
+      setEnabledProviders(["google", "minimax", "voicebox"]);
+      return;
+    }
     if (!inTauri) return;
     let mounted = true;
     void getAppSettings().then((view) => {
@@ -826,14 +888,19 @@ export default function App() {
 
   return (
     <SkinProvider>
+      <SkinTransitionProvider>
       <TimelineViewProvider>
         <PlaybackProvider>
+          <MockUiBootstrap />
           <div className="h-full w-full flex flex-col min-h-0">
             {inTauri && <TitleBar />}
             {!inTauri && <BrowserOnlyBanner />}
             <AppViewTabs
               view={appView}
-              onViewChange={setAppView}
+              onViewChange={(v) => {
+                if (v === "settings") setSettingsTab("overview");
+                setAppView(v);
+              }}
               showMinimaxVoices={showMinimaxVoices}
               showVoicebox={showVoicebox}
             />
@@ -888,11 +955,17 @@ export default function App() {
                   {onboardingError}
                 </div>
               )}
-              <AppStatusBar />
+              <AppStatusBar
+                onOpenAppearance={() => {
+                  setSettingsTab("appearance");
+                  setAppView("settings");
+                }}
+              />
             </JobsProvider>
           </div>
         </PlaybackProvider>
       </TimelineViewProvider>
+      </SkinTransitionProvider>
     </SkinProvider>
   );
 }

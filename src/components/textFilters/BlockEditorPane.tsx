@@ -39,6 +39,19 @@ export function blockDocToFilteredBase(
   });
 }
 
+/** Gdy filtered base jest pusty (np. cały tekst w bloku kodu), użyj pełnego source. */
+export function resolveFilterSourceText(
+  doc: BlockDoc,
+  preset: TextFilterPreset,
+  sessionOverrides?: BuiltinFilterOverrides | null,
+): string {
+  const base = blockDocToFilteredBase(doc, preset, sessionOverrides ?? {});
+  if (base.trim().length > 0) return base;
+  const full = blockDocToSourceText(doc);
+  if (full.trim().length > 0) return full;
+  return base;
+}
+
 export function plainTextToBlockDoc(text: string): BlockDoc {
   const trimmed = text.trim();
   if (!trimmed) return EMPTY_DOC;

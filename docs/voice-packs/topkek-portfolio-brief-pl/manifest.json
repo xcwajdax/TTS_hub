@@ -1,0 +1,27 @@
+{
+  "format": "ttshub-voicepack",
+  "format_version": 1,
+  "id": "topkek-portfolio-brief-pl",
+  "name": "TOPKEK — brief portfolio PL",
+  "description": "Luźny voiceover portfolio po polsku (~90–100 wpm). Para z presetem filtra Voiceover / brief portfolio.",
+  "author": "TOPKEK",
+  "license": "CC-BY-4.0",
+  "tags": ["pl", "topkek", "portfolio", "voiceover", "brief", "minimax"],
+  "preview_text": "Krótki brief o narzędziu które zrobiłem dla kumpla muzyka i trochę też dla siebie.",
+  "recommended_filter_preset_id": "factory-voiceover-brief",
+  "requires": {
+    "providers": ["minimax"],
+    "min_app_version": "0.1.0"
+  },
+  "profile": {
+    "provider": "minimax",
+    "model": "minimax:speech-2.8-hd",
+    "voice": "Polish_male_1_sample4",
+    "language": "pl",
+    "minimax_speed": 0.75,
+    "minimax_vol": 1.0,
+    "minimax_pitch": 0,
+    "multi_speaker": false,
+    "speakers": []
+  }
+}

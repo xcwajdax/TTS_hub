@@ -20,7 +20,7 @@ export default function SettingsSidebar({
   activeVoiceProfileId,
   onSelectVoiceProfile,
 }: Props) {
-  const { openSettingsTab, openMinimaxVoices, openVoiceboxView } = useAppView();
+  const { openSettingsTab, openVoiceProfiles } = useAppView();
 
   const handleSelectProfile = (profile: TtsVoiceProfile) => {
     onSelectVoiceProfile(profile);
@@ -29,13 +29,8 @@ export default function SettingsSidebar({
 
   const handleEditProfile = (profile: TtsVoiceProfile) => {
     onSelectVoiceProfile(profile);
-    if (profile.provider === "voicebox") {
-      openVoiceboxView("tts_preset");
-      onProfileEdited?.(`Załadowano profil „${profile.name}" — edycja w Voice Box.`);
-      return;
-    }
-    openMinimaxVoices("profile");
-    onProfileEdited?.(`Załadowano profil „${profile.name}" do edycji w Głosach Minimax.`);
+    openVoiceProfiles();
+    onProfileEdited?.(`Załadowano profil „${profile.name}" do edycji.`);
   };
 
   return (
@@ -69,7 +64,7 @@ export default function SettingsSidebar({
         <button
           type="button"
           className="btn-primary text-xs w-full py-2"
-          onClick={() => openMinimaxVoices("profile")}
+          onClick={() => openVoiceProfiles()}
         >
           Dodaj nowy profil
         </button>

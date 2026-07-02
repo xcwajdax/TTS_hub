@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { copyGenerationAudioToClipboard, copyGenerationMp4ToClipboard } from "../../api/tauri";
 import { useVideoTemplatePicker } from "../../hooks/useVideoTemplatePicker";
 import { promptExportGenerationMp4 } from "../../lib/exportGenerationMp3";
+import { usePrivateShareConfirm } from "../../lib/usePrivateShareConfirm";
 import {
   AUDIO_CLIPBOARD_SUCCESS_TOAST,
   MP4_CLIPBOARD_SUCCESS_TOAST,
@@ -37,6 +38,7 @@ export default function GenerationClipboardButtons({
   onError,
   onToast,
 }: Props) {
+  const { requestShare, dialog } = usePrivateShareConfirm();
   const { templates, selectedId, setSelectedId, loading: templatesLoading } = useVideoTemplatePicker();
   const [copyingMp4, setCopyingMp4] = useState(false);
   const [copyingAudio, setCopyingAudio] = useState(false);
@@ -113,7 +115,7 @@ export default function GenerationClipboardButtons({
     <button
       type="button"
       disabled={!canUse || busyMp4 || copyingAudio}
-      onClick={() => void handleCopyMp4()}
+      onClick={() => requestShare(gen, "MP4", () => void handleCopyMp4())}
       className={[
         "generation-clipboard-btn generation-clipboard-btn--mp4",
         variant === "menu" ? "generation-clipboard-btn--menu" : "",
@@ -131,7 +133,7 @@ export default function GenerationClipboardButtons({
     <button
       type="button"
       disabled={!canUse || copyingAudio || busyMp4}
-      onClick={() => void handleCopyAudio()}
+      onClick={() => requestShare(gen, "audio", () => void handleCopyAudio())}
       className={[
         "generation-clipboard-btn generation-clipboard-btn--audio",
         variant === "menu" ? "generation-clipboard-btn--menu" : "",
@@ -176,6 +178,7 @@ export default function GenerationClipboardButtons({
           {mp4Btn}
           {audioBtn}
         </div>
+        {dialog}
       </div>
     );
   }
@@ -247,6 +250,7 @@ export default function GenerationClipboardButtons({
           />
         </div>
       )}
+      {dialog}
     </div>
   );
 }

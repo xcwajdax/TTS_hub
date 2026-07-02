@@ -24,6 +24,8 @@ import type { Generation } from "../types";
 import type { TtsVoiceProfile } from "../appSettings";
 import JobProgressCard from "./JobProgressCard";
 import Icon from "./Icon";
+import { getMockAppSettingsView } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import { isTauriApp } from "../lib/tauriEnv";
 
 interface Props {
@@ -196,6 +198,10 @@ export default function GenerationQueuePanel({
 
   useEffect(() => {
     if (voiceProfilesProp.length > 0) return;
+    if (isMockUiMode()) {
+      setVoiceProfiles(getMockAppSettingsView().voice_profiles ?? []);
+      return;
+    }
     let cancelled = false;
     void getAppSettings()
       .then((view) => {

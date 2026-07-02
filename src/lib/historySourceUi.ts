@@ -87,6 +87,7 @@ export function sourceFilterAccent(id: GenerationSource | "all"): string | undef
 }
 
 export function resolveHistoryItemColor(gen: Generation): string {
+  if (gen.is_private) return "#dc2626";
   const manual = gen.ui_color?.trim();
   if (manual) return manual;
   return getSourceUi(gen.source).defaultColor;

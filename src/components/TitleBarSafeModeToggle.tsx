@@ -106,7 +106,7 @@ export default function TitleBarSafeModeToggle() {
   return (
     <button
       type="button"
-      className={`title-bar__safe-mode ${safeMode ? "title-bar__safe-mode--on" : ""}`}
+      className={`title-bar__safe-mode chrome-field chrome-field--lock ${safeMode ? "title-bar__safe-mode--on" : ""}`}
       onClick={() => void toggle()}
       disabled={busy}
       aria-pressed={safeMode}

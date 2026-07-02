@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAppSettings, setAppSettings } from "../../api/tauri";
 import { appSettingsViewToPayload } from "../../appSettings";
+import { isMockUiMode } from "../../lib/mockUi/isMockUiMode";
 import type { AppView } from "../AppViewTabs";
 import type { SettingsTabId } from "../settings/settingsTabs";
 import QuickSetupWizard from "../quickSetup/QuickSetupWizard";
@@ -30,6 +31,7 @@ export default function OnboardingOrchestrator({
   const lastRestartToken = useRef(restartToken);
 
   const markTutorialComplete = useCallback(async () => {
+    if (isMockUiMode()) return;
     try {
       const view = await getAppSettings();
       await setAppSettings({ ...appSettingsViewToPayload(view), ui_tutorial_completed: true });
@@ -62,6 +64,7 @@ export default function OnboardingOrchestrator({
   useEffect(() => {
     if (initialCheckDone.current) return;
     initialCheckDone.current = true;
+    if (isMockUiMode()) return;
     void getAppSettings().then((view) => {
       if (!view.ui_tutorial_completed) {
         setPhase("welcome");
@@ -72,6 +75,11 @@ export default function OnboardingOrchestrator({
   useEffect(() => {
     if (restartToken === 0 || restartToken === lastRestartToken.current) return;
     lastRestartToken.current = restartToken;
+    if (isMockUiMode()) {
+      goToView("tts");
+      setPhase("tts_tour");
+      return;
+    }
 
     void getAppSettings().then((view) => {
       if (view.quick_setup_completed) {

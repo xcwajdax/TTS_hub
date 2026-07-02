@@ -9,6 +9,7 @@ import {
 import { formatDurationMs } from "../../lib/formatTime";
 import { MP4_CLIPBOARD_SUCCESS_TOAST } from "../../lib/mp4ExportProgress";
 import Icon from "../Icon";
+import PrivateBadge from "../history/PrivateBadge";
 
 interface Props {
   onError: (msg: string) => void;
@@ -109,8 +110,9 @@ export default function VideoLibraryPanel({ onError, onToast }: Props) {
                   )}
                 </div>
                 <div className="p-2">
-                  <p className="text-xs font-medium truncate" title={rec.title ?? undefined}>
-                    {rec.title ?? "Bez tytułu"}
+                  <p className="text-xs font-medium truncate flex items-center gap-1" title={rec.title ?? undefined}>
+                    <span className="truncate">{rec.title ?? "Bez tytułu"}</span>
+                    {rec.isPrivate && <PrivateBadge />}
                   </p>
                   <p className="text-[10px] text-muted mt-0.5">
                     {rec.durationMs != null ? formatDurationMs(rec.durationMs) : "—"} ·{" "}
@@ -123,8 +125,9 @@ export default function VideoLibraryPanel({ onError, onToast }: Props) {
 
           {selected && (
             <aside className="w-[min(100%,320px)] shrink-0 border-l border-border flex flex-col p-4 gap-3 overflow-y-auto bg-panel2/20">
-              <h3 className="font-semibold text-sm truncate" title={selected.title ?? undefined}>
-                {selected.title ?? "Wideo MP4"}
+              <h3 className="font-semibold text-sm truncate flex items-center gap-1.5" title={selected.title ?? undefined}>
+                <span className="truncate">{selected.title ?? "Wideo MP4"}</span>
+                {selected.isPrivate && <PrivateBadge />}
               </h3>
               <video
                 key={selected.id}

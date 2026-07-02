@@ -1,4 +1,4 @@
-export type VoiceboxSection = "profiles" | "history" | "tts_preset";
+export type VoiceboxSection = "profiles" | "history";
 
 export const DEFAULT_VOICEBOX_SECTION: VoiceboxSection = "profiles";
 

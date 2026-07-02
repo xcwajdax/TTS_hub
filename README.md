@@ -61,6 +61,16 @@ npm run tauri dev
 
 Aplikacja startuje z API na **`http://127.0.0.1:8765`**. Build instalatora: `npm run tauri build`.
 
+### Podgląd UI w przeglądarce (mockup)
+
+Sam frontend Vite (`npm run dev` → `http://127.0.0.1:1420`) **nie ma backendu Tauri** — generowanie TTS i odtwarzanie audio nie działają. Do podglądu layoutu ze **przykładowymi danymi** (historia, chat, roleplay, soundboard itd.) użyj trybu mockup:
+
+```text
+http://127.0.0.1:1420?mock=1
+```
+
+albo `npm run dev:mock`. Pełna aplikacja nadal wymaga `npm run tauri dev`. Zrzuty promo: [docs/promo/capture/CHECKLIST.md](docs/promo/capture/CHECKLIST.md).
+
 ## Dokumentacja
 
 | | |
@@ -103,6 +113,7 @@ Szczegóły kosztów, danych lokalnych i zasad wkładu: [docs/PROJECT_GUIDELINES
 - Testy integracyjne lokalnego API
 - Rozszerzenie VS Code / Cursor (opcjonalna migracja z hooków) — [plan](.cursor/plans/vscode-cursor-extension.plan.md)
 - Node Audio Routing — mixer TTS / mic / loopback — [plan](.cursor/plans/node-audio-routing.plan.md)
+- **Profile głosu** — 2D placement parametrów voice_modify, rozszerzony edytor efektów dźwiękowych, zaawansowane pola Voice Box (seed, chunking)
 - Podpis kodu instalatora Windows
 - MCP server w aplikacji
 

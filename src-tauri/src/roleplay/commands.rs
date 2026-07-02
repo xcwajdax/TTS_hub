@@ -270,6 +270,7 @@ pub fn build_generate_req_from_profile(
         // (and any chat bubble, when the segment is replayed through the
         // chat window) carries the badge back to the same profile.
         voice_profile_id: Some(profile.id.clone()),
+        context_label: None,
     }
 }
 

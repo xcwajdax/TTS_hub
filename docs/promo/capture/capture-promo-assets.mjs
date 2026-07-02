@@ -18,7 +18,7 @@ const PROMO_ROOT = path.join(__dirname, "..");
 const SCREENSHOTS_DIR = path.join(PROMO_ROOT, "..", "screenshots");
 const STORYBOARD_SOCIAL = path.join(PROMO_ROOT, "storyboard", "social");
 const STORYBOARD_FULL = path.join(PROMO_ROOT, "storyboard", "full");
-const BASE_URL = process.env.TTS_HUB_PREVIEW_URL ?? "http://127.0.0.1:1420";
+const BASE_URL = process.env.TTS_HUB_PREVIEW_URL ?? "http://127.0.0.1:1420?mock=1";
 const VIEWPORT_DESKTOP = { width: 1920, height: 1080 };
 const VIEWPORT_PORTRAIT = { width: 1080, height: 1920 };
 
@@ -42,7 +42,8 @@ async function applySkin(page, skinId) {
   await waitForApp(page);
   await page.evaluate(() => {
     document.querySelectorAll('[role="status"]').forEach((el) => {
-      if (el.textContent?.includes("Podgląd UI")) el.remove();
+      const text = el.textContent ?? "";
+      if (text.includes("Podgląd UI") || text.includes("Tryb mockup")) el.remove();
     });
   });
   await page.waitForTimeout(400);

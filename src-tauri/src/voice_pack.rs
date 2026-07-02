@@ -74,9 +74,25 @@ pub fn persist_imported_profile(state: &AppState, mut profile: TtsVoiceProfile) 
     Ok(profile)
 }
 
+fn apply_recommended_filter_preset(state: &AppState, preset_id: &str) -> Result<()> {
+    let preset_id = preset_id.trim();
+    if preset_id.is_empty() {
+        return Ok(());
+    }
+    let mut settings = state.settings.read().map_err(|e| anyhow!("{e}"))?.clone();
+    settings.text_filters.active_preset_id = Some(preset_id.to_string());
+    settings.text_filters.normalize();
+    state.apply_and_save_settings(settings)?;
+    Ok(())
+}
+
 pub fn import_and_persist_profile(state: &AppState, archive_path: &Path) -> Result<TtsVoiceProfile> {
-    let (_manifest, profile) = import_voice_pack(archive_path)?;
-    persist_imported_profile(state, profile)
+    let (manifest, profile) = import_voice_pack(archive_path)?;
+    let profile = persist_imported_profile(state, profile)?;
+    if let Some(filter_id) = manifest.recommended_filter_preset_id.as_deref() {
+        apply_recommended_filter_preset(state, filter_id)?;
+    }
+    Ok(profile)
 }
 
 pub async fn import_and_persist_profile_from_url(
@@ -194,6 +210,8 @@ pub struct VoicePackManifest {
     pub preview_text: Option<String>,
     #[serde(default)]
     pub requires: Option<VoicePackRequires>,
+    #[serde(default)]
+    pub recommended_filter_preset_id: Option<String>,
     pub profile: VoicePackProfilePayload,
 }
 
@@ -262,6 +280,7 @@ pub fn profile_to_manifest(profile: &TtsVoiceProfile) -> VoicePackManifest {
             providers: vec![profile.provider.clone()],
             min_app_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }),
+        recommended_filter_preset_id: None,
         profile: VoicePackProfilePayload::from_profile(profile),
     }
 }
@@ -488,6 +507,7 @@ mod tests {
             tags: vec![],
             preview_text: None,
             requires: None,
+            recommended_filter_preset_id: None,
             profile: VoicePackProfilePayload::from_profile(&sample_profile()),
         };
         assert!(validate_manifest(&manifest).is_err());

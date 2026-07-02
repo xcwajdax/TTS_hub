@@ -13,6 +13,7 @@ import type {
   McpIntegrationStatus,
 } from "../appSettings";
 import type { MinimaxHealth, VoiceBoxHealth } from "../api/tauri";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import { isTauriApp } from "../lib/tauriEnv";
 
 const POLL_MS = 10_000;
@@ -48,12 +49,44 @@ export function useAppStatus(): AppStatusSnapshot {
       apiOk = false;
     }
 
-    if (!inTauri) {
+    if (!inTauri && !isMockUiMode()) {
       setStatus((prev) => ({
         ...prev,
         apiOk,
         build: prev.build ?? { version: "0.1.0", git_hash: null },
       }));
+      return;
+    }
+
+    if (isMockUiMode()) {
+      setStatus({
+        apiOk,
+        mcp: { configured: true, config_path: "~/.cursor/mcp.json (mock)", scope: "global" },
+        cursor: {
+          api_ok: false,
+          hooks_installed: true,
+          ps1_path: ".cursor-hooks/cursor-tts.ps1 (mock)",
+          hooks_json_path: ".cursor/hooks.json (mock)",
+          tts_hub_config_path: ".cursor/tts-hub.json (mock)",
+          pwsh_available: true,
+          last_install_ts: Date.now(),
+          last_cursor_at: Date.now() - 60_000,
+        },
+        voicebox: {
+          status: "ok",
+          model_loaded: true,
+          model_downloaded: true,
+          model_size: "mock",
+          gpu_available: false,
+          gpu_type: null,
+          vram_used_mb: null,
+          backend_type: "mock",
+          backend_variant: null,
+          gpu_compatibility_warning: null,
+        },
+        minimax: { configured: true, ok: true, message: "Mock" },
+        build: { version: "0.1.0", git_hash: "mock" },
+      });
       return;
     }
 

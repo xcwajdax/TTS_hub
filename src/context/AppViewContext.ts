@@ -2,15 +2,17 @@ import { createContext, useContext } from "react";
 import type { AppView } from "../components/AppViewTabs";
 import type { MinimaxVoicesSection } from "../components/minimaxVoicesSections";
 import type { VoiceboxSection } from "../components/voicebox/voiceboxSections";
-import type { SettingsTabId } from "../components/settings/settingsTabs";
+import type { SettingsViewTab } from "../components/settings/settingsTabs";
 
 export interface AppViewNav {
   /** Switch the top-level view in AppViewTabs. */
   goToView: (view: AppView) => void;
-  /** Open the settings view on a specific tab. */
-  openSettingsTab: (tab: SettingsTabId) => void;
-  /** Open the Minimax voices view (optional sub-section, e.g. profile editor). */
+  /** Open the settings view on a specific tab or the category overview. */
+  openSettingsTab: (tab: SettingsViewTab) => void;
+  /** Open the Minimax voices view (optional sub-section). */
   openMinimaxVoices: (section?: MinimaxVoicesSection) => void;
+  /** Open the voice profiles editor (main tab). */
+  openVoiceProfiles: () => void;
   /** Open the Voice Box management view. */
   openVoiceboxView: (section?: VoiceboxSection) => void;
   /** Convenience: jump back to TTS view. */
@@ -26,6 +28,7 @@ export function useAppView(): AppViewNav {
       goToView: () => undefined,
       openSettingsTab: () => undefined,
       openMinimaxVoices: () => undefined,
+      openVoiceProfiles: () => undefined,
       openVoiceboxView: () => undefined,
       onBackToTts: () => undefined,
     };

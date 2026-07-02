@@ -26,5 +26,13 @@
     "color-accent-soft": "124 92 255 / 0.07",
     "color-blockquote-text": "200 204 214",
     "icon-filter": "brightness(0) invert(0.88)"
+  },
+  "transition": {
+    "pattern": "bricks",
+    "durationMs": 3600,
+    "waveSpeed": 400,
+    "falloff": 0.4,
+    "noise": 0.16,
+    "lift": 32
   }
 }

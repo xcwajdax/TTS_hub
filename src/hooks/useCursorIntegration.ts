@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getAppSettings } from "../api/tauri";
-import { isTauriApp } from "../lib/tauriEnv";
 import { defaultCursorIntegration, type CursorIntegration } from "../appSettings";
+import { MOCK_CURSOR_FEED } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
+import { isTauriApp } from "../lib/tauriEnv";
 import type { Generation } from "../types";
 
 /** Live cursor_integration settings + latest cursor generation event. */
@@ -20,6 +22,11 @@ export function useCursorIntegration() {
   };
 
   useEffect(() => {
+    if (isMockUiMode()) {
+      setCfg({ ...defaultCursorIntegration(), enabled: true });
+      setLastCursor(MOCK_CURSOR_FEED[0] ?? null);
+      return;
+    }
     if (!isTauriApp()) return;
     void reload();
   }, []);

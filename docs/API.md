@@ -103,7 +103,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/plugins/soundboard/slots/0/play" -
 | `minimax_speed` | number \| null | nie | MiniMax — 0.5–2.0 (domyślnie 1.0). Legacy; nadpisywane przez `minimax_options.voice`. |
 | `minimax_vol` | number \| null | nie | MiniMax — 0–10 (domyślnie 1.0). |
 | `minimax_pitch` | number \| null | nie | MiniMax — -12–12 (domyślnie 0). |
-| `minimax_options` | object \| null | nie | Pełne opcje T2A MiniMax (voice, audio, voice_modify, pronunciation_dict, timbre_weights, language, subtitles, transport HTTP/WS, async `text_file_id`). Tekst >10 000 znaków → async T2A. |
+| `voice_profile_id` | string \| null | nie | Id zapisanego profilu głosu (badge w historii). |
+| `context_label` | string \| null | nie | Etykieta projektu/sesji — badge w historii; tytuł nadal z tekstu. |
 
 ### Multi-speaker
 

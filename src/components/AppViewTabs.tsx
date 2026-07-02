@@ -3,6 +3,7 @@ import type { IconSlug } from "../lib/icons";
 
 export type AppView =
   | "tts"
+  | "voice_profiles"
   | "roleplay"
   | "history"
   | "minimax_voices"
@@ -58,6 +59,7 @@ function TabButton({
 export default function AppViewTabs({ view, onViewChange, showMinimaxVoices, showVoicebox }: Props) {
   const tabs: TabDef[] = [
     { id: "tts", label: "TTS", icon: "tab-tts" },
+    { id: "voice_profiles", label: "Profile Głosu", icon: "tab-voice-profiles" },
     { id: "roleplay", label: "Roleplay", icon: "tab-roleplay" },
     { id: "history", label: "Historia", icon: "tab-history" },
     {

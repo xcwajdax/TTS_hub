@@ -165,6 +165,7 @@ pub fn new_video_export_record(
     render_hash: &str,
     source: &str,
     title: Option<String>,
+    is_private: bool,
 ) -> VideoExportRecord {
     VideoExportRecord {
         id: new_export_id(),
@@ -178,6 +179,7 @@ pub fn new_video_export_record(
         created_at: unix_now(),
         source: source.to_string(),
         title,
+        is_private,
     }
 }
 

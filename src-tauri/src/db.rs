@@ -89,6 +89,12 @@ pub struct Generation {
     /// direct one-off TTS, or external messenger that did not pass it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voice_profile_id: Option<String>,
+    /// Optional project/session label for history UI (distinct from title).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_label: Option<String>,
+    /// Created while privacy_mode was "private" — shown prominently in history UI.
+    #[serde(default)]
+    pub is_private: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,7 +161,7 @@ pub struct UsageSummary {
     pub current_session: UsageTotals,
 }
 
-const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id";
+const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id, context_label, is_private";
 
 fn default_source() -> String {
     "manual".to_string()
@@ -311,6 +317,14 @@ impl Db {
             "CREATE INDEX IF NOT EXISTS idx_generations_voice_profile ON generations(voice_profile_id, created_at DESC)",
             [],
         );
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN context_label TEXT",
+            [],
+        );
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS folders (
@@ -422,6 +436,10 @@ impl Db {
             CREATE INDEX IF NOT EXISTS idx_video_exports_generation ON video_exports(generation_id, created_at DESC);
             "#,
         )?;
+        let _ = conn.execute(
+            "ALTER TABLE video_exports ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -431,7 +449,7 @@ impl Db {
     pub fn insert(&self, g: &Generation) -> Result<()> {
         let c = self.conn.lock().unwrap();
         c.execute(
-            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33)",
+            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id, context_label, is_private) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35)",
             params![
                 g.id,
                 g.created_at,
@@ -466,6 +484,8 @@ impl Db {
                 g.origin_user_name,
                 g.origin_thread_id,
                 g.voice_profile_id,
+                g.context_label,
+                g.is_private as i32,
             ],
         )?;
         Ok(())
@@ -1121,6 +1141,8 @@ fn row_to_gen(row: &rusqlite::Row) -> rusqlite::Result<Generation> {
         origin_user_name: row.get(35)?,
         origin_thread_id: row.get(36)?,
         voice_profile_id: row.get(37)?,
+        context_label: row.get(38)?,
+        is_private: row.get::<_, Option<i32>>(39)?.unwrap_or(0) != 0,
     })
 }
 
@@ -1481,6 +1503,8 @@ mod tests {
             origin_user_name: None,
             origin_thread_id: None,
             voice_profile_id: None,
+            context_label: None,
+            is_private: false,
         }
     }
 

@@ -7,8 +7,6 @@ import {
   syncMinimaxVoices,
   type MinimaxClonedVoice,
   type MinimaxPresetVoice,
-  type VoiceBoxHealth,
-  type VoiceBoxProfile,
 } from "../api/tauri";
 import {
   DEFAULT_MINIMAX_LANGUAGE,
@@ -21,39 +19,24 @@ import MinimaxVoiceClone from "./MinimaxVoiceClone";
 import MinimaxVoiceDesign from "./MinimaxVoiceDesign";
 import { minimaxDeleteVoice } from "../api/tauri";
 import MinimaxCloneVolumeControl from "./MinimaxCloneVolumeControl";
-import SaveVoiceProfileFooter from "./SaveVoiceProfileFooter";
-import Settings, { type SettingsState } from "./Settings";
+import { getMockMinimaxCatalog } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import { useAppView } from "../context/AppViewContext";
-import type { TtsModelInfo } from "../ttsModels";
 
 type Section = MinimaxVoicesSection;
 
 interface Props {
   initialSection?: Section;
-  settings: SettingsState;
-  voices: string[];
-  voiceboxProfiles: VoiceBoxProfile[];
-  voiceboxModels: TtsModelInfo[];
-  voiceboxHealth: VoiceBoxHealth | null;
-  onSettingsChange: (s: SettingsState) => void;
   onError: (m: string) => void;
   onSuccess?: (m: string) => void;
-  onProfileSaved?: (m: string) => void;
   onSettingsChanged?: () => void;
   enabledProviders?: TtsProviderId[];
 }
 
 export default function MinimaxVoicesView({
   initialSection = "cloning",
-  settings,
-  voices,
-  voiceboxProfiles,
-  voiceboxModels,
-  voiceboxHealth,
-  onSettingsChange,
   onError,
   onSuccess,
-  onProfileSaved,
   onSettingsChanged,
   enabledProviders,
 }: Props) {
@@ -70,6 +53,15 @@ export default function MinimaxVoicesView({
 
   const loadAll = async () => {
     if (!isEnabled) return;
+    if (isMockUiMode()) {
+      const mock = getMockMinimaxCatalog();
+      setCloned(mock.cloned);
+      setPresets(mock.presets);
+      setSyncedAt(mock.syncedAt);
+      setEnabledLanguages(mock.enabledLanguages);
+      setHasApiKey(mock.hasApiKey);
+      return;
+    }
     try {
       const [clonedList, presetsList, view] = await Promise.all([
         listMinimaxClonedVoices(),
@@ -106,6 +98,11 @@ export default function MinimaxVoicesView({
   }
 
   const persistEnabledLanguages = async (next: string[]) => {
+    if (isMockUiMode()) {
+      setEnabledLanguages(next);
+      onSuccess?.("Tryb mockup — języki nie są zapisywane.");
+      return;
+    }
     setEnabledLanguages(next);
     try {
       const view = await getAppSettings();
@@ -122,6 +119,10 @@ export default function MinimaxVoicesView({
   };
 
   const runSync = async () => {
+    if (isMockUiMode()) {
+      onError("Tryb mockup — synchronizacja głosów MiniMax jest wyłączona.");
+      return;
+    }
     setSyncing(true);
     try {
       const result = await syncMinimaxVoices();
@@ -144,11 +145,6 @@ export default function MinimaxVoicesView({
       <Header onBack={onBackToTts} />
 
       <nav className="shrink-0 flex border-b border-border bg-panel2/40">
-        <SubTab
-          active={section === "profile"}
-          onClick={() => setSection("profile")}
-          label="Profil TTS"
-        />
         <SubTab active={section === "cloning"} onClick={() => setSection("cloning")} label="Klonowanie" />
         <SubTab active={section === "design"} onClick={() => setSection("design")} label="Voice Design" />
         <SubTab
@@ -165,35 +161,6 @@ export default function MinimaxVoicesView({
 
       <main className="flex-1 min-h-0 min-w-0 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-5 flex flex-col gap-6 text-sm">
-          {section === "profile" && (
-            <>
-              <header className="flex flex-col gap-1">
-                <h2 className="text-lg font-semibold">Nowy profil głosu</h2>
-                <p className="text-xs text-muted">
-                  Wybierz providera, model i głos, a na dole zapisz profil ze skrótem klawiszowym.
-                  Po zapisaniu wróć do widoku TTS i wybierz profil z listy po lewej.
-                </p>
-              </header>
-              <div className="border border-border rounded-md overflow-hidden bg-panel2/20">
-                <Settings
-                  state={settings}
-                  voices={voices}
-                  voiceboxProfiles={voiceboxProfiles}
-                  voiceboxModels={voiceboxModels}
-                  voiceboxHealth={voiceboxHealth}
-                  enabledProviders={enabledProviders}
-                  onChange={onSettingsChange}
-                  onError={onError}
-                />
-                <SaveVoiceProfileFooter
-                  settings={settings}
-                  onError={onError}
-                  onSuccess={onProfileSaved ?? onSuccess}
-                />
-              </div>
-            </>
-          )}
-
           {section === "cloning" && (
             <>
               <header className="flex flex-col gap-1">

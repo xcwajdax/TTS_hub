@@ -231,7 +231,7 @@ export default function WaveformPlayer({
 
       <div className="flex-1 min-w-2" aria-hidden />
 
-      <div className="flex shrink-0 items-center gap-x-2 min-w-0">
+      <div className="flex shrink-0 items-stretch gap-x-2 min-w-0">
         <div className="flex h-8 shrink-0 items-center gap-2 text-muted" aria-label="Sterowanie glosnoscia">
           <button
             type="button"

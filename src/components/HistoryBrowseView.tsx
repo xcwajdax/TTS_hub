@@ -3,6 +3,8 @@ import SoundboardPanel from "../plugins/soundboard/SoundboardPanel";
 import { getAppSettings, getSoundboard } from "../api/tauri";
 import { useSoundboardPlugin } from "../plugins/useSoundboardPlugin";
 import { PLUGINS_CHANGED } from "../plugins/events";
+import { getMockAppSettingsView, getMockSoundboardView } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import { isTauriApp } from "../lib/tauriEnv";
 import {
   loadHistoryCompactView,
@@ -118,6 +120,14 @@ export default function HistoryBrowseView({
     if (voiceProfilesProp) return;
     let cancelled = false;
     const refresh = async () => {
+      if (isMockUiMode()) {
+        const view = getMockAppSettingsView();
+        if (!cancelled) {
+          setVoiceProfilesState(view.voice_profiles ?? []);
+          setTempHistoryMax(view.temp_history_max);
+        }
+        return;
+      }
       try {
         const view = await getAppSettings();
         if (!cancelled) {
@@ -138,6 +148,10 @@ export default function HistoryBrowseView({
   }, [voiceProfilesProp]);
 
   useEffect(() => {
+    if (isMockUiMode()) {
+      setTempHistoryMax(getMockAppSettingsView().temp_history_max);
+      return;
+    }
     if (!isTauriApp()) return;
     void getAppSettings()
       .then((view) => setTempHistoryMax(view.temp_history_max))
@@ -173,6 +187,10 @@ export default function HistoryBrowseView({
   };
 
   useEffect(() => {
+    if (isMockUiMode() && soundboardInstalled) {
+      setSoundboardFilledCount(getMockSoundboardView().slots.filter((s) => s.hasAudio).length);
+      return;
+    }
     if (!isTauriApp() || !soundboardInstalled) return;
     void getSoundboard()
       .then((sb) => setSoundboardFilledCount(sb.slots.filter((s) => s.hasAudio).length))

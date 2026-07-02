@@ -22,6 +22,7 @@ import Icon from "../Icon";
 import HistoryTextPreview from "../HistoryTextPreview";
 import HistoryTokenInfoButton from "./HistoryTokenInfoButton";
 import HistoryItemProfileAvatar from "./HistoryItemProfileAvatar";
+import PrivateBadge from "./PrivateBadge";
 import GenerationClipboardButtons from "../video/GenerationClipboardButtons";
 
 interface Props {
@@ -191,6 +192,11 @@ export default function HistoryDetailPanel({
               {titleLabel}
             </button>
           )}
+          {gen.is_private && (
+            <div className="mt-1">
+              <PrivateBadge />
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
             <span>{createdLabel}</span>
             <span>·</span>
@@ -206,6 +212,11 @@ export default function HistoryDetailPanel({
 
       <div className="shrink-0 p-4 border-t border-border flex flex-col gap-3">
         <div className="flex flex-wrap gap-1.5 text-[10px]">
+          {gen.context_label ? (
+            <span className="tag text-accent2 border-accent/40" title="Kontekst generacji">
+              {gen.context_label}
+            </span>
+          ) : null}
           <span className="tag" title={gen.model}>
             {formatModelLabel(gen.model)}
           </span>

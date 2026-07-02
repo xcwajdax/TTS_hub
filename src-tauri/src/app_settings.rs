@@ -259,6 +259,9 @@ pub struct AppSettings {
     /// When true, new generations are held for user approval before synthesis.
     #[serde(default)]
     pub safe_mode: bool,
+    /// normal | private | incognito
+    #[serde(default = "default_privacy_mode")]
+    pub privacy_mode: String,
     /// Expand the queue panel and switch to approval tab when a pending item arrives.
     #[serde(default = "default_safe_mode_auto_open_queue")]
     pub safe_mode_auto_open_queue: bool,
@@ -267,6 +270,16 @@ pub struct AppSettings {
     #[serde(default = "default_true")]
     pub auto_archive_mp4_on_clipboard: bool,
 }
+
+fn default_privacy_mode() -> String {
+    "normal".to_string()
+}
+
+pub const PRIVACY_MODE_NORMAL: &str = "normal";
+pub const PRIVACY_MODE_PRIVATE: &str = "private";
+pub const PRIVACY_MODE_INCOGNITO: &str = "incognito";
+
+pub const PRIVATE_UI_COLOR: &str = "#dc2626";
 
 fn default_safe_mode_auto_open_queue() -> bool {
     true
@@ -358,6 +371,7 @@ impl Default for AppSettings {
             quick_history_page_size: default_quick_history_page_size(),
             timeline_view: default_timeline_view(),
             safe_mode: false,
+            privacy_mode: default_privacy_mode(),
             safe_mode_auto_open_queue: default_safe_mode_auto_open_queue(),
             default_video_template_id: default_video_template_id(),
             auto_archive_mp4_on_clipboard: true,
@@ -541,6 +555,21 @@ impl AppSettings {
                 v.output_vol = Some(2.0);
             }
         }
+        self.normalize_privacy_mode();
+    }
+
+    fn normalize_privacy_mode(&mut self) {
+        let raw = self.privacy_mode.trim().to_ascii_lowercase();
+        self.privacy_mode = match raw.as_str() {
+            PRIVACY_MODE_PRIVATE => PRIVACY_MODE_PRIVATE.to_string(),
+            PRIVACY_MODE_INCOGNITO => PRIVACY_MODE_INCOGNITO.to_string(),
+            "safe" => {
+                self.safe_mode = true;
+                PRIVACY_MODE_NORMAL.to_string()
+            }
+            "off" | PRIVACY_MODE_NORMAL | "" => PRIVACY_MODE_NORMAL.to_string(),
+            _ => PRIVACY_MODE_NORMAL.to_string(),
+        };
     }
 
     pub fn effective_minimax_enabled_languages(&self) -> Vec<String> {

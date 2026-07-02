@@ -16,8 +16,10 @@ import {
   type Mp4ExportProgress,
 } from "../lib/mp4ExportProgress";
 import { resolveProfileForGeneration } from "../lib/voiceProfiles";
+import { usePrivateShareConfirm } from "../lib/usePrivateShareConfirm";
 import Icon from "./Icon";
 import HistoryItemProfileAvatar from "./history/HistoryItemProfileAvatar";
+import PrivateBadge from "./history/PrivateBadge";
 
 interface Props {
   gen: Generation;
@@ -91,6 +93,7 @@ export default function HistoryQuickItem({
   onToast,
   voiceProfiles = [],
 }: Props) {
+  const { requestShare, dialog } = usePrivateShareConfirm();
   const [saving, setSaving] = useState(false);
   const [copyingMp4, setCopyingMp4] = useState(false);
   const [copyingAudio, setCopyingAudio] = useState(false);
@@ -199,7 +202,10 @@ export default function HistoryQuickItem({
       />
 
       <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5 py-0.5">
-        <span className="truncate text-[11px] font-semibold text-heading">{profileDisplayName}</span>
+        <span className="truncate text-[11px] font-semibold text-heading flex items-center gap-1 min-w-0">
+          <span className="truncate">{profileDisplayName}</span>
+          {gen.is_private && <PrivateBadge />}
+        </span>
         <span className="min-w-0 truncate text-[10px] text-muted">{titleLabel}</span>
       </div>
 
@@ -226,7 +232,7 @@ export default function HistoryQuickItem({
             disabled={saving || copying || !canCopy}
             onClick={(e) => {
               e.stopPropagation();
-              void handleCopyMp4();
+              requestShare(gen, "MP4", () => void handleCopyMp4());
             }}
           >
             <Icon name="film" size={ACTION_ICON} />
@@ -239,7 +245,7 @@ export default function HistoryQuickItem({
             disabled={saving || copying || !canCopy}
             onClick={(e) => {
               e.stopPropagation();
-              void handleCopyAudio();
+              requestShare(gen, "audio", () => void handleCopyAudio());
             }}
           >
             <Icon name="music-note" size={ACTION_ICON} />
@@ -280,6 +286,7 @@ export default function HistoryQuickItem({
           />
         </div>
       )}
+      {dialog}
     </div>
   );
 }

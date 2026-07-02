@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import Icon from "./Icon";
-import { useAppStatus } from "../hooks/useAppStatus";
-import { useJobs } from "../context/JobsContext";
+import StatusBarAudioOutput from "./StatusBarAudioOutput";
+import StatusBarSkinSwitcher from "./StatusBarSkinSwitcher";
+import { useAppStatus } from "../hooks/useAppStatus";import { useJobs } from "../context/JobsContext";
 import { isTauriApp } from "../lib/tauriEnv";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 
 type StatusTone = "ok" | "warn" | "error" | "idle";
 
@@ -48,34 +50,41 @@ function voiceboxTone(status: string | undefined): StatusTone {
   return "error";
 }
 
-export default function AppStatusBar() {
+export default function AppStatusBar({
+  onOpenAppearance,
+}: {
+  onOpenAppearance?: () => void;
+}) {
   const { apiOk, mcp, cursor, voicebox, minimax, build } = useAppStatus();
   const { activeJobs } = useJobs();
   const inTauri = isTauriApp();
+  const mockMode = isMockUiMode();
 
-  const mcpTone: StatusTone = !inTauri
-    ? "idle"
-    : mcp?.configured
-      ? apiOk
-        ? "ok"
-        : "warn"
-      : "idle";
+  const mcpTone: StatusTone = mockMode
+    ? "ok"
+    : !inTauri
+      ? "idle"
+      : mcp?.configured
+        ? apiOk
+          ? "ok"
+          : "warn"
+        : "idle";
 
-  const mcpLabel = !inTauri
-    ? "MCP"
-    : mcp?.configured
-      ? "MCP skonfigurowany"
-      : "MCP brak";
+  const mcpLabel = mockMode
+    ? "MCP (mock)"
+    : !inTauri
+      ? "MCP"
+      : mcp?.configured
+        ? "MCP skonfigurowany"
+        : "MCP brak";
 
-  const mcpTitle = mcp?.config_path
-    ? `${mcp.scope ?? "config"}: ${mcp.config_path}`
-    : "Brak wpisu ttshub-mcp w ~/.cursor/mcp.json";
+  const mcpTitle = mockMode
+    ? "Tryb mockup — przykładowy stan integracji MCP"
+    : mcp?.config_path
+      ? `${mcp.scope ?? "config"}: ${mcp.config_path}`
+      : "Brak wpisu ttshub-mcp w ~/.cursor/mcp.json";
 
-  const cursorTone: StatusTone = !inTauri
-    ? "idle"
-    : cursor?.hooks_installed
-      ? "ok"
-      : "warn";
+  const cursorTone: StatusTone = mockMode ? "ok" : !inTauri ? "idle" : cursor?.hooks_installed ? "ok" : "warn";
 
   const minimaxTone: StatusTone = !minimax
     ? "idle"
@@ -102,15 +111,17 @@ export default function AppStatusBar() {
           tone={mcpTone}
           title={mcpTitle}
         />
-        {inTauri && (
+        {(inTauri || mockMode) && (
           <StatusItem
             icon={<Icon name="source-cursor" size={12} className="status-bar__icon" />}
             label={cursor?.hooks_installed ? "Cursor hooki" : "Cursor brak"}
             tone={cursorTone}
             title={
-              cursor?.hooks_installed
-                ? "Hooki Cursor zainstalowane"
-                : "Zainstaluj hooki w Ustawienia → Cursor"
+              mockMode
+                ? "Tryb mockup — przykładowy stan hooków Cursor"
+                : cursor?.hooks_installed
+                  ? "Hooki Cursor zainstalowane"
+                  : "Zainstaluj hooki w Ustawienia → Cursor"
             }
           />
         )}
@@ -127,7 +138,9 @@ export default function AppStatusBar() {
       <div className="status-bar__spacer" aria-hidden />
 
       <div className="status-bar__cluster status-bar__cluster--end">
-        {inTauri && voicebox && (
+        <StatusBarAudioOutput />
+        <StatusBarSkinSwitcher onOpenAppearance={onOpenAppearance} />
+        {(inTauri || mockMode) && voicebox && (
           <StatusItem
             icon={<Icon name="provider-voicebox" size={12} className="status-bar__icon" />}
             label="Voicebox"
@@ -135,7 +148,7 @@ export default function AppStatusBar() {
             title={voicebox.gpu_compatibility_warning ?? voicebox.status}
           />
         )}
-        {inTauri && minimax?.configured && (
+        {(inTauri || mockMode) && minimax?.configured && (
           <StatusItem
             icon={<Icon name="provider-minimax" size={12} className="status-bar__icon" />}
             label="MiniMax"

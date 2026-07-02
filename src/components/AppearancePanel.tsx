@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   exportSkin,
   installSkinArchive,
@@ -15,7 +15,14 @@ import {
 } from "../lib/timelineView";
 import { persistActiveSkinId } from "../skins/persistActiveSkin";
 import { useSkin } from "../skins/SkinProvider";
-import { BUILTIN_SKINS } from "../skins/builtin";
+import { BUILTIN_SKIN_IDS, BUILTIN_SKINS } from "../skins/builtin";
+import {
+  isSkinTransitionsGloballyEnabled,
+  isSkinTransitionsForceEnabled,
+  setSkinTransitionsGloballyEnabled,
+  setSkinTransitionsForceEnabled,
+} from "../skins/transition/config";
+import { useSkinTransition } from "../skins/transition/SkinTransitionProvider";
 import { getSkinTimelineViewPreference } from "../skins/skinPreferences";
 import { resolveTokens } from "../skins/tokens";
 import type { SkinListEntry } from "../skins/types";
@@ -65,9 +72,13 @@ export default function AppearancePanel({
   onTimelineViewChange,
   onError,
 }: Props) {
-  const { availableSkins, setSkin, refreshSkins } = useSkin();
+  const { availableSkins, setSkin, refreshSkins, activeSkinId: contextSkinId } = useSkin();
+  const { playTransition, busy: transitionBusy } = useSkinTransition();
   const { setMode: persistTimelineMode, applySkinPreference } = useTimelineView();
   const [busy, setBusy] = useState(false);
+  const [transitionsEnabled, setTransitionsEnabled] = useState(isSkinTransitionsGloballyEnabled);
+  const [transitionsForce, setTransitionsForce] = useState(isSkinTransitionsForceEnabled);
+  const demoBtnRef = useRef<HTMLButtonElement>(null);
 
   const activeEntry = availableSkins.find((s) => s.id === activeSkinId);
   const isBuiltin = activeEntry?.source === "builtin";
@@ -75,27 +86,52 @@ export default function AppearancePanel({
   const skinManifestFor = (id: string) =>
     BUILTIN_SKINS.find((s) => s.manifest.id === id)?.manifest;
 
-  const applySkin = async (id: string) => {
-    const ok = await setSkin(id);
-    if (!ok) {
-      onError(`Nie udało się zastosować skórki „${id}”`);
+  const applySkin = async (id: string, origin?: { x: number; y: number }) => {
+    const doApply = async (): Promise<void> => {
+      const ok = await setSkin(id);
+      if (!ok) {
+        onError(`Nie udało się zastosować skórki „${id}”`);
+        return;
+      }
+      onSelectSkin(id);
+      const manifest = skinManifestFor(id);
+      if (manifest) {
+        const pref = getSkinTimelineViewPreference(manifest);
+        if (pref) {
+          onTimelineViewChange(pref);
+          applySkinPreference(manifest);
+        }
+      }
+      try {
+        await persistActiveSkinId(id);
+      } catch (e) {
+        onError(`Skórka włączona, ale zapis ustawień nie powiódł się: ${e}`);
+      }
+    };
+
+    if (origin && id !== contextSkinId) {
+      await playTransition({
+        origin,
+        fromSkinId: contextSkinId,
+        toSkinId: id,
+        applySkin: doApply,
+      });
       return;
     }
-    onSelectSkin(id);
-    const manifest = skinManifestFor(id);
-    if (manifest) {
-      const pref = getSkinTimelineViewPreference(manifest);
-      if (pref) {
-        onTimelineViewChange(pref);
-        applySkinPreference(manifest);
-      }
-    }
-    try {
-      await persistActiveSkinId(id);
-    } catch (e) {
-      onError(`Skórka włączona, ale zapis ustawień nie powiódł się: ${e}`);
-    }
+
+    await doApply();
   };
+
+  const cycleDemoSkin = useCallback(() => {
+    const ids = BUILTIN_SKIN_IDS as readonly string[];
+    const idx = ids.indexOf(contextSkinId);
+    const next = ids[(idx + 1) % ids.length] ?? ids[0]!;
+    const rect = demoBtnRef.current?.getBoundingClientRect();
+    const origin = rect
+      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    void applySkin(next, origin);
+  }, [contextSkinId, demoBtnRef]);
 
   const selectTimelineView = (mode: TimelineViewMode) => {
     onTimelineViewChange(mode);
@@ -160,7 +196,9 @@ export default function AppearancePanel({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => void applySkin(entry.id)}
+                  onClick={(e) =>
+                    void applySkin(entry.id, { x: e.clientX, y: e.clientY })
+                  }
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-md border text-left transition-colors ${
                     selected
                       ? "border-accent bg-panel2 skin-glow-accent"
@@ -185,6 +223,62 @@ export default function AppearancePanel({
             );
           })}
         </ul>
+      </section>
+
+      <section className="flex flex-col gap-2 border-t border-border pt-4">
+        <h3 className="text-xs uppercase tracking-wide text-muted">Przejścia między skórkami</h3>
+        <p className="text-[11px] text-muted">
+          Fala cegiełek od punktu kliknięcia — ok. 3–4 s na pełne przejście (jak w podglądzie C4D).
+          Każda skórka ma własne parametry w manifeście (
+          <code className="text-ink/80">transition</code>). Matrix dodaje zielone glify na
+          odwróconych kafelkach. Jeśli nic nie widać, sprawdź czy animacje w systemie nie są
+          wyłączone (prefers-reduced-motion).
+        </p>
+        <label className="flex items-start gap-2 px-3 py-2 rounded-md border border-border bg-panel/50 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-[rgb(var(--color-accent2))]"
+            checked={transitionsEnabled}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setTransitionsEnabled(on);
+              setSkinTransitionsGloballyEnabled(on);
+            }}
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium">Animowane przejścia skórek</span>
+            <span className="block text-[10px] text-muted">
+              Wyłączone = natychmiastowa zmiana. Szanuje też prefers-reduced-motion.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 px-3 py-2 rounded-md border border-border bg-panel/50 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-[rgb(var(--color-accent2))]"
+            checked={transitionsForce}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setTransitionsForce(on);
+              setSkinTransitionsForceEnabled(on);
+            }}
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium">Wymuś animacje (ignoruj tryb ograniczonego ruchu)</span>
+            <span className="block text-[10px] text-muted">
+              Włącz, jeśli Windows ma wyłączone animacje — inaczej przejście jest natychmiastowe.
+            </span>
+          </span>
+        </label>
+        <button
+          ref={demoBtnRef}
+          type="button"
+          className="btn text-xs self-start"
+          disabled={busy || transitionBusy}
+          onClick={() => cycleDemoSkin()}
+        >
+          {transitionBusy ? "Odtwarzanie…" : "Podgląd przejścia (następna skórka)"}
+        </button>
       </section>
 
       <section className="flex flex-col gap-2 border-t border-border pt-4">

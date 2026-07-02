@@ -17,6 +17,8 @@ import type { Generation } from "../../types";
 import type { SoundboardPublicView, SoundboardSlotPublic } from "../types";
 import { displayTitle } from "../../lib/generationTitle";
 import { mergeSessionAndArchiveHistory } from "../../lib/generationPlayback";
+import { getMockSoundboardView } from "../../lib/mockUi";
+import { isMockUiMode } from "../../lib/mockUi/isMockUiMode";
 import { isTauriApp } from "../../lib/tauriEnv";
 
 export const SOUNDBOARD_SLOTS_CHANGED = "soundboard:slots-changed";
@@ -54,6 +56,13 @@ export default function SoundboardPanel({
   const [togglingPlugin, setTogglingPlugin] = useState(false);
 
   const refresh = useCallback(async () => {
+    if (isMockUiMode()) {
+      const sb = getMockSoundboardView();
+      setView(sb);
+      onFilledCountChange?.(sb.slots.filter((s) => s.hasAudio).length);
+      setLoading(false);
+      return;
+    }
     if (!isTauriApp()) {
       setLoading(false);
       return;

@@ -1,6 +1,7 @@
 /** Skin manifest v1 — see docs/SKINS.md and docs/skin.schema.json */
 
 import { normalizeSkinPreferences, type SkinPreferences } from "./skinPreferences";
+import type { SkinTransitionConfig } from "./transition/types";
 
 export interface SkinRegistryMeta {
   homepage?: string;
@@ -29,6 +30,8 @@ export interface SkinManifest {
   registry?: SkinRegistryMeta;
   /** Non-CSS defaults (e.g. timeline_view) applied when skin is activated. */
   preferences?: SkinPreferences;
+  /** Wave transition when switching to this skin (see docs/SKINS.md). */
+  transition?: Partial<SkinTransitionConfig>;
 }
 
 export interface ResolvedSkin {

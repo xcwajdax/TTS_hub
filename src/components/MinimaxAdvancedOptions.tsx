@@ -9,6 +9,7 @@ interface Props {
   options: MinimaxSynthesisOptions;
   onChange: (next: MinimaxSynthesisOptions) => void;
   compact?: boolean;
+  voiceProfileUi?: boolean;
 }
 
 const SAMPLE_RATES = [8000, 16000, 22050, 24000, 32000, 44100];
@@ -22,9 +23,11 @@ const SOUND_EFFECTS = [
   { id: "robotic", label: "Robotic" },
 ] as const;
 
-export default function MinimaxAdvancedOptions({ model, options, onChange, compact }: Props) {
+export default function MinimaxAdvancedOptions({ model, options, onChange, compact, voiceProfileUi }: Props) {
   const [open, setOpen] = useState(false);
   const o = options ?? defaultMinimaxSynthesisOptions();
+  const fc = voiceProfileUi ? "vp-field" : "field";
+  const lc = voiceProfileUi ? "vp-form__label" : "flex flex-col gap-1 text-muted";
 
   const patch = (partial: Partial<MinimaxSynthesisOptions>) => onChange({ ...o, ...partial });
   const patchVoice = (partial: Partial<MinimaxSynthesisOptions["voice"]>) =>
@@ -33,10 +36,14 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
     onChange({ ...o, audio: { ...o.audio, ...partial } });
 
   const emotions = emotionOptionsForModel(model);
-  const grid = compact ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : "grid grid-cols-2 md:grid-cols-3 gap-3";
+  const grid = voiceProfileUi
+    ? "grid grid-cols-1 sm:grid-cols-2 gap-2"
+    : compact
+      ? "grid grid-cols-1 sm:grid-cols-2 gap-2"
+      : "grid grid-cols-2 md:grid-cols-3 gap-3";
 
   return (
-    <div className="col-span-full border border-border/60 rounded-md p-2 mt-1">
+    <div className={voiceProfileUi ? "vp-advanced-block col-span-full" : "col-span-full border border-border/60 rounded-md p-2 mt-1"}>
       <button
         type="button"
         className="w-full text-left text-xs text-muted hover:text-foreground flex justify-between items-center"
@@ -48,10 +55,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
 
       {open && (
         <div className={`${grid} mt-3 text-xs`}>
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Emotion (auto = brak)
             <select
-              className="field"
+              className={fc}
               value={o.voice.emotion ?? ""}
               onChange={(e) =>
                 patchVoice({ emotion: (e.target.value || null) as MinimaxSynthesisOptions["voice"]["emotion"] })
@@ -66,10 +73,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Język (language_boost)
             <select
-              className="field"
+              className={fc}
               value={o.language ?? "pl"}
               onChange={(e) => patch({ language: e.target.value })}
             >
@@ -108,10 +115,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             LaTeX read (CN)
           </label>
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Format API
             <select
-              className="field"
+              className={fc}
               value={o.audio.format}
               onChange={(e) => patchAudio({ format: e.target.value })}
             >
@@ -123,10 +130,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Sample rate
             <select
-              className="field"
+              className={fc}
               value={o.audio.sample_rate}
               onChange={(e) => patchAudio({ sample_rate: Number(e.target.value) })}
             >
@@ -138,10 +145,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Bitrate (mp3)
             <select
-              className="field"
+              className={fc}
               value={o.audio.bitrate}
               onChange={(e) => patchAudio({ bitrate: Number(e.target.value) })}
             >
@@ -153,10 +160,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Kanały
             <select
-              className="field"
+              className={fc}
               value={o.audio.channel}
               onChange={(e) => patchAudio({ channel: Number(e.target.value) })}
             >
@@ -199,10 +206,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
                   />
                 </label>
               ))}
-              <label className="flex flex-col gap-1 text-muted">
+              <label className={lc}>
                 Sound effect
                 <select
-                  className="field"
+                  className={fc}
                   value={o.voice_modify?.sound_effects ?? ""}
                   onChange={(e) =>
                     patch({
@@ -329,10 +336,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             Napisy (subtitle)
           </label>
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Subtitle type
             <select
-              className="field"
+              className={fc}
               value={o.subtitle_type}
               disabled={!o.subtitle_enable}
               onChange={(e) =>
@@ -356,10 +363,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             </label>
           )}
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Transport
             <select
-              className="field"
+              className={fc}
               value={o.transport}
               onChange={(e) =>
                 patch({ transport: e.target.value as MinimaxSynthesisOptions["transport"] })
@@ -370,10 +377,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Region HTTP
             <select
-              className="field"
+              className={fc}
               value={o.http_region}
               disabled={o.transport !== "http"}
               onChange={(e) =>
@@ -385,10 +392,10 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-muted">
+          <label className={lc}>
             Output format (HTTP)
             <select
-              className="field"
+              className={fc}
               value={o.output_format}
               onChange={(e) =>
                 patch({ output_format: e.target.value as MinimaxSynthesisOptions["output_format"] })

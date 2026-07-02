@@ -6,13 +6,20 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "setup:voicebox-sidecar": "node scripts/setup-dev-voicebox-sidecar.js",
     "build:voicebox-server": "pwsh -NoLogo -NoProfile -File scripts/build-voicebox-server.ps1",
+    "dev:fast-work": "vite --mode fast-work --port 1421",
+    "build:fast-work": "tsc && vite build --mode fast-work",
     "tauri": "npm run setup:voicebox-sidecar && tauri",
     "tauri:build": "npm run build:voicebox-server && npm run tauri build",
-    "clean": "pwsh -NoLogo -NoProfile -File scripts/clean-build-artifacts.ps1"
+    "tauri:build:fast-work": "npm run build:fast-work && tauri build --config src-tauri/tauri.fast-work.conf.json -- --no-default-features --features fast-work",
+    "bundle:fast-work": "pwsh -NoLogo -NoProfile -File scripts/build-fast-work-bundle.ps1",
+    "clean": "pwsh -NoLogo -NoProfile -File scripts/clean-build-artifacts.ps1",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",
@@ -25,6 +32,7 @@
     "@tiptap/react": "^3.23.4",
     "@tiptap/starter-kit": "^3.23.4",
     "driver.js": "^1.4.0",
+    "html-to-image": "^1.11.13",
     "lowlight": "^3.3.0",
     "marked": "^18.0.3",
     "nanoid": "^5.1.11",
@@ -43,6 +51,7 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^3.2.6"
   }
 }

@@ -34,7 +34,9 @@ import { touchVoiceProfilePreviews, resolveProfileForGeneration, voiceProfileToS
 
 import { ensureTextFiltersWithFactory } from "../lib/filterPresetCatalog";
 
-import { applyTextFilters } from "../lib/textFilters";
+import {
+  applyTextFiltersForPreset,
+} from "../lib/voiceoverBriefFilter";
 
 import {
 
@@ -53,6 +55,8 @@ import {
 import { loadTextFiltersSession, type TextFiltersSession } from "../lib/textFiltersSession";
 
 import { isTauriApp } from "../lib/tauriEnv";
+import { getMockAppSettingsView } from "../lib/mockUi";
+import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 
 import type { AudioFormat, Generation } from "../types";
 
@@ -66,9 +70,9 @@ import GenerationProgressBar from "./GenerationProgress";
 
 import BlockEditorPane, {
 
-  blockDocToFilteredBase,
-
   blockDocToSourceText,
+
+  resolveFilterSourceText,
 
 } from "./textFilters/BlockEditorPane";
 
@@ -157,6 +161,26 @@ export default function MainPanel({
   > | null>(null);
 
   const [toast, setLocalToast] = useState<string | null>(null);
+
+  const [contextLabel, setContextLabel] = useState(() => {
+    try {
+      return localStorage.getItem("tts_context_label") ?? "";
+    } catch {
+      return "";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (contextLabel.trim()) {
+        localStorage.setItem("tts_context_label", contextLabel);
+      } else {
+        localStorage.removeItem("tts_context_label");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [contextLabel]);
 
 
 
@@ -285,7 +309,7 @@ export default function MainPanel({
 
   const sourceText = useMemo(
 
-    () => blockDocToFilteredBase(blockDoc, activePreset, filterSession.builtinOverrides),
+    () => resolveFilterSourceText(blockDoc, activePreset, filterSession.builtinOverrides),
 
     [blockDoc, activePreset, filterSession.builtinOverrides],
 
@@ -299,7 +323,7 @@ export default function MainPanel({
 
   const filterResult = useMemo(
 
-    () => applyTextFilters(sourceText, activePreset, filterSession.builtinOverrides),
+    () => applyTextFiltersForPreset(sourceText, activePreset, filterSession.builtinOverrides),
 
     [sourceText, activePreset, filterSession.builtinOverrides],
 
@@ -436,6 +460,15 @@ export default function MainPanel({
 
 
   useEffect(() => {
+
+    if (isMockUiMode()) {
+      const view = getMockAppSettingsView();
+      setAppSettingsSnapshot(view);
+      setTextFilters(
+        ensureTextFiltersWithFactory(view.text_filters ?? defaultTextFiltersSettings()),
+      );
+      return;
+    }
 
     if (!isTauriApp()) return;
 
@@ -609,7 +642,12 @@ export default function MainPanel({
 
   ) => {
 
-    const filtered = applyTextFilters(
+    if (isMockUiMode()) {
+      onError("Tryb mockup — generowanie TTS jest wyłączone.");
+      return;
+    }
+
+    const filtered = applyTextFiltersForPreset(
 
       sourceText,
 
@@ -740,6 +778,10 @@ export default function MainPanel({
               }
 
             : null,
+
+        voice_profile_id: voiceProfileId ?? activeVoiceProfileId ?? null,
+
+        context_label: contextLabel.trim() || null,
 
       });
 
@@ -924,6 +966,7 @@ export default function MainPanel({
                 original={originalForPreview}
                 filtered={filterResult.output}
                 warnings={filterResult.warnings}
+                activePresetId={activePreset.id}
               />
             ) : null}
 
@@ -986,19 +1029,43 @@ export default function MainPanel({
 
             footerAction={
 
-              <GenerateButton
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 w-full sm:w-auto">
 
-                enqueuing={enqueuing}
+                <label className="flex flex-col gap-0.5 text-[10px] text-muted min-w-0 flex-1 sm:max-w-[14rem]">
 
-                canGenerate={canGenerate}
+                  Kontekst / projekt
 
-                hasGeneration={hasGeneration}
+                  <input
 
-                queueHint={queueHint}
+                    className="field text-xs py-1"
 
-                onGenerate={onGenerate}
+                    value={contextLabel}
 
-              />
+                    onChange={(e) => setContextLabel(e.target.value)}
+
+                    placeholder="np. Film promocyjny"
+
+                    title="Opcjonalna etykieta sesji lub projektu — badge w historii, bez zmiany tytułu"
+
+                  />
+
+                </label>
+
+                <GenerateButton
+
+                  enqueuing={enqueuing}
+
+                  canGenerate={canGenerate}
+
+                  hasGeneration={hasGeneration}
+
+                  queueHint={queueHint}
+
+                  onGenerate={onGenerate}
+
+                />
+
+              </div>
 
             }
 

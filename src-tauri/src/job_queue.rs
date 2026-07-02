@@ -20,6 +20,30 @@ use crate::minimax::{
 use crate::state::AppState;
 use crate::voicebox::engine_from_model;
 
+fn finalize_generation_done(
+    state: &Arc<AppState>,
+    id: &str,
+    is_ephemeral: bool,
+    file_path: &str,
+    format: &str,
+    duration_ms: Option<i64>,
+    title: &str,
+    usage: Option<&GenerationUsage>,
+) -> Result<(), String> {
+    if is_ephemeral {
+        state
+            .ephemeral
+            .finalize_done(id, file_path, format, duration_ms, Some(title), usage)
+            .ok_or_else(|| "ephemeral finalize failed".to_string())?;
+        Ok(())
+    } else {
+        state
+            .db
+            .finalize_done(id, file_path, format, duration_ms, Some(title), usage)
+            .map_err(|e| format!("{e}"))
+    }
+}
+
 #[derive(Clone, Serialize)]
 pub struct JobPhaseEvent {
     pub job_id: String,
@@ -122,26 +146,37 @@ impl JobQueue {
             self.handle_cancel(&state, &app, id);
             return;
         }
-        let row = match state.db.get(id) {
+        let row = match state.resolve_generation(id) {
             Ok(Some(g)) => g,
             _ => return,
         };
+        let is_ephemeral = state.is_ephemeral(id);
         let req_json = match row.request_json.clone() {
             Some(s) => s,
             None => {
-                self.finalize_failed(&state, &app, id, "missing request_json");
+                self.finalize_failed(&state, &app, id, "missing request_json", is_ephemeral);
                 return;
             }
         };
         let req: GenerateReq = match serde_json::from_str(&req_json) {
             Ok(r) => r,
             Err(e) => {
-                self.finalize_failed(&state, &app, id, &format!("bad request_json: {e}"));
+                self.finalize_failed(
+                    &state,
+                    &app,
+                    id,
+                    &format!("bad request_json: {e}"),
+                    is_ephemeral,
+                );
                 return;
             }
         };
-        if let Err(e) = state.db.mark_running(id) {
-            self.finalize_failed(&state, &app, id, &format!("db: {e}"));
+        if is_ephemeral {
+            if !state.ephemeral.mark_running(id) {
+                return;
+            }
+        } else if let Err(e) = state.db.mark_running(id) {
+            self.finalize_failed(&state, &app, id, &format!("db: {e}"), is_ephemeral);
             return;
         }
         let _ = self.broadcast_status(id, "running", None);
@@ -154,8 +189,8 @@ impl JobQueue {
             },
         );
 
-        if let Err(e) = self.execute(&state, &app, id, &row, req).await {
-            self.finalize_failed(&state, &app, id, &e);
+        if let Err(e) = self.execute(&state, &app, id, &row, req, is_ephemeral).await {
+            self.finalize_failed(&state, &app, id, &e, is_ephemeral);
         }
     }
 
@@ -166,6 +201,7 @@ impl JobQueue {
         id: &str,
         row: &Generation,
         req: GenerateReq,
+        is_ephemeral: bool,
     ) -> Result<(), String> {
         let started = Instant::now();
         let chars = req.text.chars().count();
@@ -269,17 +305,16 @@ impl JobQueue {
                 output_tokens: None,
                 total_tokens: None,
             };
-            state
-                .db
-                .finalize_done(
-                    id,
-                    &file_path,
-                    written.format.ext(),
-                    audio.duration_ms,
-                    Some(&title),
-                    Some(&usage),
-                )
-                .map_err(|e| format!("{e}"))?;
+            finalize_generation_done(
+                state,
+                id,
+                is_ephemeral,
+                &file_path,
+                written.format.ext(),
+                audio.duration_ms,
+                &title,
+                Some(&usage),
+            )?;
         } else if provider == "minimax" {
             let voice_id = req.voice.trim().to_string();
             if voice_id.is_empty() {
@@ -371,17 +406,16 @@ impl JobQueue {
                 output_tokens: None,
                 total_tokens: None,
             };
-            state
-                .db
-                .finalize_done(
-                    id,
-                    &file_path,
-                    written.format.ext(),
-                    None,
-                    Some(&title),
-                    Some(&usage),
-                )
-                .map_err(|e| format!("{e}"))?;
+            finalize_generation_done(
+                state,
+                id,
+                is_ephemeral,
+                &file_path,
+                written.format.ext(),
+                None,
+                &title,
+                Some(&usage),
+            )?;
         } else {
             let tts_req = TtsRequest {
                 model: req.model.clone(),
@@ -428,38 +462,44 @@ impl JobQueue {
                     .and_then(|u| u.output_tokens),
                 total_tokens: tts_result.token_usage.as_ref().and_then(|u| u.total_tokens),
             };
-            state
-                .db
-                .finalize_done(
-                    id,
-                    &file_path,
-                    fmt.ext(),
-                    Some(written.duration_ms as i64),
-                    Some(&title),
-                    Some(&usage),
-                )
-                .map_err(|e| format!("{e}"))?;
+            finalize_generation_done(
+                state,
+                id,
+                is_ephemeral,
+                &file_path,
+                fmt.ext(),
+                Some(written.duration_ms as i64),
+                &title,
+                Some(&usage),
+            )?;
         }
 
         self.emit_phase(app, id, started, "done", chars);
         let _ = self.broadcast_status(id, STATUS_DONE, None);
 
-        let row_after = state
-            .db
-            .get(id)
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| row.clone());
+        let row_after = if is_ephemeral {
+            state.ephemeral.get(id).unwrap_or_else(|| row.clone())
+        } else {
+            state
+                .db
+                .get(id)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| row.clone())
+        };
         let archive_fmt = {
             let s = state.settings.read().map_err(|e| format!("{e}"))?;
             AudioFormat::from_str(&s.save_format).unwrap_or(AudioFormat::Wav)
         };
-        let auto_archive = state
-            .settings
-            .read()
-            .map(|s| s.save_mode == SaveMode::Auto)
-            .unwrap_or(false);
-        let final_gen = if row_after.folder_id.is_some() {
+        let auto_archive = !is_ephemeral
+            && state
+                .settings
+                .read()
+                .map(|s| s.save_mode == SaveMode::Auto)
+                .unwrap_or(false);
+        let final_gen = if is_ephemeral {
+            row_after.clone()
+        } else if row_after.folder_id.is_some() {
             match crate::commands::do_archive(
                 state,
                 id.to_string(),
@@ -483,7 +523,7 @@ impl JobQueue {
         }
         let _ = app.emit("job:done", &final_gen);
 
-        if !auto_archive {
+        if !is_ephemeral && !auto_archive {
             let _ = state.apply_temp_retention();
         }
 
@@ -491,12 +531,20 @@ impl JobQueue {
     }
 
     fn handle_cancel(&self, state: &Arc<AppState>, app: &AppHandle, id: &str) {
-        if let Ok(Some(g)) = state.db.get(id) {
+        let is_ephemeral = state.is_ephemeral(id);
+        if is_ephemeral {
+            if let Some(g) = state.ephemeral.get(id) {
+                if !g.file_path.is_empty() {
+                    let _ = std::fs::remove_file(&g.file_path);
+                }
+            }
+            let _ = state.ephemeral.remove(id);
+        } else if let Ok(Some(g)) = state.db.get(id) {
             if !g.file_path.is_empty() {
                 let _ = std::fs::remove_file(&g.file_path);
             }
+            let _ = state.db.update_status(id, STATUS_CANCELLED, None);
         }
-        let _ = state.db.update_status(id, STATUS_CANCELLED, None);
         let _ = self.broadcast_status(id, STATUS_CANCELLED, None);
         let _ = app.emit(
             "job:cancelled",
@@ -508,8 +556,19 @@ impl JobQueue {
         );
     }
 
-    fn finalize_failed(&self, state: &Arc<AppState>, app: &AppHandle, id: &str, error: &str) {
-        let _ = state.db.update_status(id, STATUS_FAILED, Some(error));
+    fn finalize_failed(
+        &self,
+        state: &Arc<AppState>,
+        app: &AppHandle,
+        id: &str,
+        error: &str,
+        is_ephemeral: bool,
+    ) {
+        if is_ephemeral {
+            let _ = state.ephemeral.update_status(id, STATUS_FAILED, Some(error));
+        } else {
+            let _ = state.db.update_status(id, STATUS_FAILED, Some(error));
+        }
         let _ = self.broadcast_status(id, STATUS_FAILED, Some(error.to_string()));
         let _ = app.emit(
             "job:error",

@@ -8,6 +8,7 @@ interface Props {
   isReroute: boolean;
   onEditSettings: () => void;
   onExportPack: () => void;
+  onExportFastWork?: () => void;
   onSetReroute: () => void;
   onClearReroute: () => void;
   onDelete: () => void;
@@ -21,6 +22,7 @@ export default function VoiceProfileContextMenu({
   isReroute,
   onEditSettings,
   onExportPack,
+  onExportFastWork,
   onSetReroute,
   onClearReroute,
   onDelete,
@@ -94,6 +96,19 @@ export default function VoiceProfileContextMenu({
       >
         Eksportuj Voice Pack…
       </button>
+      {profile.provider === "minimax" && onExportFastWork ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="w-full text-left px-3 py-2 hover:bg-panel2/80 text-foreground transition-colors"
+          onClick={() => {
+            onExportFastWork();
+            onClose();
+          }}
+        >
+          Wygeneruj aplikację Fast Work…
+        </button>
+      ) : null}
       {isReroute ? (
         <button
           type="button"

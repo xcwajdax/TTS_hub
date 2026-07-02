@@ -208,6 +208,71 @@ impl TextFiltersSettings {
 mod tests {
     use super::*;
 
+    fn voiceover_brief_preset() -> TextFilterPreset {
+        TextFilterPreset {
+            id: "factory-voiceover-brief".to_string(),
+            name: "Voiceover / brief portfolio".to_string(),
+            builtins: BuiltinFilterToggles {
+                strip_fenced_code: true,
+                strip_inline_code: true,
+                strip_blockquotes: false,
+            },
+            custom: vec![
+                custom_rule("crlf", r"\r\n", "\n", "g"),
+                custom_rule(
+                    "meta",
+                    r"^\*\*(Cel|Styl|Tempo|Długość|Goal|Style|Length):\*\*.*$",
+                    "",
+                    "gim",
+                ),
+                custom_rule(
+                    "title",
+                    r"^#?\s*🎙️?\s*Brief audio[^\n]*$",
+                    "",
+                    "gim",
+                ),
+                custom_rule("timing", r"(?:^|\n)\s*#{0,3}\s*TIMING\b[\s\S]*$", "", "i"),
+                custom_rule("hr", r"^\s*[-*]{3,}\s*$", "", "gim"),
+                custom_rule(
+                    "meta-plain",
+                    r"^\s*(Cel|Styl|Tempo|Długość|Goal|Style|Length):\s*.*$",
+                    "",
+                    "gim",
+                ),
+                custom_rule(
+                    "section-plain",
+                    r"^[A-ZĄĆĘŁŃÓŚŹŻ][A-ZĄĆĘŁŃÓŚŹŻ0-9\s]+\(\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\)\s*$",
+                    "",
+                    "gim",
+                ),
+                custom_rule(
+                    "section-ts",
+                    r"^#{1,3}\s+[A-ZĄĆĘŁŃÓŚŹŻ\s]+\(\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\)\s*$",
+                    "",
+                    "gim",
+                ),
+                custom_rule("headers", r"^#{1,6}\s+.+$", "", "gim"),
+                custom_rule("table", r"^\|.+\|$", "", "gim"),
+                custom_rule("bold", r"\*\*([^*]+)\*\*", "$1", "g"),
+                custom_rule("pause", r"\n{2,}", " ... ", "g"),
+                custom_rule("trim-pause-start", r"^\s*\.\.\.\s+", "", ""),
+                custom_rule("trim-pause-end", r"\s+\.\.\.\s*$", "", ""),
+                custom_rule("mic", "🎙️", "", "g"),
+            ],
+        }
+    }
+
+    fn custom_rule(id: &str, pattern: &str, replacement: &str, flags: &str) -> CustomTextFilter {
+        CustomTextFilter {
+            id: id.to_string(),
+            name: id.to_string(),
+            enabled: true,
+            pattern: pattern.to_string(),
+            replacement: replacement.to_string(),
+            flags: Some(flags.to_string()),
+        }
+    }
+
     #[test]
     fn strips_fenced_code() {
         let preset = default_preset();
@@ -215,5 +280,20 @@ mod tests {
         assert!(!r.output.contains("fn main"));
         assert!(r.output.contains("Hello"));
         assert!(r.output.contains("world"));
+    }
+
+    #[test]
+    fn voiceover_brief_fixture_parity() {
+        const FIXTURE: &str =
+            include_str!("../../src/lib/__fixtures__/voiceover-brief-sample.md");
+        let preset = voiceover_brief_preset();
+        let r = apply_text_filters(FIXTURE, &preset);
+        assert!(!r.output.contains("**Cel:**"));
+        assert!(!r.output.contains("## OTWARCIE"));
+        assert!(!r.output.contains("## TIMING"));
+        assert!(r.output.contains("Lyric Visualizer"));
+        assert!(r.output.contains("Musixmatch"));
+        assert!(r.output.trim_start().starts_with("Krótki brief o narzędziu"));
+        assert!(r.output.trim_end().ends_with("Do usłyszenia."));
     }
 }
