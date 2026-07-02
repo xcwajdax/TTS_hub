@@ -359,6 +359,26 @@ export interface AppBuildInfo {
   git_hash: string | null;
 }
 
+export type UpdateCheckStatus = "up_to_date" | "update_available" | "error";
+
+export interface UpdateChangelogSections {
+  whats_new: string[];
+  fixed: string[];
+  other: string[];
+}
+
+export interface UpdateCheckResult {
+  status: UpdateCheckStatus;
+  current_version: string;
+  latest_version: string | null;
+  published_at: string | null;
+  release_page_url: string | null;
+  download_url: string | null;
+  sections: UpdateChangelogSections;
+  total_change_count: number;
+  error_message: string | null;
+}
+
 export interface CursorInstallReport {
   copied_ps1: string;
   hooks_json: string;

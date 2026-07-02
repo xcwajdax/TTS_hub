@@ -8,6 +8,7 @@ import type {
   CursorInstallReport,
   McpIntegrationStatus,
   TtsVoiceProfile,
+  UpdateCheckResult,
 } from "../appSettings";
 import type {
   ArchiveFolder,
@@ -686,6 +687,10 @@ export async function getCursorIntegrationStatus(): Promise<CursorIntegrationSta
 
 export async function getAppBuildInfo(): Promise<AppBuildInfo> {
   return invoke<AppBuildInfo>("get_app_build_info");
+}
+
+export async function checkForUpdates(force = false): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>("check_for_updates", { force });
 }
 
 export async function getMcpIntegrationStatus(): Promise<McpIntegrationStatus> {

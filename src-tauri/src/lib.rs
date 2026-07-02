@@ -39,6 +39,7 @@ mod video_export;
 mod video_template;
 mod video_library;
 mod video_commands;
+mod updater;
 
 use std::sync::Arc;
 
@@ -171,6 +172,7 @@ pub fn run() {
             commands::get_session_id,
             commands::get_cursor_integration_status,
             commands::get_app_build_info,
+            updater::check_for_updates,
             commands::get_mcp_integration_status,
             commands::install_cursor_hooks,
             commands::uninstall_cursor_hooks,
