@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
-import type { TtsVoiceProfile } from "../../appSettings";
-import { audioSrc, playbackAudioSrc, roleplayLoadProject } from "../../api/tauri";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import type { AppSettings, TtsVoiceProfile } from "../../appSettings";
+import {
+  audioSrc,
+  getAppSettings,
+  playbackAudioSrc,
+  roleplayLoadProject,
+  setAppSettings,
+} from "../../api/tauri";
 import {
   roleplayCancelQueue,
   roleplayExportMix,
@@ -14,15 +20,62 @@ import {
   roleplayResumeQueue,
   roleplayUpdateTimeline,
 } from "../../api/tauri";
+import {
+  getRoleplayMutePreview,
+  ROLEPLAY_MUTE_PREVIEW_CHANGED,
+  setRoleplayMutePreview,
+} from "../../lib/roleplayMutePreview";
 import type { RoleplayProject, RoleplayTimeline, TimelineClip } from "../types";
-import { labelTracks, parseTimeline, timelineToJson } from "../types";
+import {
+  labelTracks,
+  parsePalette,
+  parseTimeline,
+  profileColorMap,
+  timelineToJson,
+  trackColor,
+} from "../types";
 import ClipBlock from "./ClipBlock";
 import EffectsPanel from "./EffectsPanel";
 import TrackHeader from "./TrackHeader";
-import { StudioEngine, audioBufferToWav } from "./engine";
+import TimeRuler, { TimelineGridLines } from "./TimeRuler";
+import { StudioEngine, audioBufferToWav, clipBufferKey } from "./engine";
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function computePeaks(
+  buf: AudioBuffer,
+  offsetSec: number,
+  durationSec: number,
+  peakCount = 200,
+): Float32Array {
+  const ch = buf.getChannelData(0);
+  const sampleRate = buf.sampleRate;
+  const startSample = Math.max(0, Math.floor(offsetSec * sampleRate));
+  const endSample = Math.min(ch.length, Math.ceil((offsetSec + durationSec) * sampleRate));
+  const span = Math.max(1, endSample - startSample);
+  const peaks = new Float32Array(peakCount);
+  const block = Math.max(1, Math.floor(span / peakCount));
+  for (let i = 0; i < peakCount; i++) {
+    let max = 0;
+    const base = startSample + i * block;
+    for (let j = 0; j < block && base + j < endSample; j++) {
+      max = Math.max(max, Math.abs(ch[base + j] ?? 0));
+    }
+    peaks[i] = max;
+  }
+  return peaks;
+}
 
 const LANE_H = 64;
 const HEADER_W = 180;
+const RULER_H = 24;
 
 interface Props {
   project: RoleplayProject;
@@ -41,6 +94,8 @@ export default function StudioView({
   onError,
   onToast,
 }: Props) {
+  const colorMap = useMemo(() => profileColorMap(parsePalette(project.palette_json)), [project.palette_json]);
+
   const initialTimeline = useMemo(
     () => labelTracks(parseTimeline(project.timeline_json), profiles),
     [project.timeline_json, profiles],
@@ -55,9 +110,30 @@ export default function StudioView({
   const [playing, setPlaying] = useState(false);
   const [cursorSec, setCursorSec] = useState(0);
   const [queueProgress, setQueueProgress] = useState({ done: 0, total: 0, paused: false });
+  const [buffersReady, setBuffersReady] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [mutePreview, setMutePreview] = useState(getRoleplayMutePreview);
+  const [clipDragPreview, setClipDragPreview] = useState<Map<string, Partial<TimelineClip>>>(
+    () => new Map(),
+  );
+  const [peaksVersion, setPeaksVersion] = useState(0);
+
   const engineRef = useRef<StudioEngine | null>(null);
   const peaksRef = useRef<Map<string, Float32Array>>(new Map());
+  const sourceDurRef = useRef<Map<string, number>>(new Map());
   const playingRef = useRef(false);
+  const syncedDurationsRef = useRef<Set<string>>(new Set());
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const rulerScrollRef = useRef<HTMLDivElement>(null);
+  const appSettingsRef = useRef<AppSettings | null>(null);
+
+  const syncScroll = (source: "ruler" | "timeline") => {
+    const ruler = rulerScrollRef.current;
+    const timeline = timelineScrollRef.current;
+    if (!ruler || !timeline) return;
+    if (source === "timeline") ruler.scrollLeft = timeline.scrollLeft;
+    else timeline.scrollLeft = ruler.scrollLeft;
+  };
 
   const engine = useMemo(() => {
     engineRef.current?.ctx.close();
@@ -67,9 +143,22 @@ export default function StudioView({
   }, [project.id]);
 
   useEffect(() => {
+    void getAppSettings().then((view) => {
+      appSettingsRef.current = view;
+      const muted = view.roleplay_mute_preview !== false;
+      setRoleplayMutePreview(muted);
+      setMutePreview(muted);
+    });
+  }, []);
+
+  useEffect(() => {
     const tl = labelTracks(parseTimeline(project.timeline_json), profiles);
     setTimeline(tl);
     peaksRef.current.clear();
+    sourceDurRef.current.clear();
+    syncedDurationsRef.current.clear();
+    setClipDragPreview(new Map());
+    setBuffersReady(false);
   }, [project.timeline_json, profiles]);
 
   const persistTimeline = useCallback(
@@ -87,30 +176,78 @@ export default function StudioView({
     [project, profiles, onProjectChange, onError],
   );
 
-  const loadClipBuffers = useCallback(async () => {
+  const bufferRef = useRef<Map<string, AudioBuffer>>(new Map());
+
+  const refreshPeaksForClip = useCallback((clip: TimelineClip) => {
+    const key = clipBufferKey(clip);
+    const stored = bufferRef.current.get(key);
+    if (!stored) return;
+    peaksRef.current.set(clip.id, computePeaks(stored, clip.offsetSec, clip.durationSec));
+    setPeaksVersion((v) => v + 1);
+  }, []);
+
+  const loadClipBuffers = useCallback(async (): Promise<boolean> => {
+    if (timeline.clips.length === 0) {
+      setBuffersReady(true);
+      return true;
+    }
+    const durationPatches: Array<{ id: string; durationSec: number }> = [];
+    const fadePatches: Array<{ id: string; fadeInSec: number; fadeOutSec: number }> = [];
+    let loaded = 0;
     for (const clip of timeline.clips) {
-      const key = clip.generationId ?? clip.sourcePath ?? clip.id;
+      const key = clipBufferKey(clip);
       const url = clip.generationId ? playbackAudioSrc(clip.generationId) : audioSrc(clip.sourcePath);
       try {
-        await engine.loadBuffer(key, url);
         const res = await fetch(url);
         if (!res.ok) continue;
         const ab = await res.arrayBuffer();
         const buf = await engine.ctx.decodeAudioData(ab.slice(0));
-        const peaks = new Float32Array(200);
-        const ch = buf.getChannelData(0);
-        const block = Math.max(1, Math.floor(ch.length / peaks.length));
-        for (let i = 0; i < peaks.length; i++) {
-          let max = 0;
-          for (let j = 0; j < block; j++) max = Math.max(max, Math.abs(ch[i * block + j] ?? 0));
-          peaks[i] = max;
+        engine.setBuffer(key, buf);
+        bufferRef.current.set(key, buf);
+        sourceDurRef.current.set(clip.id, buf.duration);
+        loaded += 1;
+        peaksRef.current.set(
+          clip.id,
+          computePeaks(buf, clip.offsetSec, clip.durationSec),
+        );
+
+        const actualDur = buf.duration;
+        if (
+          !syncedDurationsRef.current.has(clip.id) &&
+          Math.abs(actualDur - clip.durationSec) > 0.05
+        ) {
+          durationPatches.push({ id: clip.id, durationSec: actualDur });
+          syncedDurationsRef.current.add(clip.id);
         }
-        peaksRef.current.set(clip.id, peaks);
+        if (clip.fadeInSec === 0.05 && clip.fadeOutSec === 0.05) {
+          fadePatches.push({ id: clip.id, fadeInSec: 0, fadeOutSec: 0.02 });
+        }
       } catch {
         /* ignore */
       }
     }
-  }, [engine, timeline.clips]);
+    if (durationPatches.length > 0 || fadePatches.length > 0) {
+      const next = {
+        ...timeline,
+        clips: timeline.clips.map((c) => {
+          const dur = durationPatches.find((p) => p.id === c.id);
+          const fade = fadePatches.find((p) => p.id === c.id);
+          return {
+            ...c,
+            ...(dur ? { durationSec: dur.durationSec } : {}),
+            ...(fade ? { fadeInSec: fade.fadeInSec, fadeOutSec: fade.fadeOutSec } : {}),
+          };
+        }),
+      };
+      peaksRef.current.clear();
+      void persistTimeline(next);
+    } else {
+      setPeaksVersion((v) => v + 1);
+    }
+    const ready = loaded === timeline.clips.length;
+    setBuffersReady(ready);
+    return ready;
+  }, [engine, timeline, persistTimeline]);
 
   useEffect(() => {
     void loadClipBuffers();
@@ -168,12 +305,92 @@ export default function StudioView({
   const timelineEnd = engine.getTimelineEnd(timeline);
   const timelineWidth = Math.max(800, (timelineEnd + 4) * pxPerSec);
 
-  const updateClip = (clipId: string, patch: Partial<TimelineClip>) => {
+  const displayClip = (clip: TimelineClip): TimelineClip => {
+    const patch = clipDragPreview.get(clip.id);
+    return patch ? { ...clip, ...patch } : clip;
+  };
+
+  const sourceDuration = (clipId: string, clip: TimelineClip): number =>
+    sourceDurRef.current.get(clipId) ?? clip.offsetSec + clip.durationSec;
+
+  const applyClipPatch = (clipId: string, patch: Partial<TimelineClip>) => {
+    setClipDragPreview((prev) => {
+      const next = new Map(prev);
+      next.set(clipId, { ...prev.get(clipId), ...patch });
+      return next;
+    });
+  };
+
+  const clampTrimPatch = (
+    clip: TimelineClip,
+    patch: Partial<TimelineClip>,
+  ): Partial<TimelineClip> => {
+    const srcDur = sourceDuration(clip.id, clip);
+    let offsetSec = patch.offsetSec ?? clip.offsetSec;
+    let durationSec = patch.durationSec ?? clip.durationSec;
+    let startSec = patch.startSec ?? clip.startSec;
+
+    offsetSec = Math.max(0, offsetSec);
+    durationSec = Math.max(0.1, durationSec);
+    if (offsetSec + durationSec > srcDur) {
+      durationSec = Math.max(0.1, srcDur - offsetSec);
+    }
+    startSec = Math.max(0, startSec);
+
+    return { ...patch, offsetSec, durationSec, startSec };
+  };
+
+  const commitClipDrag = (clipId: string) => {
+    const patch = clipDragPreview.get(clipId);
+    if (!patch) return;
+    const clip = timeline.clips.find((c) => c.id === clipId);
+    if (!clip) return;
+    const merged = clampTrimPatch(clip, { ...clip, ...patch });
     const next = {
       ...timeline,
-      clips: timeline.clips.map((c) => (c.id === clipId ? { ...c, ...patch } : c)),
+      clips: timeline.clips.map((c) => (c.id === clipId ? { ...c, ...merged } : c)),
     };
-    void persistTimeline(next);
+    setClipDragPreview((prev) => {
+      const m = new Map(prev);
+      m.delete(clipId);
+      return m;
+    });
+    void persistTimeline(next).then(() => {
+      const updated = next.clips.find((c) => c.id === clipId);
+      if (updated) refreshPeaksForClip(updated);
+    });
+  };
+
+  const updateClip = (clipId: string, patch: Partial<TimelineClip>) => {
+    const clip = timeline.clips.find((c) => c.id === clipId);
+    if (!clip) return;
+    const merged = clampTrimPatch(clip, patch);
+    const next = {
+      ...timeline,
+      clips: timeline.clips.map((c) => (c.id === clipId ? { ...c, ...merged } : c)),
+    };
+    void persistTimeline(next).then(() => {
+      const updated = next.clips.find((c) => c.id === clipId);
+      if (updated) refreshPeaksForClip(updated);
+    });
+  };
+
+  const handleMuteToggle = async (checked: boolean) => {
+    setMutePreview(checked);
+    setRoleplayMutePreview(checked);
+    window.dispatchEvent(new CustomEvent(ROLEPLAY_MUTE_PREVIEW_CHANGED));
+    const base = appSettingsRef.current;
+    if (!base) {
+      const view = await getAppSettings();
+      appSettingsRef.current = view;
+    }
+    const settings = { ...(appSettingsRef.current ?? (await getAppSettings())), roleplay_mute_preview: checked };
+    appSettingsRef.current = settings;
+    try {
+      await setAppSettings(settings);
+    } catch (e) {
+      onError(String(e));
+    }
   };
 
   const handlePlay = async () => {
@@ -181,6 +398,7 @@ export default function StudioView({
       onError("Brak klipów na osi czasu.");
       return;
     }
+    await loadClipBuffers();
     await engine.play(timeline, cursorSec);
     playingRef.current = true;
     setPlaying(true);
@@ -212,6 +430,11 @@ export default function StudioView({
     if (!picked || typeof picked !== "string") return;
     try {
       const stored = await roleplayImportAudio(project.id, picked);
+      const res = await fetch(audioSrc(stored));
+      if (!res.ok) throw new Error("Nie udało się odczytać importowanego pliku.");
+      const ab = await res.arrayBuffer();
+      const decoded = await engine.ctx.decodeAudioData(ab.slice(0));
+      const durationSec = Math.max(0.1, decoded.duration);
       const trackId = timeline.tracks[0]?.id ?? "track-import";
       const nextTracks =
         timeline.tracks.length > 0
@@ -233,12 +456,17 @@ export default function StudioView({
         sourcePath: stored,
         startSec,
         offsetSec: 0,
-        durationSec: 3,
+        durationSec,
         gainDb: 0,
-        fadeInSec: 0.02,
-        fadeOutSec: 0.05,
+        fadeInSec: 0,
+        fadeOutSec: 0.02,
         gainEnvelope: [],
       };
+      engine.setBuffer(clipBufferKey(clip), decoded);
+      bufferRef.current.set(clipBufferKey(clip), decoded);
+      sourceDurRef.current.set(clip.id, decoded.duration);
+      peaksRef.current.set(clip.id, computePeaks(decoded, 0, durationSec));
+      setPeaksVersion((v) => v + 1);
       void persistTimeline({ tracks: nextTracks, clips: [...timeline.clips, clip] });
     } catch (e) {
       onError(String(e));
@@ -246,29 +474,55 @@ export default function StudioView({
   };
 
   const handleExport = async () => {
+    if (timeline.clips.length === 0) {
+      onError("Brak klipów do eksportu.");
+      return;
+    }
+    setExporting(true);
     try {
+      const ready = await loadClipBuffers();
+      if (!ready) {
+        onError("Nie wszystkie klipy audio są gotowe — spróbuj ponownie za chwilę.");
+        return;
+      }
       const buf = await engine.renderOffline(timeline);
+      if (buf.length === 0) {
+        onError("Miks jest pusty — brak załadowanych buforów audio.");
+        return;
+      }
       const wav = audioBufferToWav(buf);
       const bytes = new Uint8Array(await wav.arrayBuffer());
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
-      const b64 = btoa(binary);
+      const b64 = uint8ToBase64(bytes);
       const wavPath = await roleplayWriteMixWav(project.id, b64);
-      const dest = await open({
-        directory: false,
-        filters: [{ name: "MP3", extensions: ["mp3"] }],
+      const safeName = project.name.replace(/[<>:"/\\|?*]/g, "_").trim() || "mix";
+      const dest = await save({
+        defaultPath: `${safeName}-mix.mp3`,
+        filters: [
+          { name: "MP3", extensions: ["mp3"] },
+          { name: "WAV", extensions: ["wav"] },
+        ],
       });
-      if (!dest || typeof dest !== "string") return;
-      const out = dest.endsWith(".mp3") ? dest : `${dest}.mp3`;
-      await roleplayExportMix(wavPath, out, "mp3");
-      onToast?.("Eksport miksu zakończony.");
+      if (!dest || typeof dest !== "string") {
+        onToast?.("Eksport anulowany.");
+        return;
+      }
+      const lower = dest.toLowerCase();
+      const out =
+        lower.endsWith(".wav") || lower.endsWith(".mp3") ? dest : `${dest}.mp3`;
+      const format = out.toLowerCase().endsWith(".wav") ? "wav" : "mp3";
+      await roleplayExportMix(wavPath, out, format);
+      onToast?.(`Eksport miksu zakończony (${format.toUpperCase()}).`);
     } catch (e) {
       onError(String(e));
+    } finally {
+      setExporting(false);
     }
   };
 
   const selectedClip = timeline.clips.find((c) => c.id === selectedClipId);
   const selectedTrack = timeline.tracks.find((t) => t.id === selectedTrackId);
+
+  void peaksVersion;
 
   return (
     <div className="flex flex-col h-full min-h-0 roleplay-studio">
@@ -294,9 +548,26 @@ export default function StudioView({
         <button type="button" className="btn text-xs" onClick={() => void handleImport()}>
           Import audio
         </button>
-        <button type="button" className="btn btn-primary text-xs" onClick={() => void handleExport()}>
-          Eksport miksu
+        <button
+          type="button"
+          className="btn btn-primary text-xs"
+          onClick={() => void handleExport()}
+          disabled={exporting || timeline.clips.length === 0 || !buffersReady}
+          title={!buffersReady ? "Ładowanie audio klipów…" : undefined}
+        >
+          {exporting ? "Eksport…" : "Eksport miksu"}
         </button>
+        <label
+          className="text-xs text-muted flex items-center gap-1.5"
+          title="Gdy włączone, segmenty roleplay nie odtwarzają się automatycznie po wygenerowaniu"
+        >
+          <input
+            type="checkbox"
+            checked={mutePreview}
+            onChange={(e) => void handleMuteToggle(e.target.checked)}
+          />
+          Wycisz podgląd generacji
+        </label>
         <label className="text-xs text-muted flex items-center gap-1 ml-auto">
           Zoom
           <input
@@ -313,74 +584,115 @@ export default function StudioView({
       </div>
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        <div
-          className="shrink-0 border-r border-border overflow-y-auto bg-panel"
-          style={{ width: HEADER_W }}
-        >
-          {timeline.tracks.length === 0 ? (
-            <p className="text-xs text-muted p-3">Brak ścieżek — wygeneruj segmenty lub importuj audio.</p>
-          ) : (
-            timeline.tracks.map((track) => (
-              <TrackHeader
-                key={track.id}
-                track={track}
-                selected={selectedTrackId === track.id}
-                onSelect={() => setSelectedTrackId(track.id)}
-                onChange={(t) => {
-                  const next = {
-                    ...timeline,
-                    tracks: timeline.tracks.map((tr) => (tr.id === t.id ? t : tr)),
-                  };
-                  void persistTimeline(next);
-                }}
-              />
-            ))
-          )}
+        <div className="flex flex-col shrink-0 border-r border-border bg-panel" style={{ width: HEADER_W }}>
+          <div className="shrink-0 border-b border-border bg-panel2" style={{ height: RULER_H }} />
+          <div className="flex-1 overflow-y-auto">
+            {timeline.tracks.length === 0 ? (
+              <p className="text-xs text-muted p-3">Brak ścieżek — wygeneruj segmenty lub importuj audio.</p>
+            ) : (
+              timeline.tracks.map((track) => (
+                <TrackHeader
+                  key={track.id}
+                  track={track}
+                  profile={
+                    track.voiceProfileId
+                      ? profiles.find((p) => p.id === track.voiceProfileId)
+                      : undefined
+                  }
+                  color={trackColor(track, colorMap)}
+                  selected={selectedTrackId === track.id}
+                  onSelect={() => setSelectedTrackId(track.id)}
+                  onChange={(t) => {
+                    const next = {
+                      ...timeline,
+                      tracks: timeline.tracks.map((tr) => (tr.id === t.id ? t : tr)),
+                    };
+                    void persistTimeline(next);
+                  }}
+                />
+              ))
+            )}
+          </div>
         </div>
 
-        <div className="flex-1 min-w-0 overflow-auto">
-          <div className="relative" style={{ width: timelineWidth, minHeight: timeline.tracks.length * LANE_H }}>
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-accent z-20 pointer-events-none"
-              style={{ left: cursorSec * pxPerSec }}
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
+          <div
+            ref={rulerScrollRef}
+            className="overflow-x-auto shrink-0 border-b border-border"
+            onScroll={() => syncScroll("ruler")}
+          >
+            <TimeRuler
+              pxPerSec={pxPerSec}
+              durationSec={timelineEnd + 2}
+              cursorSec={cursorSec}
+              width={timelineWidth}
             />
-            {timeline.tracks.map((track) => (
-              <div
-                key={track.id}
-                className="relative border-b border-border bg-panel2/40"
-                style={{ height: LANE_H, width: timelineWidth }}
-              >
-                {timeline.clips
-                  .filter((c) => c.trackId === track.id)
-                  .map((clip) => (
-                    <ClipBlock
-                      key={clip.id}
-                      clip={clip}
-                      pxPerSec={pxPerSec}
-                      trackHeight={LANE_H}
-                      selected={selectedClipId === clip.id}
-                      peaks={peaksRef.current.get(clip.id) ?? null}
-                      onSelect={() => {
-                        setSelectedClipId(clip.id);
-                        setSelectedTrackId(track.id);
-                      }}
-                      onMove={(d) => updateClip(clip.id, { startSec: Math.max(0, clip.startSec + d) })}
-                      onTrimStart={(d) =>
-                        updateClip(clip.id, {
-                          startSec: clip.startSec + d,
-                          offsetSec: clip.offsetSec + d,
-                          durationSec: Math.max(0.1, clip.durationSec - d),
-                        })
-                      }
-                      onTrimEnd={(d) =>
-                        updateClip(clip.id, {
-                          durationSec: Math.max(0.1, clip.durationSec + d),
-                        })
-                      }
-                    />
-                  ))}
-              </div>
-            ))}
+          </div>
+          <div
+            ref={timelineScrollRef}
+            className="flex-1 min-h-0 overflow-auto"
+            onScroll={() => syncScroll("timeline")}
+          >
+            <div
+              className="relative"
+              style={{ width: timelineWidth, minHeight: timeline.tracks.length * LANE_H || LANE_H }}
+            >
+              {timeline.tracks.map((track) => (
+                <div
+                  key={track.id}
+                  className="relative border-b border-border bg-panel2/40"
+                  style={{ height: LANE_H, width: timelineWidth }}
+                >
+                  <TimelineGridLines
+                    pxPerSec={pxPerSec}
+                    durationSec={timelineEnd + 2}
+                    width={timelineWidth}
+                    height={LANE_H}
+                  />
+                  {timeline.clips
+                    .filter((c) => c.trackId === track.id)
+                    .map((clip) => {
+                      const shown = displayClip(clip);
+                      const trackClr = trackColor(track, colorMap);
+                      return (
+                        <ClipBlock
+                          key={clip.id}
+                          clip={shown}
+                          color={trackClr}
+                          pxPerSec={pxPerSec}
+                          trackHeight={LANE_H}
+                          selected={selectedClipId === clip.id}
+                          peaks={peaksRef.current.get(clip.id) ?? null}
+                          onSelect={() => {
+                            setSelectedClipId(clip.id);
+                            setSelectedTrackId(track.id);
+                          }}
+                          onMove={(d) =>
+                            applyClipPatch(clip.id, {
+                              startSec: Math.max(0, shown.startSec + d),
+                            })
+                          }
+                          onTrimStart={(d) => {
+                            const patch = clampTrimPatch(shown, {
+                              startSec: shown.startSec + d,
+                              offsetSec: shown.offsetSec + d,
+                              durationSec: shown.durationSec - d,
+                            });
+                            applyClipPatch(clip.id, patch);
+                          }}
+                          onTrimEnd={(d) => {
+                            const patch = clampTrimPatch(shown, {
+                              durationSec: shown.durationSec + d,
+                            });
+                            applyClipPatch(clip.id, patch);
+                          }}
+                          onDragEnd={() => commitClipDrag(clip.id)}
+                        />
+                      );
+                    })}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -403,6 +715,32 @@ export default function StudioView({
         {selectedClip ? (
           <div className="p-3 text-xs flex flex-wrap gap-3 items-center content-start">
             <span className="font-medium text-heading">Klip</span>
+            <label>
+              Offset (s)
+              <input
+                type="number"
+                step={0.01}
+                min={0}
+                className="ml-1 w-16 border border-border rounded px-1 bg-panel"
+                value={selectedClip.offsetSec}
+                onChange={(e) =>
+                  updateClip(selectedClip.id, { offsetSec: Number(e.target.value) })
+                }
+              />
+            </label>
+            <label>
+              Długość (s)
+              <input
+                type="number"
+                step={0.01}
+                min={0.1}
+                className="ml-1 w-16 border border-border rounded px-1 bg-panel"
+                value={selectedClip.durationSec}
+                onChange={(e) =>
+                  updateClip(selectedClip.id, { durationSec: Number(e.target.value) })
+                }
+              />
+            </label>
             <label>
               Fade in
               <input
@@ -449,7 +787,7 @@ export default function StudioView({
           </div>
         ) : (
           <div className="p-3 text-xs text-muted flex items-center">
-            Kliknij klip na osi czasu, aby edytować fade i gain.
+            Kliknij klip na osi czasu, aby edytować trim, fade i gain. Przeciągnij krawędzie klipu, aby przyciąć.
           </div>
         )}
       </div>

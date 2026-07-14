@@ -58,6 +58,11 @@ import type { SettingsViewTab } from "./components/settings/settingsTabs";
 import type { TtsProviderId, TtsVoiceProfile } from "./appSettings";
 import { mergeSessionAndArchiveHistory, isGenerationPlayable } from "./lib/generationPlayback";
 import { getPrivacyModeSnapshot } from "./lib/privacyMode";
+import {
+  getRoleplayMutePreview,
+  ROLEPLAY_MUTE_PREVIEW_CHANGED,
+  setRoleplayMutePreview,
+} from "./lib/roleplayMutePreview";
 import { voiceProfileToSettingsState } from "./lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "./lib/voiceProfilesEvents";
 
@@ -222,6 +227,17 @@ function AppInner({
   }, []);
 
   useEffect(() => {
+    void getAppSettings().then((view) => {
+      setRoleplayMutePreview(view.roleplay_mute_preview !== false);
+    });
+    const onMuteChange = () => {
+      /* value already updated by StudioView */
+    };
+    window.addEventListener(ROLEPLAY_MUTE_PREVIEW_CHANGED, onMuteChange);
+    return () => window.removeEventListener(ROLEPLAY_MUTE_PREVIEW_CHANGED, onMuteChange);
+  }, []);
+
+  useEffect(() => {
     return onDone((g) => {
       const incognito = getPrivacyModeSnapshot() === "incognito";
       if (!incognito) {
@@ -231,6 +247,7 @@ function AppInner({
       // Cursor / skill / quick_hotkey autoplay: generation:ready → dedicated listeners.
       if (isCursorPlaybackSource(g.source) && cfg.autoplay) return;
       if (g.source === "quick_hotkey") return;
+      if (g.source === "roleplay" && getRoleplayMutePreview()) return;
       if (incognito) {
         select(g, { loadEditorText: true, autoPlay: true });
         return;

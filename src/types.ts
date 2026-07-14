@@ -44,7 +44,13 @@ export interface GenerateRequest {
   context_label?: string | null;
 }
 
-export type GenerationSource = "manual" | "http" | "cursor" | "cursor-skill" | "quick_hotkey";
+export type GenerationSource =
+  | "manual"
+  | "http"
+  | "cursor"
+  | "cursor-skill"
+  | "quick_hotkey"
+  | "roleplay";
 
 export type FolderFilterId = string | "__all__" | "__none__";
 

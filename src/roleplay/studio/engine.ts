@@ -1,5 +1,9 @@
 import type { RoleplayTimeline, TimelineClip, TrackEffect } from "../types";
 
+export function clipBufferKey(clip: TimelineClip): string {
+  return clip.generationId ?? clip.sourcePath ?? clip.id;
+}
+
 export interface StudioTransport {
   playing: boolean;
   positionSec: number;
@@ -25,16 +29,20 @@ function envelopeGainAt(clip: TimelineClip, localSec: number): number {
   return dbToGain(pts[pts.length - 1].gainDb);
 }
 
-function fadeGain(clip: TimelineClip, localSec: number): number {
+function fadeGain(clip: TimelineClip, clipLocalSec: number): number {
   let g = 1;
-  if (clip.fadeInSec > 0 && localSec < clip.fadeInSec) {
-    g *= localSec / clip.fadeInSec;
+  if (clip.fadeInSec > 0 && clipLocalSec < clip.fadeInSec) {
+    g *= clipLocalSec / clip.fadeInSec;
   }
-  const end = clip.durationSec;
-  if (clip.fadeOutSec > 0 && localSec > end - clip.fadeOutSec) {
-    g *= Math.max(0, (end - localSec) / clip.fadeOutSec);
+  if (clip.fadeOutSec > 0 && clipLocalSec > clip.durationSec - clip.fadeOutSec) {
+    g *= Math.max(0, (clip.durationSec - clipLocalSec) / clip.fadeOutSec);
   }
   return g;
+}
+
+function clipGainAt(clip: TimelineClip, clipLocalSec: number): number {
+  const sourceLocal = clip.offsetSec + clipLocalSec;
+  return envelopeGainAt(clip, sourceLocal) * fadeGain(clip, clipLocalSec);
 }
 
 function buildTrackEffects(ctx: AudioContext, effects: TrackEffect[]): AudioNode {
@@ -170,7 +178,7 @@ export class StudioEngine {
       if (solo && !track.solo) continue;
       const chain = this.trackChains.get(track.id);
       if (!chain) continue;
-      const buf = this.buffers.get(clip.sourcePath) ?? this.buffers.get(clip.generationId ?? "");
+      const buf = this.buffers.get(clipBufferKey(clip));
       if (!buf) continue;
 
       const src = this.ctx.createBufferSource();
@@ -181,17 +189,22 @@ export class StudioEngine {
 
       const when = this.startTime + Math.max(0, clip.startSec - fromSec);
       const offset = clip.offsetSec + Math.max(0, fromSec - clip.startSec);
-      const playDur = clip.durationSec - Math.max(0, fromSec - clip.startSec);
+      const maxPlaySec = Math.max(0, buf.duration - offset);
+      const playDur = Math.min(
+        clip.durationSec - Math.max(0, fromSec - clip.startSec),
+        maxPlaySec,
+      );
       if (playDur <= 0) continue;
+
+      const clipLocalAtStart = Math.max(0, fromSec - clip.startSec);
 
       const scheduleGain = () => {
         const t0 = when;
         const steps = 32;
         for (let i = 0; i <= steps; i++) {
           const local = (i / steps) * playDur;
-          const env = envelopeGainAt(clip, clip.offsetSec + local);
-          const fade = fadeGain(clip, clip.offsetSec + local);
-          g.gain.setValueAtTime(env * fade, t0 + local);
+          const clipLocal = clipLocalAtStart + local;
+          g.gain.setValueAtTime(clipGainAt(clip, clipLocal), t0 + local);
         }
       };
       scheduleGain();
@@ -224,24 +237,25 @@ export class StudioEngine {
       trackGain.connect(master);
 
       for (const clip of timeline.clips.filter((c) => c.trackId === track.id)) {
-        const buf =
-          this.buffers.get(clip.sourcePath) ?? this.buffers.get(clip.generationId ?? "");
+        const buf = this.buffers.get(clipBufferKey(clip));
         if (!buf) continue;
+        const maxPlaySec = Math.max(0, buf.duration - clip.offsetSec);
+        const playDur = Math.min(clip.durationSec, maxPlaySec);
+        if (playDur <= 0) continue;
+
         const src = offline.createBufferSource();
         src.buffer = buf;
         const g = offline.createGain();
         const steps = 64;
+        const t0 = clip.startSec;
+        g.gain.setValueAtTime(clipGainAt(clip, 0), Math.max(0, t0 - 0.001));
         for (let i = 0; i <= steps; i++) {
-          const local = (i / steps) * clip.durationSec;
-          g.gain.setValueAtTime(
-            envelopeGainAt(clip, clip.offsetSec + local) *
-              fadeGain(clip, clip.offsetSec + local),
-            clip.startSec + local,
-          );
+          const clipLocal = (i / steps) * playDur;
+          g.gain.setValueAtTime(clipGainAt(clip, clipLocal), t0 + clipLocal);
         }
         src.connect(g);
         g.connect(trackGain);
-        src.start(clip.startSec, clip.offsetSec, clip.durationSec);
+        src.start(t0, clip.offsetSec, playDur);
       }
     }
 

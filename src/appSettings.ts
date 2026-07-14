@@ -323,6 +323,8 @@ export interface AppSettings {
   safe_mode_auto_open_queue?: boolean;
   default_video_template_id?: string | null;
   auto_archive_mp4_on_clipboard?: boolean;
+  /** When true, roleplay segment jobs do not trigger global playback preview. */
+  roleplay_mute_preview?: boolean;
 }
 
 export { DEFAULT_TIMELINE_VIEW };

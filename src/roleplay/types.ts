@@ -224,3 +224,16 @@ export function labelTracks(
 export function profileLabel(profiles: TtsVoiceProfile[], id: string): string {
   return profiles.find((p) => p.id === id)?.name ?? id.slice(0, 8);
 }
+
+export function profileColorMap(palette: PaletteEntry[]): Map<string, string> {
+  return new Map(palette.map((p) => [p.voiceProfileId, p.color]));
+}
+
+export function trackColor(
+  track: TimelineTrack,
+  colorMap: Map<string, string>,
+  fallback = "#94a3b8",
+): string {
+  const pid = track.voiceProfileId ?? track.id.replace(/^track-/, "");
+  return (pid && colorMap.get(pid)) || fallback;
+}

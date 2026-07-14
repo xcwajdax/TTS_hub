@@ -269,6 +269,9 @@ pub struct AppSettings {
     pub default_video_template_id: Option<String>,
     #[serde(default = "default_true")]
     pub auto_archive_mp4_on_clipboard: bool,
+    /// When true, roleplay segment jobs do not trigger global playback preview.
+    #[serde(default = "default_true")]
+    pub roleplay_mute_preview: bool,
 }
 
 fn default_privacy_mode() -> String {
@@ -375,6 +378,7 @@ impl Default for AppSettings {
             safe_mode_auto_open_queue: default_safe_mode_auto_open_queue(),
             default_video_template_id: default_video_template_id(),
             auto_archive_mp4_on_clipboard: true,
+            roleplay_mute_preview: true,
         }
     }
 }

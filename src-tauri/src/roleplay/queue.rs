@@ -244,9 +244,15 @@ impl RoleplayQueue {
             .ok_or_else(|| "segment nie istnieje".to_string())?;
 
         let profile = resolve_voice_profile(&state, &seg.voice_profile_id)?;
+        // Roleplay clips: MP3 by default (smaller, timeline-friendly); respect explicit ogg choice.
         let format = {
             let settings = state.settings.read().map_err(|e| e.to_string())?;
-            settings.save_format.clone()
+            let f = settings.save_format.as_str();
+            if f.eq_ignore_ascii_case("ogg") {
+                "ogg".to_string()
+            } else {
+                "mp3".to_string()
+            }
         };
 
         let req = build_generate_req_from_profile(&profile, &seg.text, &format);
@@ -299,7 +305,12 @@ impl RoleplayQueue {
 
         match result {
             Ok(()) => {
-                self.on_segment_done(&state, &app, project_id, &mut seg, &gen)
+                let fresh_gen = state
+                    .db
+                    .get(&gen.id)
+                    .map_err(|e| e.to_string())?
+                    .unwrap_or_else(|| gen.clone());
+                self.on_segment_done(&state, &app, project_id, &mut seg, &fresh_gen)
                     .await?;
             }
             Err(err_msg) => {
@@ -483,11 +494,13 @@ fn append_clip_to_timeline(timeline_json: &str, seg: &RoleplaySegment, gen: &Gen
     let start_sec = timeline
         .clips
         .iter()
+        .filter(|c| c.track_id == track_id)
         .map(|c| c.start_sec + c.duration_sec)
         .fold(0.0_f64, f64::max);
     let duration_sec = gen
         .duration_ms
         .map(|ms| ms as f64 / 1000.0)
+        .or_else(|| probe_wav_duration_sec(&gen.file_path))
         .unwrap_or(3.0)
         .max(0.1);
     timeline.clips.push(TimelineClip {
@@ -500,10 +513,28 @@ fn append_clip_to_timeline(timeline_json: &str, seg: &RoleplaySegment, gen: &Gen
         offset_sec: 0.0,
         duration_sec,
         gain_db: 0.0,
-        fade_in_sec: 0.05,
-        fade_out_sec: 0.05,
+        fade_in_sec: 0.0,
+        fade_out_sec: 0.02,
         gain_envelope: Vec::new(),
     });
     serde_json::to_string(&timeline).unwrap_or_else(|_| timeline_json.to_string())
+}
+
+fn probe_wav_duration_sec(file_path: &str) -> Option<f64> {
+    if file_path.is_empty() {
+        return None;
+    }
+    let path = std::path::Path::new(file_path);
+    if path.extension()?.to_str()?.eq_ignore_ascii_case("wav") {
+        let reader = hound::WavReader::open(path).ok()?;
+        let rate = reader.spec().sample_rate;
+        if rate > 0 {
+            let secs = reader.duration() as f64 / rate as f64;
+            if secs > 0.0 {
+                return Some(secs);
+            }
+        }
+    }
+    None
 }
 
