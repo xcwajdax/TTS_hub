@@ -37,7 +37,7 @@ These items revealed **development-machine layout**, not credentials:
 | Commit | Date | Action |
 |--------|------|--------|
 | [`888dea0`](https://github.com/xcwajdax/TTS_hub/commit/888dea0) | 2026-07-14 | Stop tracking `desktop.ini`, `.hermes/plans/`, `public/c4d/`; extend `.gitignore`; add `.githooks/pre-commit` secret scan |
-| *(this commit)* | 2026-07-14 | Sanitize absolute paths in Cursor plan; fix promo `assemble-promo-*.ps1` to emit relative `concat.txt`; untrack concat artifacts; extend pre-commit to block `C:\Users\` paths; publish this document |
+| [`ce7f1e8`](https://github.com/xcwajdax/TTS_hub/commit/ce7f1e8) | 2026-07-14 | Sanitize absolute paths in Cursor plan; fix promo `assemble-promo-*.ps1` to emit relative `concat.txt`; untrack concat artifacts; extend pre-commit to block `C:\Users\` paths; publish this document |
 
 **Preventive measures now in place:**
 
