@@ -1,0 +1,38 @@
+#!/bin/sh
+# Pre-commit: block secrets and sensitive local files from reaching GitHub.
+set -eu
+
+blocked=0
+
+# --- Blocked file paths (allow *.example templates) ---
+while IFS= read -r -d '' file; do
+  base=$(basename "$file")
+  case "$file" in
+    studios.env|.env|*/studios.env|*/.env)
+      echo "pre-commit: blocked file: $file"
+      blocked=1
+      ;;
+    */config.json)
+      case "$base" in
+        *.example) ;;
+        *)
+          echo "pre-commit: blocked file: $file (use *.example for templates)"
+          blocked=1
+          ;;
+      esac
+      ;;
+  esac
+done < <(git diff --cached --name-only -z --diff-filter=ACM)
+
+# --- Secret patterns in staged diff ---
+if git diff --cached | grep -E -q 'AIzaSy|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}'; then
+  echo "pre-commit: possible API key or token detected in staged changes"
+  blocked=1
+fi
+
+if [ "$blocked" -ne 0 ]; then
+  echo "pre-commit: commit rejected — remove secrets before committing"
+  exit 1
+fi
+
+exit 0

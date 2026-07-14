@@ -30,3 +30,6 @@ docs/samples/minimax-grzegorz-braun.mp3
 .tmp/
 Gemini_Generated_*.png
 public/c4d/
+desktop.ini
+Thumbs.db
+.hermes/

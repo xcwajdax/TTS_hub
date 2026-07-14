@@ -33,6 +33,7 @@ Fork i modyfikacje są zgodne z MIT. Nie commituj sekretów ani kluczy API.
 - Szablon: `studios.env.example` — tylko nazwy zmiennych, bez wartości.
 - Przed commitem: `git status` — upewnij się, że `studios.env` nie jest staged.
 - Issue / PR / README: zamazuj klucze na zrzutach ekranu.
+- Jednorazowo w klonie repo: `git config core.hooksPath .githooks` — włącza pre-commit skanujący sekrety (`AIzaSy`, `ghp_`, `sk-…`) i pliki `studios.env`, `.env`, `config.json` (poza `*.example`).
 
 ### Lokalne API (`127.0.0.1:8765`)
 
