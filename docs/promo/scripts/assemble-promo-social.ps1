@@ -91,7 +91,7 @@ foreach ($seg in $segments) {
 }
 
 $concatList = Join-Path $WorkDir 'concat.txt'
-($clips | ForEach-Object { "file '$($_.Replace('\', '/'))'" }) -join "`n" | Set-Content $concatList -Encoding UTF8
+($clips | ForEach-Object { "file '$(Split-Path $_ -Leaf)'" }) -join "`n" | Set-Content $concatList -Encoding UTF8
 
 Write-Host "Łączenie → $Out916"
 & ffmpeg -y -f concat -safe 0 -i $concatList -c copy $Out916 2>&1 | Out-Null

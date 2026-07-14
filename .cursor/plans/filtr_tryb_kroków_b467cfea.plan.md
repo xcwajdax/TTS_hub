@@ -31,12 +31,12 @@ Rozszerzę presety filtrów o tryb kroków, który wykrywa listy numerowane i tu
 
 ## Kontekst w kodzie
 
-Obecne „filtry” w TTS Hub to **filtry tekstu przed syntezą** ([`src/lib/textFilters.ts`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\lib\textFilters.ts), [`src-tauri/src/text_filters.rs`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\text_filters.rs)) — nie modyfikują odtwarzania. Odtwarzanie to jeden plik audio w [`PlaybackContext`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\context\PlaybackContext.tsx) + [`PlaybackBar`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\PlaybackBar.tsx). Istniejące wzorce do reuse:
+Obecne „filtry” w TTS Hub to **filtry tekstu przed syntezą** ([`src/lib/textFilters.ts`](src\lib\textFilters.ts), [`src-tauri/src/text_filters.rs`](src-tauri\src\text_filters.rs)) — nie modyfikują odtwarzania. Odtwarzanie to jeden plik audio w [`PlaybackContext`](src\context\PlaybackContext.tsx) + [`PlaybackBar`](src\components\PlaybackBar.tsx). Istniejące wzorce do reuse:
 
-- **Segmentacja tekstu:** roleplay [`docToSegments`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\roleplay\segments.ts) + kolejka [`roleplay/queue.rs`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\roleplay\queue.rs)
-- **Kolejka odtwarzania:** [`usePlaybackQueue`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\hooks\usePlaybackQueue.ts)
-- **Pływające okno:** [`playback-toast`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\playback_toast_window.rs) + [`ToastWindowPanel`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\toast\ToastWindowPanel.tsx)
-- **Listy w edytorze:** [`blockTransform.ts`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\editor\blockTransform.ts) — `orderedList` z `meta.ordered`, ale `listText()` **gubi numerację** przy flatten
+- **Segmentacja tekstu:** roleplay [`docToSegments`](src\roleplay\segments.ts) + kolejka [`roleplay/queue.rs`](src-tauri\src\roleplay\queue.rs)
+- **Kolejka odtwarzania:** [`usePlaybackQueue`](src\hooks\usePlaybackQueue.ts)
+- **Pływające okno:** [`playback-toast`](src-tauri\src\playback_toast_window.rs) + [`ToastWindowPanel`](src\components\toast\ToastWindowPanel.tsx)
+- **Listy w edytorze:** [`blockTransform.ts`](src\components\editor\blockTransform.ts) — `orderedList` z `meta.ordered`, ale `listText()` **gubi numerację** przy flatten
 
 ```mermaid
 flowchart TB
@@ -68,7 +68,7 @@ flowchart TB
 
 ## 1. Model danych — rozszerzenie presetu filtra
 
-Rozszerzyć [`TextFilterPreset`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\lib\textFiltersTypes.ts) (mirror w Rust [`text_filters.rs`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\text_filters.rs)):
+Rozszerzyć [`TextFilterPreset`](src\lib\textFiltersTypes.ts) (mirror w Rust [`text_filters.rs`](src-tauri\src\text_filters.rs)):
 
 ```typescript
 export type StepPlaybackMode = "off" | "auto" | "force";
@@ -86,9 +86,9 @@ export interface StepPlaybackSettings {
 step_playback?: StepPlaybackSettings;
 ```
 
-Nowy factory preset w [`filterPresetCatalog.ts`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\lib\filterPresetCatalog.ts): **`factory-tutorial-steps`** („Tutorial / kroki”) z `mode: "auto"`, `min_steps: 2`.
+Nowy factory preset w [`filterPresetCatalog.ts`](src\lib\filterPresetCatalog.ts): **`factory-tutorial-steps`** („Tutorial / kroki”) z `mode: "auto"`, `min_steps: 2`.
 
-Struktura wykrytych kroków (nowy moduł [`src/lib/stepPlayback/parseSteps.ts`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\lib\stepPlayback\parseSteps.ts) + mirror Rust [`text_steps.rs`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\text_steps.rs)):
+Struktura wykrytych kroków (nowy moduł [`src/lib/stepPlayback/parseSteps.ts`](src\lib\stepPlayback\parseSteps.ts) + mirror Rust [`text_steps.rs`](src-tauri\src\text_steps.rs)):
 
 ```typescript
 export interface PlaybackStep {
@@ -134,11 +134,11 @@ export interface StepParseResult {
 
 ### Podgląd przed generacją
 
-W [`SynthTextPreview.tsx`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\textFilters\SynthTextPreview.tsx) lub obok — badge: **„Wykryto N kroków”** z rozwijaną listą. W [`TextFiltersBar`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\textFilters\TextFiltersBar.tsx) — ikona kroków gdy preset ma `step_playback`.
+W [`SynthTextPreview.tsx`](src\components\textFilters\SynthTextPreview.tsx) lub obok — badge: **„Wykryto N kroków”** z rozwijaną listą. W [`TextFiltersBar`](src\components\textFilters\TextFiltersBar.tsx) — ikona kroków gdy preset ma `step_playback`.
 
 ### Fix: numeracja z edytora
 
-W [`listText()`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\editor\blockTransform.ts) dla `orderedList` emitować `1. tekst\n2. tekst` — poprawia wykrywanie i spójność TTS.
+W [`listText()`](src\components\editor\blockTransform.ts) dla `orderedList` emitować `1. tekst\n2. tekst` — poprawia wykrywanie i spójność TTS.
 
 ---
 
@@ -148,18 +148,18 @@ W [`listText()`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\edi
 
 1. Po filtrach: `parseSteps(filtered_text)` → `steps[]`
 2. Synteza **jednego** `filtered_text` (jak dziś)
-3. Po syntezie: obliczyć `char_start`/`char_end` per krok; estymować `start_ms`/`end_ms` proporcjonalnie do `duration_ms` (jak [`HistoryTextPreview`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\HistoryTextPreview.tsx) scroll sync)
-4. Zapisać w DB: nowe pole JSON `step_timings` na `generations` (migracja w [`db.rs`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\db.rs))
+3. Po syntezie: obliczyć `char_start`/`char_end` per krok; estymować `start_ms`/`end_ms` proporcjonalnie do `duration_ms` (jak [`HistoryTextPreview`](src\components\HistoryTextPreview.tsx) scroll sync)
+4. Zapisać w DB: nowe pole JSON `step_timings` na `generations` (migracja w [`db.rs`](src-tauri\src\db.rs))
 
 ### Faza B: osobna synteza na krok (`synth_per_step: true`)
 
 1. Frontend/backend: `generate_step_batch` — N żądań z `parent_generation_id` + `step_index`
-2. Kolejkowanie przez istniejący [`usePlaybackQueue`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\hooks\usePlaybackQueue.ts)
-3. Wzorzec jak [`roleplay/queue.rs`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\roleplay\queue.rs) — lekki worker, bez pełnego Roleplay Studio
+2. Kolejkowanie przez istniejący [`usePlaybackQueue`](src\hooks\usePlaybackQueue.ts)
+3. Wzorzec jak [`roleplay/queue.rs`](src-tauri\src\roleplay\queue.rs) — lekki worker, bez pełnego Roleplay Studio
 
 ### Faza C (opcjonalna): dokładne timestampy
 
-- Reuse [`minimax_subtitles.rs`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\minimax_subtitles.rs) do mapowania słów → granice kroków (tylko MiniMax)
+- Reuse [`minimax_subtitles.rs`](src-tauri\src\minimax_subtitles.rs) do mapowania słów → granice kroków (tylko MiniMax)
 
 ---
 
@@ -167,8 +167,8 @@ W [`listText()`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\edi
 
 Gdy aktywna generacja ma `step_timings` (lub powiązane kroki) **i** preset włącza tryb kroków:
 
-- **Ukryć / zwinąć** klasyczny [`PlaybackBar`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\PlaybackBar.tsx) do trybu kompaktowego (przycisk „Klasyczny widok”)
-- **Pokazać** [`StepGuidePanel`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\stepPlayback\StepGuidePanel.tsx)
+- **Ukryć / zwinąć** klasyczny [`PlaybackBar`](src\components\PlaybackBar.tsx) do trybu kompaktowego (przycisk „Klasyczny widok”)
+- **Pokazać** [`StepGuidePanel`](src\components\stepPlayback\StepGuidePanel.tsx)
 
 ### StepGuidePanel — funkcje podstawowe
 
@@ -184,11 +184,11 @@ Gdy aktywna generacja ma `step_timings` (lub powiązane kroki) **i** preset wł�
 
 ### Okno Tauri always-on-top (nad Blenderem)
 
-Wzorzec 1:1 z [`playback_toast_window.rs`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\src\playback_toast_window.rs):
+Wzorzec 1:1 z [`playback_toast_window.rs`](src-tauri\src\playback_toast_window.rs):
 
-- Nowe okno `step-guide` w [`tauri.conf.json`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src-tauri\tauri.conf.json): ~360×480, `transparent`, `alwaysOnTop`, `decorations: false`, **resizable: true**
-- Boot w [`main.tsx`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\main.tsx) → `StepGuideApp`
-- Bridge jak [`playbackToastContract.ts`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\lib\playbackToastContract.ts): `step-guide:state`, `step-guide:action`
+- Nowe okno `step-guide` w [`tauri.conf.json`](src-tauri\tauri.conf.json): ~360×480, `transparent`, `alwaysOnTop`, `decorations: false`, **resizable: true**
+- Boot w [`main.tsx`](src\main.tsx) → `StepGuideApp`
+- Bridge jak [`playbackToastContract.ts`](src\lib\playbackToastContract.ts): `step-guide:state`, `step-guide:action`
 - Przycisk w panelu: **„Okno nad aplikacjami”** — `show_step_guide_window` / `hide`
 
 ### Dodatkowe sugestie UX (faza 2–3)
@@ -197,11 +197,11 @@ Wzorzec 1:1 z [`playback_toast_window.rs`](c:\Users\user\Documents\VIBELIFE2026\
 - **Checkbox „zrobione”** per krok (stan w `localStorage` per `generation_id`)
 - **Kopiuj tekst kroku** do schowka (przydatne w Blenderze)
 - **Powtórz krok** — replay tylko bieżącego segmentu
-- **Znaczniki na waveformie** — pionowe linie w [`WaveformPlayer`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\src\components\WaveformPlayer.tsx) przy granicach kroków
+- **Znaczniki na waveformie** — pionowe linie w [`WaveformPlayer`](src\components\WaveformPlayer.tsx) przy granicach kroków
 - **Pin / always on top** toggle w panelu (bez osobnego okna Tauri)
 - **Dock** do lewej/prawej krawędzi main window
 - **Eksport checklisty** — markdown `- [ ] krok` z historii
-- **Integracja Cursor:** w [`cursor-tts.ps1`](c:\Users\user\Documents\VIBELIFE2026\TTS_hub\.cursor-hooks\cursor-tts.ps1) — `Detect-Steps` przed `/generate`; opcjonalnie `step_timings` w metadata odpowiedzi HTTP
+- **Integracja Cursor:** w [`cursor-tts.ps1`](.cursor-hooks\cursor-tts.ps1) — `Detect-Steps` przed `/generate`; opcjonalnie `step_timings` w metadata odpowiedzi HTTP
 - **Powiadomienie** gdy krok się kończy (toast „Krok 2 zakończony — kliknij 3”)
 
 ---
@@ -302,3 +302,4 @@ sequenceDiagram
 - Synteza: **hybryda** — MVP jedna ścieżka, preset pozwala włączyć `synth_per_step`
 - Okno: **oba** — panel in-app + opcjonalne okno Tauri always-on-top
 - Wykrywanie: **auto** z progiem confidence, min. 2 kroki
+

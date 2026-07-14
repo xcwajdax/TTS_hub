@@ -30,6 +30,12 @@ if git diff --cached | grep -E -q 'AIzaSy|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-
   blocked=1
 fi
 
+# --- Absolute local paths (Windows dev machine) ---
+if git diff --cached | grep -E -q 'C:\\\\Users\\\\|C:/Users/|C:\\\\Users\\\\user\\\\Documents\\\\VIBELIFE2026'; then
+  echo "pre-commit: absolute Windows path detected — use repo-relative paths"
+  blocked=1
+fi
+
 if [ "$blocked" -ne 0 ]; then
   echo "pre-commit: commit rejected — remove secrets before committing"
   exit 1

@@ -27,13 +27,14 @@ Fork i modyfikacje są zgodne z MIT. Nie commituj sekretów ani kluczy API.
 - `studios.env` (klucz `GOOGLE_API_KEY`)
 - Profile API key z ustawień aplikacji (eksporty, screeny, logi)
 - Tokeny, hasła, ścieżki do prywatnych zasobów innych osób
+- **Absolutne ścieżki maszyny deweloperskiej** (`C:\Users\…`, `/Users/…`) — używaj ścieżek względnych do root repo; szczegóły audytu: [PRIVACY_DISCLOSURE.md](PRIVACY_DISCLOSURE.md)
 
 ### Zawsze
 
 - Szablon: `studios.env.example` — tylko nazwy zmiennych, bez wartości.
 - Przed commitem: `git status` — upewnij się, że `studios.env` nie jest staged.
 - Issue / PR / README: zamazuj klucze na zrzutach ekranu.
-- Jednorazowo w klonie repo: `git config core.hooksPath .githooks` — włącza pre-commit skanujący sekrety (`AIzaSy`, `ghp_`, `sk-…`) i pliki `studios.env`, `.env`, `config.json` (poza `*.example`).
+- Jednorazowo w klonie repo: `git config core.hooksPath .githooks` — włącza pre-commit skanujący sekrety (`AIzaSy`, `ghp_`, `sk-…`), pliki `studios.env`, `.env`, `config.json` (poza `*.example`) oraz absolutne ścieżki `C:\Users\`.
 
 ### Lokalne API (`127.0.0.1:8765`)
 
