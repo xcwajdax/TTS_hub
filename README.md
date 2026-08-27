@@ -98,6 +98,7 @@ Szczegóły kosztów, danych lokalnych i zasad wkładu: [docs/PROJECT_GUIDELINES
 - Roleplay, czat głosowy, licznik zużycia per provider
 - Integracja Cursor (skill + hooki), lokalne API `:8765`
 - Skórki UI: VIBELIFE · Matrix · Light Zen
+- Profile głosu — pad XY MiniMax `voice_modify` (jasność × siła), studio presetów `sound_effects`, pola Voice Box seed/chunking/normalize w kliencie Rust
 
 ### W toku
 
@@ -114,7 +115,7 @@ Szczegóły kosztów, danych lokalnych i zasad wkładu: [docs/PROJECT_GUIDELINES
 - Testy integracyjne lokalnego API
 - Rozszerzenie VS Code / Cursor (opcjonalna migracja z hooków) — [plan](.cursor/plans/vscode-cursor-extension.plan.md)
 - Node Audio Routing — mixer TTS / mic / loopback — [plan](.cursor/plans/node-audio-routing.plan.md)
-- **Profile głosu** — 2D placement parametrów voice_modify, rozszerzony edytor efektów dźwiękowych, zaawansowane pola Voice Box (seed, chunking)
+- Voice Box `effects_chain` (pedalboard) w kliencie TTS Hub — MiniMax studio presetów jest wdrożone; łańcuch DSP Voice Box zostaje świadomie odłączony
 - Podpis kodu instalatora Windows
 - MCP server w aplikacji
 

@@ -364,6 +364,7 @@ pub fn build_generate_req(
         minimax_vol,
         minimax_pitch,
         minimax_options: saved.and_then(|p| p.minimax_options.clone()),
+        voicebox_options: saved.and_then(|p| p.voicebox_options.clone()),
         original_prompt: None,
         chat_session_id: None,
         chat_role: None,

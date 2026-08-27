@@ -779,6 +779,10 @@ export default function MainPanel({
 
             : null,
 
+        voicebox_options:
+
+          tts.provider === "voicebox" ? tts.voiceboxOptions : null,
+
         voice_profile_id: voiceProfileId ?? activeVoiceProfileId ?? null,
 
         context_label: contextLabel.trim() || null,

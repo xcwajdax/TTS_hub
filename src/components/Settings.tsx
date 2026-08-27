@@ -30,10 +30,12 @@ import VoiceSamplePlayButton from "./VoiceSamplePlayButton";
 import VoiceSamples from "./VoiceSamples";
 import { PROVIDER_TABS, switchProviderState } from "../lib/providerSwitch";
 import type { MinimaxSynthesisOptions } from "../lib/minimaxOptions";
+import { type VoiceBoxGenerationOptions } from "../lib/voiceboxOptions";
 import { type ReactNode } from "react";
 import MinimaxAdvancedOptions from "./MinimaxAdvancedOptions";
 import ProfileFieldShell from "./voiceProfiles/fields/ProfileFieldShell";
 import ProfileSliderField from "./voiceProfiles/fields/ProfileSliderField";
+import VoiceBoxAdvancedFields from "./voiceProfiles/fields/VoiceBoxAdvancedFields";
 import VpFormItem from "./voiceProfiles/VpFormItem";
 import Icon from "./Icon";
 
@@ -53,6 +55,7 @@ export interface SettingsState {
   minimaxVol: number;
   minimaxPitch: number;
   minimaxOptions: MinimaxSynthesisOptions;
+  voiceboxOptions: VoiceBoxGenerationOptions;
 }
 
 interface Props {
@@ -431,6 +434,13 @@ export default function Settings({
           Przepisz tekst w charakterze profilu (personality)
         </label>
         </FW>
+      ) : null}
+
+      {state.provider === "voicebox" && advancedMode ? (
+        <VoiceBoxAdvancedFields
+          value={state.voiceboxOptions}
+          onChange={(voiceboxOptions) => onChange({ ...state, voiceboxOptions })}
+        />
       ) : null}
 
       {state.provider === "minimax" && (

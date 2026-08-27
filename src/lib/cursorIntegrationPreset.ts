@@ -2,6 +2,7 @@ import type { CursorIntegration } from "../appSettings";
 import type { SettingsState } from "../components/Settings";
 import type { AudioFormat, GenerateRequest, TtsProvider } from "../types";
 import { defaultMinimaxSynthesisOptions } from "./minimaxOptions";
+import { defaultVoiceBoxGenerationOptions } from "./voiceboxOptions";
 
 export function cursorToSettingsState(cfg: CursorIntegration): SettingsState {
   return {
@@ -23,6 +24,7 @@ export function cursorToSettingsState(cfg: CursorIntegration): SettingsState {
     minimaxOptions: cfg.minimax_options
       ? { ...defaultMinimaxSynthesisOptions(), ...cfg.minimax_options }
       : defaultMinimaxSynthesisOptions(),
+    voiceboxOptions: defaultVoiceBoxGenerationOptions(),
   };
 }
 

@@ -204,6 +204,16 @@ Zaktualizować wszystkie odwołania `openMinimaxVoices("profile")` / `openVoiceb
 
 ## 8. Roadmapa w dokumentacji
 
+Zrealizowane w tej iteracji (edytor zaawansowany):
+
+- 2D placement parametrów głosu (voice_modify XY pad) — X = `pitch` (głębiej/jaśniej), Y = `intensity` (mocniej u góry), `timbre` jako suwak
+- Studio efektów MiniMax (`sound_effects`, jeden preset na żądanie)
+- Voice Box: seed, chunking, normalize w profilu i kliencie Rust
+
+Pozostaje poza zakresem:
+
+- Voice Box `effects_chain` (pedalboard) — klient Rust nadal nie wysyła tego pola
+
 Dopisać do [`README.md`](../README.md) (sekcja Planowane) i [`docs/SPECIFICATION.md`](../docs/SPECIFICATION.md) §10:
 
 - 2D placement parametrów głosu (voice_modify XY pad)

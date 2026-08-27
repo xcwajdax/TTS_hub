@@ -257,6 +257,7 @@ pub fn build_generate_req_from_profile(
         minimax_vol: profile.minimax_vol,
         minimax_pitch: profile.minimax_pitch,
         minimax_options: profile.minimax_options.clone(),
+        voicebox_options: profile.voicebox_options.clone(),
         original_prompt: None,
         chat_session_id: None,
         chat_role: None,

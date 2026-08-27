@@ -116,6 +116,9 @@ Szczegóły: [API.md](./API.md) — port **8765**, brak auth, tylko loopback.
 
 ## 10. Roadmap (sugestie po v0.1)
 
+- [x] **Profile głosu — edytor zaawansowany MiniMax** — pad XY `voice_modify` (X = `pitch` głębiej/jaśniej, Y = `intensity` mocniej/miękcej, `timbre` jako suwak) oraz studio presetów `sound_effects` (jeden efekt na żądanie). Plan: [.cursor/plans/voice-profiles-panel.plan.md](../.cursor/plans/voice-profiles-panel.plan.md).
+- [x] **Voice Box — seed, chunking, normalize** — pola `voicebox_options` na profilu TTS Hub, przekazywane addytywnie przez klienta Rust (`voicebox.rs`) do `/generate`.
+- [ ] **Voice Box `effects_chain`** — pedalboard DSP na serwerze Voice Box; klient TTS Hub nadal go nie wysyła (osobny kontrakt niż presety MiniMax).
 - [ ] Naprawa buildu produkcyjnego TypeScript (`captureStream`).
 - [ ] Testy integracyjne API.
 - [ ] CI (build + lint).
@@ -123,4 +126,3 @@ Szczegóły: [API.md](./API.md) — port **8765**, brak auth, tylko loopback.
 - [ ] Instalator z podpisem kodu (Windows).
 - [ ] **Node Audio Routing** — node-owy edytor routingu audio + realtime mixer (`cpal`) + wirtualny mikrofon przez auto-detekcję VB-CABLE/VoiceMeeter. Node'y: TTS / mic / file / loopback → gain / mixer / ducking / EQ-comp-gate → speakers / file / virtual mic. Plan: [.cursor/plans/node-audio-routing.plan.md](../.cursor/plans/node-audio-routing.plan.md).
 - [ ] **VS Code / Cursor extension (TTS Hub)** — opcjonalna migracja cienkiej integracji z hook/skill do rozszerzenia VS Code: wykrywanie `<!-- tts-summary -->`, wywołanie lokalnego API Hub, status bar i ustawienia; logika syntezy pozostaje w aplikacji. Etapy: kryteria go/no-go → kontrakt API → MVP → współistnienie ze starym trybem → ewentualna dystrybucja VSIX. Plan: [.cursor/plans/vscode-cursor-extension.plan.md](../.cursor/plans/vscode-cursor-extension.plan.md).
-- [ ] **Profile głosu — rozszerzenia UI** — 2D placement (pitch/intensity/timbre na płaszczyźnie XY), studio efektów dźwiękowych (Voice Box `effects_chain` + MiniMax), pełna obsługa zaawansowanych pól Voice Box w kliencie Rust (seed, chunking, normalize). Plan: [.cursor/plans/voice-profiles-panel.plan.md](../.cursor/plans/voice-profiles-panel.plan.md).

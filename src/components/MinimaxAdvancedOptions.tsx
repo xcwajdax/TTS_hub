@@ -1,8 +1,19 @@
 import { useState } from "react";
-import type { MinimaxSynthesisOptions } from "../lib/minimaxOptions";
+import type { MinimaxSoundEffect, MinimaxSynthesisOptions, MinimaxVoiceModify } from "../lib/minimaxOptions";
 import { defaultMinimaxSynthesisOptions } from "../lib/minimaxOptions";
-import { emotionOptionsForModel, supportsContinuousSound } from "../lib/minimaxCapabilities";
+import { emotionOptionsForModel, supportsContinuousSound, voiceModifySupported } from "../lib/minimaxCapabilities";
 import { MINIMAX_LANGUAGE_CATALOG } from "../lib/minimaxLanguages";
+import {
+  MINIMAX_SOUND_EFFECTS,
+  compactVoiceModify,
+  patchVoiceModify,
+  resolveVoiceModify,
+} from "../lib/minimaxVoiceModify";
+import VoiceModifyXyPad from "./voiceProfiles/fields/VoiceModifyXyPad";
+import MinimaxSoundEffectsStudio from "./voiceProfiles/fields/MinimaxSoundEffectsStudio";
+import ProfileFieldShell from "./voiceProfiles/fields/ProfileFieldShell";
+import ProfileSliderField from "./voiceProfiles/fields/ProfileSliderField";
+import "./voiceProfiles/voiceProfileForm.css";
 
 interface Props {
   model: string;
@@ -15,25 +26,46 @@ interface Props {
 const SAMPLE_RATES = [8000, 16000, 22050, 24000, 32000, 44100];
 const BITRATES = [32000, 64000, 128000, 256000];
 const API_FORMATS = ["mp3", "pcm", "flac", "wav", "opus", "pcmu_raw", "pcmu_wav"];
-const SOUND_EFFECTS = [
-  { id: "", label: "— brak —" },
-  { id: "spacious_echo", label: "Spacious echo" },
-  { id: "auditorium_echo", label: "Auditorium echo" },
-  { id: "lofi_telephone", label: "Lo-fi telephone" },
-  { id: "robotic", label: "Robotic" },
-] as const;
+
+const VOICE_MODIFY_SLIDERS: {
+  key: keyof Pick<MinimaxVoiceModify, "pitch" | "intensity" | "timbre">;
+  label: string;
+  tooltip: string;
+}[] = [
+  {
+    key: "pitch",
+    label: "Jasność (pitch)",
+    tooltip: "MiniMax voice_modify.pitch: −100 głębiej, +100 jaśniej. To nie jest pitch w półtonach z voice_setting.",
+  },
+  {
+    key: "intensity",
+    label: "Siła (intensity)",
+    tooltip: "MiniMax voice_modify.intensity: −100 mocniej, +100 miękcej.",
+  },
+  {
+    key: "timbre",
+    label: "Barwa (timbre)",
+    tooltip: "MiniMax voice_modify.timbre: −100 pełniej / nosowo, +100 ostrzej / jaśniej.",
+  },
+];
 
 export default function MinimaxAdvancedOptions({ model, options, onChange, compact, voiceProfileUi }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!voiceProfileUi);
   const o = options ?? defaultMinimaxSynthesisOptions();
   const fc = voiceProfileUi ? "vp-field" : "field";
   const lc = voiceProfileUi ? "vp-form__label" : "flex flex-col gap-1 text-muted";
+  const voiceModify = resolveVoiceModify(o.voice_modify);
+  const voiceModifyDisabled = !voiceModifySupported(o.audio.format);
 
   const patch = (partial: Partial<MinimaxSynthesisOptions>) => onChange({ ...o, ...partial });
   const patchVoice = (partial: Partial<MinimaxSynthesisOptions["voice"]>) =>
     onChange({ ...o, voice: { ...o.voice, ...partial } });
   const patchAudio = (partial: Partial<MinimaxSynthesisOptions["audio"]>) =>
     onChange({ ...o, audio: { ...o.audio, ...partial } });
+  const patchVm = (partial: Partial<MinimaxVoiceModify>) =>
+    patch({ voice_modify: patchVoiceModify(o.voice_modify, partial) });
+  const setVoiceModify = (next: MinimaxVoiceModify) =>
+    patch({ voice_modify: compactVoiceModify(next) });
 
   const emotions = emotionOptionsForModel(model);
   const grid = voiceProfileUi
@@ -183,58 +215,97 @@ export default function MinimaxAdvancedOptions({ model, options, onChange, compa
 
           <fieldset className="col-span-full border border-border/40 rounded p-2">
             <legend className="px-1 text-muted">Voice modify</legend>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {(["pitch", "intensity", "timbre"] as const).map((key) => (
-                <label key={key} className="flex flex-col gap-1 text-muted">
-                  {key} (-100…100)
-                  <input
-                    type="range"
-                    min={-100}
-                    max={100}
-                    value={o.voice_modify?.[key] ?? 0}
+            {voiceModifyDisabled ? (
+              <p className="text-[10px] text-muted mb-2">
+                voice_modify działa tylko dla formatów mp3 / wav / flac. Zmień format API, żeby
+                odblokować pad i efekty.
+              </p>
+            ) : null}
+            {voiceProfileUi ? (
+              <div className="flex flex-col gap-3">
+                <p className="vp-hint max-w-none">
+                  Pad XY: oś X to jasność (`pitch`, głębiej ↔ jaśniej), oś Y to siła (`intensity`,
+                  mocniej u góry). Barwa (`timbre`) zostaje suwakiem. Wartości idą do tego samego
+                  obiektu `voice_modify`, który backend wysyła do MiniMax.
+                </p>
+                <VoiceModifyXyPad
+                  value={voiceModify}
+                  disabled={voiceModifyDisabled}
+                  onChange={setVoiceModify}
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {VOICE_MODIFY_SLIDERS.map((field) => (
+                    <ProfileFieldShell
+                      key={field.key}
+                      label={`${field.label} (−100…100)`}
+                      tooltip={field.tooltip}
+                      defaultHint="0"
+                      voiceProfileUi
+                      onContextMenuReset={() => patchVm({ [field.key]: 0 })}
+                    >
+                      <ProfileSliderField
+                        value={voiceModify[field.key]}
+                        min={-100}
+                        max={100}
+                        step={1}
+                        disabled={voiceModifyDisabled}
+                        onChange={(n) => patchVm({ [field.key]: n })}
+                      />
+                    </ProfileFieldShell>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="vp-form__label">Studio efektów dźwiękowych</span>
+                  <MinimaxSoundEffectsStudio
+                    value={voiceModify.sound_effects}
+                    disabled={voiceModifyDisabled}
+                    onChange={(sound_effects) => patchVm({ sound_effects })}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {VOICE_MODIFY_SLIDERS.map((field) => (
+                  <label key={field.key} className="flex flex-col gap-1 text-muted" title={field.tooltip}>
+                    {field.label} (−100…100)
+                    <input
+                      type="range"
+                      min={-100}
+                      max={100}
+                      value={voiceModify[field.key]}
+                      disabled={voiceModifyDisabled}
+                      onChange={(e) => patchVm({ [field.key]: Number(e.target.value) })}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        patchVm({ [field.key]: 0 });
+                      }}
+                    />
+                  </label>
+                ))}
+                <label className={lc}>
+                  Sound effect
+                  <select
+                    className={fc}
+                    value={voiceModify.sound_effects ?? ""}
+                    disabled={voiceModifyDisabled}
                     onChange={(e) =>
-                      patch({
-                        voice_modify: {
-                          pitch: o.voice_modify?.pitch ?? 0,
-                          intensity: o.voice_modify?.intensity ?? 0,
-                          timbre: o.voice_modify?.timbre ?? 0,
-                          sound_effects: o.voice_modify?.sound_effects ?? null,
-                          [key]: Number(e.target.value),
-                        },
+                      patchVm({
+                        sound_effects: (e.target.value || null) as MinimaxSoundEffect | null,
                       })
                     }
-                  />
+                  >
+                    <option value="">— brak —</option>
+                    {MINIMAX_SOUND_EFFECTS.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-              ))}
-              <label className={lc}>
-                Sound effect
-                <select
-                  className={fc}
-                  value={o.voice_modify?.sound_effects ?? ""}
-                  onChange={(e) =>
-                    patch({
-                      voice_modify: {
-                        pitch: o.voice_modify?.pitch ?? 0,
-                        intensity: o.voice_modify?.intensity ?? 0,
-                        timbre: o.voice_modify?.timbre ?? 0,
-                        sound_effects: (e.target.value || null) as MinimaxSynthesisOptions["voice_modify"] extends infer V
-                          ? V extends { sound_effects?: infer S }
-                            ? S
-                            : null
-                          : null,
-                      },
-                    })
-                  }
-                >
-                  {SOUND_EFFECTS.map((s) => (
-                    <option key={s.id || "none"} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+              </div>
+            )}
           </fieldset>
+
 
           <fieldset className="col-span-full border border-border/40 rounded p-2">
             <legend className="px-1 text-muted">Wymowa (pronunciation_dict)</legend>

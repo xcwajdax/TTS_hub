@@ -18,6 +18,7 @@ import type { PluginManifest, SoundboardPublicView } from "../../plugins/types";
 import type { RoleplayProject, RoleplayProjectSummary } from "../../roleplay/types";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../../types";
 import type { VideoExportRecord } from "../../types/videoTemplate";
+import { defaultMinimaxSynthesisOptions } from "../minimaxOptions";
 
 export const MOCK_SESSION_ID = "mock-session-001";
 
@@ -62,6 +63,36 @@ export const MOCK_VOICE_PROFILES: TtsVoiceProfile[] = [
     minimax_pitch: 0,
     last_preview: "Podsumowanie z Cursor — mockup.",
     shortcut: "Ctrl+Alt+2",
+    shortcut_enabled: false,
+    minimax_options: {
+      ...defaultMinimaxSynthesisOptions(),
+      voice_modify: { pitch: 20, intensity: -30, timbre: 10, sound_effects: "spacious_echo" },
+    },
+  },
+  {
+    id: "mock-vp-voicebox",
+    name: "Voice Box — studio",
+    provider: "voicebox",
+    model: "voicebox:chatterbox",
+    voice: "Mój głos (mock)",
+    style: null,
+    profile_id: "mock-vb-profile",
+    language: "pl",
+    engine: "chatterbox",
+    multi_speaker: false,
+    speakers: [],
+    minimax_speed: null,
+    minimax_vol: null,
+    minimax_pitch: null,
+    voicebox_options: {
+      seed: 42,
+      model_size: "1.7B",
+      max_chunk_chars: 800,
+      crossfade_ms: 50,
+      normalize: true,
+    },
+    last_preview: "Przykładowa synteza Voice Box.",
+    shortcut: null,
     shortcut_enabled: false,
   },
 ];

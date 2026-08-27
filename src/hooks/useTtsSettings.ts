@@ -21,6 +21,7 @@ import {
 import { effectiveMinimaxEnabledLanguages } from "../lib/minimaxLanguages";
 import { DEFAULT_MINIMAX_LANGUAGE } from "../appSettings";
 import { defaultMinimaxSynthesisOptions } from "../lib/minimaxOptions";
+import { defaultVoiceBoxGenerationOptions } from "../lib/voiceboxOptions";
 import type { SettingsState } from "../components/Settings";
 import {
   MOCK_GOOGLE_VOICES,
@@ -48,6 +49,7 @@ export const DEFAULT_TTS_SETTINGS: SettingsState = {
   minimaxVol: 1,
   minimaxPitch: 0,
   minimaxOptions: defaultMinimaxSynthesisOptions(),
+  voiceboxOptions: defaultVoiceBoxGenerationOptions(),
 };
 
 export function useTtsSettings(onError: (message: string) => void) {
