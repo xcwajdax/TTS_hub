@@ -49,6 +49,8 @@ Przykład skrócony:
 - `profile_id`: tylko dla Voice Box; jest ID profilu Voice Box, nie ID profilu TTS Hub.
 - `language`, `engine`: używane przez Voice Box i MiniMax według dostępnych pól providera.
 - `minimax_speed`, `minimax_vol`, `minimax_pitch`: zakresy są normalizowane przez backend MiniMax (`speed` 0.5-2.0, `vol` 0-10, `pitch` -12-12).
+- `minimax_options.voice_modify`: pad XY w zakładce **Profile Głosu** (tryb zaawansowany) zapisuje te same pola, które backend wysyła do MiniMax: `pitch` (−100 głębiej … +100 jaśniej), `intensity` (−100 mocniej … +100 miękcej; na padzie góra = mocniej), `timbre` (−100 pełniej … +100 ostrzej) oraz opcjonalny `sound_effects` (jeden preset).
+- `voicebox_options`: opcjonalny blok `seed`, `model_size`, `max_chunk_chars`, `crossfade_ms`, `normalize` — klient Rust przekazuje je do Voice Box `/generate`. `effects_chain` nie jest wysyłany.
 - `multi_speaker` i `speakers`: obsługiwane tylko dla Google; dla MiniMax i Voice Box backend wyłącza multi-speaker.
 - `last_preview` i `last_preview_at`: opcjonalny podgląd ostatniej generacji profilem, aktualizowany po użyciu profilu.
 - `shortcut` i `shortcut_enabled`: skrót profilu synchronizowany z presetami szybkiego TTS.

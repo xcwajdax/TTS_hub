@@ -104,6 +104,9 @@ pub struct GenerateReq {
     pub minimax_pitch: Option<i32>,
     #[serde(default)]
     pub minimax_options: Option<MinimaxSynthesisOptions>,
+    /// Voice Box `/generate` extras (seed, chunking, normalize). Additive.
+    #[serde(default)]
+    pub voicebox_options: Option<crate::voicebox::VoiceBoxGenerationOptions>,
     // === chat-window extension (2026-06-06) — additive, optional ===
     /// Original user prompt that produced this assistant reply. Stored on
     /// the generation for context/replay. Does NOT affect TTS output.

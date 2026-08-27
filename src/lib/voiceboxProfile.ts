@@ -36,6 +36,7 @@ export function voiceboxServerProfileToHubProfile(
     minimax_vol: null,
     minimax_pitch: null,
     minimax_options: null,
+    voicebox_options: null,
     multi_speaker: false,
     speakers: [],
     shortcut: null,

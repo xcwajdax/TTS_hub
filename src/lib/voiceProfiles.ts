@@ -8,6 +8,7 @@ import {
 } from "./voiceboxProfile";
 import type { SettingsState } from "../components/Settings";
 import { defaultMinimaxSynthesisOptions } from "./minimaxOptions";
+import { compactVoiceBoxGenerationOptions, mergeVoiceBoxGenerationOptions } from "./voiceboxOptions";
 import { inferGenerationProvider, notifyAvatarsChanged } from "./avatars";
 import { VOICE_PROFILES_CHANGED } from "./voiceProfilesEvents";
 import type { Generation, SpeakerConfig, TtsProvider } from "../types";
@@ -53,6 +54,8 @@ export function settingsStateToVoiceProfile(
     minimax_vol: state.provider === "minimax" ? state.minimaxVol : null,
     minimax_pitch: state.provider === "minimax" ? state.minimaxPitch : null,
     minimax_options: state.provider === "minimax" ? state.minimaxOptions : null,
+    voicebox_options:
+      state.provider === "voicebox" ? compactVoiceBoxGenerationOptions(state.voiceboxOptions) : null,
     multi_speaker: state.provider === "google" && state.multiSpeaker,
     speakers:
       state.provider === "google" && state.multiSpeaker
@@ -96,6 +99,7 @@ export function voiceProfileToSettingsState(profile: TtsVoiceProfile): SettingsS
           },
         }
       : defaultMinimaxSynthesisOptions(),
+    voiceboxOptions: mergeVoiceBoxGenerationOptions(profile.voicebox_options),
   };
 }
 

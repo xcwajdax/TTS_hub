@@ -267,6 +267,8 @@ impl JobQueue {
                 .as_deref()
                 .map(str::trim)
                 .filter(|s| !s.is_empty());
+            let mut vb_opts = req.voicebox_options.clone().unwrap_or_default();
+            vb_opts.normalize();
 
             let audio = state
                 .voicebox
@@ -277,6 +279,11 @@ impl JobQueue {
                     engine,
                     instruct,
                     personality: req.personality,
+                    seed: vb_opts.seed,
+                    model_size: vb_opts.model_size.as_deref(),
+                    max_chunk_chars: vb_opts.max_chunk_chars,
+                    crossfade_ms: vb_opts.crossfade_ms,
+                    normalize: vb_opts.normalize,
                 })
                 .await
                 .map_err(|e| format!("{e}"))?;

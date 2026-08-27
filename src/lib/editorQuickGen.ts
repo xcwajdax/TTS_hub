@@ -3,6 +3,7 @@ import type { SettingsState } from "../components/Settings";
 import { resolveTtsFromVoiceProfileId, voiceProfileToSettingsState } from "./voiceProfiles";
 import type { TtsProvider } from "../types";
 import { defaultMinimaxSynthesisOptions } from "./minimaxOptions";
+import { defaultVoiceBoxGenerationOptions } from "./voiceboxOptions";
 
 const DEFAULT_SPEAKERS = [
   { speaker: "Mowca1", voice: "Kore" },
@@ -26,6 +27,7 @@ function slotInlineSettingsState(slot: EditorQuickGenSlot): SettingsState {
     minimaxOptions: slot.minimax_options
       ? { ...defaultMinimaxSynthesisOptions(), ...slot.minimax_options }
       : defaultMinimaxSynthesisOptions(),
+    voiceboxOptions: defaultVoiceBoxGenerationOptions(),
   };
 }
 

@@ -187,6 +187,8 @@ pub struct VoicePackProfilePayload {
     #[serde(default)]
     pub minimax_options: Option<crate::minimax::MinimaxSynthesisOptions>,
     #[serde(default)]
+    pub voicebox_options: Option<crate::voicebox::VoiceBoxGenerationOptions>,
+    #[serde(default)]
     pub multi_speaker: bool,
     #[serde(default)]
     pub speakers: Vec<crate::voice_profiles::VoiceProfileSpeaker>,
@@ -230,6 +232,7 @@ impl VoicePackProfilePayload {
             minimax_vol: profile.minimax_vol,
             minimax_pitch: profile.minimax_pitch,
             minimax_options: profile.minimax_options.clone(),
+            voicebox_options: profile.voicebox_options.clone(),
             multi_speaker: profile.multi_speaker,
             speakers: profile.speakers.clone(),
         }
@@ -302,6 +305,7 @@ pub fn manifest_to_profile(manifest: &VoicePackManifest) -> TtsVoiceProfile {
         minimax_vol: p.minimax_vol,
         minimax_pitch: p.minimax_pitch,
         minimax_options: p.minimax_options.clone(),
+        voicebox_options: p.voicebox_options.clone(),
         multi_speaker: p.multi_speaker,
         speakers: p.speakers.clone(),
         last_preview: None,
@@ -466,6 +470,7 @@ mod tests {
             minimax_vol: None,
             minimax_pitch: None,
             minimax_options: None,
+            voicebox_options: None,
             multi_speaker: false,
             speakers: vec![],
             last_preview: Some("should not export".to_string()),

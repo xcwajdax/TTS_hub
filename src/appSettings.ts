@@ -1,5 +1,6 @@
 import type { AudioFormat } from "./types";
 import type { MinimaxProviderSettings, MinimaxSynthesisOptions } from "./lib/minimaxOptions";
+import type { VoiceBoxGenerationOptions } from "./lib/voiceboxOptions";
 import type { TextFiltersSettings } from "./lib/textFiltersTypes";
 import {
   DEFAULT_TIMELINE_VIEW,
@@ -118,6 +119,7 @@ export interface TtsVoiceProfile {
   minimax_vol: number | null;
   minimax_pitch: number | null;
   minimax_options?: MinimaxSynthesisOptions | null;
+  voicebox_options?: VoiceBoxGenerationOptions | null;
   multi_speaker: boolean;
   speakers: VoiceProfileSpeaker[];
   /** Jedna linia ostatniego tekstu wygenerowanego tym profilem. */

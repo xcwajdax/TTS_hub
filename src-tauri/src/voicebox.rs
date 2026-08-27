@@ -139,6 +139,16 @@ struct GenerationRequest<'a> {
     instruct: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     personality: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_size: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_chunk_chars: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    crossfade_ms: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    normalize: Option<bool>,
 }
 
 #[allow(dead_code)]
@@ -167,6 +177,44 @@ pub struct VoiceBoxAudio {
     pub duration_ms: Option<i64>,
 }
 
+/// Optional Voice Box `/generate` fields persisted on a TTS Hub voice profile.
+/// Additive JSON — missing keys deserialize as defaults / None.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct VoiceBoxGenerationOptions {
+    #[serde(default)]
+    pub seed: Option<i64>,
+    #[serde(default)]
+    pub model_size: Option<String>,
+    #[serde(default)]
+    pub max_chunk_chars: Option<i32>,
+    #[serde(default)]
+    pub crossfade_ms: Option<i32>,
+    #[serde(default)]
+    pub normalize: Option<bool>,
+}
+
+impl VoiceBoxGenerationOptions {
+    pub fn normalize(&mut self) {
+        if let Some(seed) = self.seed {
+            if seed < 0 {
+                self.seed = None;
+            }
+        }
+        if let Some(size) = self.model_size.as_mut() {
+            *size = size.trim().to_string();
+            if size.is_empty() || !matches!(size.as_str(), "1.7B" | "0.6B" | "1B" | "3B") {
+                self.model_size = Some("1.7B".to_string());
+            }
+        }
+        if let Some(chars) = self.max_chunk_chars {
+            self.max_chunk_chars = Some(chars.clamp(100, 5000));
+        }
+        if let Some(ms) = self.crossfade_ms {
+            self.crossfade_ms = Some(ms.clamp(0, 500));
+        }
+    }
+}
+
 pub struct VoiceBoxGenerateParams<'a> {
     pub profile_id: &'a str,
     pub text: &'a str,
@@ -174,6 +222,11 @@ pub struct VoiceBoxGenerateParams<'a> {
     pub engine: Option<&'a str>,
     pub instruct: Option<&'a str>,
     pub personality: Option<bool>,
+    pub seed: Option<i64>,
+    pub model_size: Option<&'a str>,
+    pub max_chunk_chars: Option<i32>,
+    pub crossfade_ms: Option<i32>,
+    pub normalize: Option<bool>,
 }
 
 pub struct VoiceBoxClient {
@@ -404,6 +457,11 @@ impl VoiceBoxClient {
             engine: params.engine,
             instruct: params.instruct,
             personality: params.personality,
+            seed: params.seed,
+            model_size: params.model_size,
+            max_chunk_chars: params.max_chunk_chars,
+            crossfade_ms: params.crossfade_ms,
+            normalize: params.normalize,
         };
 
         let mut generation: VoiceBoxGeneration = self.post_json("/generate", &body).await?;
@@ -640,5 +698,43 @@ fn truncate(s: &str, n: usize) -> String {
         s.to_string()
     } else {
         format!("{}...", &s[..n])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VoiceBoxGenerationOptions;
+
+    #[test]
+    fn voicebox_options_normalize_clamps_and_rejects_bad_size() {
+        let mut opts = VoiceBoxGenerationOptions {
+            seed: Some(-1),
+            model_size: Some("huge".into()),
+            max_chunk_chars: Some(9),
+            crossfade_ms: Some(900),
+            normalize: Some(true),
+        };
+        opts.normalize();
+        assert_eq!(opts.seed, None);
+        assert_eq!(opts.model_size.as_deref(), Some("1.7B"));
+        assert_eq!(opts.max_chunk_chars, Some(100));
+        assert_eq!(opts.crossfade_ms, Some(500));
+    }
+
+    #[test]
+    fn voicebox_options_serde_is_additive() {
+        let parsed: VoiceBoxGenerationOptions = serde_json::from_str("{}").unwrap();
+        assert!(parsed.seed.is_none());
+        assert!(parsed.model_size.is_none());
+        let json = serde_json::to_value(&VoiceBoxGenerationOptions {
+            seed: Some(7),
+            model_size: Some("0.6B".into()),
+            max_chunk_chars: Some(800),
+            crossfade_ms: Some(50),
+            normalize: Some(true),
+        })
+        .unwrap();
+        assert_eq!(json["seed"], 7);
+        assert_eq!(json["model_size"], "0.6B");
     }
 }
