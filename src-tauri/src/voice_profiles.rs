@@ -38,8 +38,6 @@ pub struct TtsVoiceProfile {
     #[serde(default)]
     pub minimax_options: Option<crate::minimax::MinimaxSynthesisOptions>,
     #[serde(default)]
-    pub voicebox_options: Option<crate::voicebox::VoiceBoxGenerationOptions>,
-    #[serde(default)]
     pub multi_speaker: bool,
     #[serde(default)]
     pub speakers: Vec<VoiceProfileSpeaker>,
@@ -78,7 +76,6 @@ impl Default for TtsVoiceProfile {
             minimax_vol: None,
             minimax_pitch: None,
             minimax_options: None,
-            voicebox_options: None,
             multi_speaker: false,
             speakers: Vec::new(),
             last_preview: None,
@@ -130,9 +127,6 @@ impl TtsVoiceProfile {
             if self.language.is_none() {
                 self.language = Some(DEFAULT_MINIMAX_LANGUAGE.to_string());
             }
-            if let Some(opts) = self.voicebox_options.as_mut() {
-                opts.normalize();
-            }
         } else if self.provider == PROVIDER_MINIMAX {
             self.profile_id = None;
             let lang = self
@@ -146,7 +140,6 @@ impl TtsVoiceProfile {
                 self.minimax_vol = Some(1.0);
                 self.minimax_pitch = Some(0);
             }
-            self.voicebox_options = None;
         } else {
             self.profile_id = None;
             self.language = None;
@@ -154,7 +147,6 @@ impl TtsVoiceProfile {
             self.minimax_speed = None;
             self.minimax_vol = None;
             self.minimax_pitch = None;
-            self.voicebox_options = None;
         }
         if self.provider != PROVIDER_GOOGLE {
             self.multi_speaker = false;
@@ -185,6 +177,49 @@ impl TtsVoiceProfile {
             self.shortcut_enabled = false;
         }
     }
+
+    /// File-stem used under `avatars/voices/{provider}/`.
+    /// Voice Box stores the server profile UUID, not the display name.
+    pub fn avatar_voice_id(&self) -> &str {
+        if self.provider.eq_ignore_ascii_case(PROVIDER_VOICEBOX) {
+            self.profile_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(self.voice.trim())
+        } else {
+            self.voice.trim()
+        }
+    }
+}
+
+/// Candidate keys for `avatars/voices/{provider}/{key}.jpg`, first match wins.
+/// Voice Box generations persist the display name in `gen.voice`, while the
+/// avatar file is named after the server profile id.
+pub fn generation_voice_avatar_keys(
+    provider: &str,
+    gen_voice: &str,
+    voice_profile: Option<&TtsVoiceProfile>,
+    request_profile_id: Option<&str>,
+) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut push = |s: &str| {
+        let t = s.trim();
+        if !t.is_empty() && !keys.iter().any(|k| k == t) {
+            keys.push(t.to_string());
+        }
+    };
+    if let Some(profile) = voice_profile {
+        push(profile.avatar_voice_id());
+        push(profile.voice.trim());
+    }
+    if provider.eq_ignore_ascii_case(PROVIDER_VOICEBOX) {
+        if let Some(pid) = request_profile_id {
+            push(pid);
+        }
+    }
+    push(gen_voice);
+    keys
 }
 
 pub fn find_voice_profile<'a>(
@@ -211,7 +246,6 @@ pub fn apply_voice_profile_tts_params(req: &mut GenerateReq, profile: &TtsVoiceP
     req.minimax_vol = profile.minimax_vol;
     req.minimax_pitch = profile.minimax_pitch;
     req.minimax_options = profile.minimax_options.clone();
-    req.voicebox_options = profile.voicebox_options.clone();
     req.multi_speaker = if profile.multi_speaker && !profile.speakers.is_empty() {
         Some(
             profile
@@ -291,7 +325,6 @@ mod tests {
             shortcut: None,
             shortcut_enabled: false,
             minimax_options: None,
-            voicebox_options: None,
             personality_enabled: None,
         }];
 
@@ -317,7 +350,6 @@ mod tests {
             minimax_vol: None,
             minimax_pitch: None,
             minimax_options: None,
-            voicebox_options: None,
             original_prompt: None,
             chat_session_id: None,
             chat_role: None,
@@ -367,7 +399,6 @@ mod tests {
             minimax_vol: None,
             minimax_pitch: None,
             minimax_options: None,
-            voicebox_options: None,
             original_prompt: None,
             chat_session_id: None,
             chat_role: None,
@@ -381,55 +412,43 @@ mod tests {
         assert_eq!(out.voice_profile_id.as_deref(), Some("segment-profile"));
     }
 
+    fn voicebox_profile(name: &str, server_id: &str) -> TtsVoiceProfile {
+        TtsVoiceProfile {
+            name: name.to_string(),
+            provider: PROVIDER_VOICEBOX.to_string(),
+            voice: name.to_string(),
+            profile_id: Some(server_id.to_string()),
+            ..TtsVoiceProfile::default()
+        }
+    }
+
     #[test]
-    fn apply_voice_profile_copies_voicebox_options() {
-        let mut profile = TtsVoiceProfile::default();
-        profile.provider = PROVIDER_VOICEBOX.to_string();
-        profile.profile_id = Some("vb-1".to_string());
-        profile.voicebox_options = Some(crate::voicebox::VoiceBoxGenerationOptions {
-            seed: Some(42),
-            model_size: Some("0.6B".to_string()),
-            max_chunk_chars: Some(400),
-            crossfade_ms: Some(25),
-            normalize: Some(false),
-        });
-        let mut req = GenerateReq {
-            text: "Hej".to_string(),
-            model: "voicebox:chatterbox".to_string(),
-            voice: "x".to_string(),
-            style: None,
-            format: "wav".to_string(),
-            multi_speaker: None,
-            provider: Some(PROVIDER_GOOGLE.to_string()),
-            profile_id: None,
-            language: None,
-            engine: None,
-            personality: None,
-            autoplay: false,
-            source: Some("manual".to_string()),
-            conversation_id: None,
-            summary_text: None,
-            filtered_text: None,
-            filter_config: None,
-            minimax_speed: None,
-            minimax_vol: None,
-            minimax_pitch: None,
-            minimax_options: None,
-            voicebox_options: None,
-            original_prompt: None,
-            chat_session_id: None,
-            chat_role: None,
-            origin: None,
-            voice_profile_id: None,
-            context_label: None,
-        };
-        apply_voice_profile_tts_params(&mut req, &profile);
-        let opts = req.voicebox_options.expect("copied");
-        assert_eq!(opts.seed, Some(42));
-        assert_eq!(opts.model_size.as_deref(), Some("0.6B"));
-        assert_eq!(opts.max_chunk_chars, Some(400));
-        assert_eq!(opts.crossfade_ms, Some(25));
-        assert_eq!(opts.normalize, Some(false));
-        assert_eq!(req.profile_id.as_deref(), Some("vb-1"));
+    fn voicebox_avatar_id_uses_server_profile_not_display_name() {
+        let profile = voicebox_profile("Marek", "vb-uuid-123");
+        assert_eq!(profile.avatar_voice_id(), "vb-uuid-123");
+    }
+
+    #[test]
+    fn generation_avatar_keys_prefer_voicebox_server_id() {
+        let profile = voicebox_profile("Marek", "vb-uuid-123");
+        let keys = generation_voice_avatar_keys(
+            PROVIDER_VOICEBOX,
+            "Marek",
+            Some(&profile),
+            Some("vb-uuid-123"),
+        );
+        assert_eq!(keys.first().map(String::as_str), Some("vb-uuid-123"));
+        assert!(keys.contains(&"Marek".to_string()));
+    }
+
+    #[test]
+    fn generation_avatar_keys_from_request_json_when_no_hub_profile() {
+        let keys = generation_voice_avatar_keys(
+            PROVIDER_VOICEBOX,
+            "Marek",
+            None,
+            Some("vb-from-request"),
+        );
+        assert_eq!(keys, vec!["vb-from-request".to_string(), "Marek".to_string()]);
     }
 }

@@ -46,7 +46,13 @@ export interface GenerateRequest {
   context_label?: string | null;
 }
 
-export type GenerationSource = "manual" | "http" | "cursor" | "cursor-skill" | "quick_hotkey";
+export type GenerationSource =
+  | "manual"
+  | "http"
+  | "cursor"
+  | "cursor-skill"
+  | "quick_hotkey"
+  | "roleplay";
 
 export type FolderFilterId = string | "__all__" | "__none__";
 
@@ -105,6 +111,8 @@ export interface Generation {
   style: string | null;
   format: AudioFormat;
   duration_ms: number | null;
+  /** Wall-clock synthesis time in ms. Distinct from duration_ms (audio length). */
+  generation_ms?: number | null;
   file_path: string;
   is_archived: boolean;
   session_id: string;

@@ -16,6 +16,8 @@ export type Phase =
   | "idle"
   | "preparing"
   | "requesting"
+  | "vb_loading_model"
+  | "vb_generating"
   | "decoding"
   | "writing"
   | "done";
@@ -24,6 +26,8 @@ export const PHASE_LABEL: Record<Phase, string> = {
   idle: "Oczekuje",
   preparing: "Przygotowuję request...",
   requesting: "Czekam na odpowiedź...",
+  vb_loading_model: "Ładuję model Voice Box…",
+  vb_generating: "Generuję mowę (Voice Box)…",
   decoding: "Dekoduję audio...",
   writing: "Zapisuję plik...",
   done: "Gotowe",

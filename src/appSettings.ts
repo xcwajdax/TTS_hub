@@ -277,6 +277,8 @@ export function appSettingsViewToPayload(view: AppSettingsView): AppSettings {
     safe_mode_auto_open_queue: view.safe_mode_auto_open_queue ?? true,
     default_video_template_id: view.default_video_template_id ?? "builtin-whatsapp-karaoke",
     auto_archive_mp4_on_clipboard: view.auto_archive_mp4_on_clipboard ?? true,
+    roleplay_mute_preview: view.roleplay_mute_preview ?? true,
+    playback_popup_enabled: view.playback_popup_enabled ?? true,
   };
 }
 
@@ -325,6 +327,10 @@ export interface AppSettings {
   safe_mode_auto_open_queue?: boolean;
   default_video_template_id?: string | null;
   auto_archive_mp4_on_clipboard?: boolean;
+  /** When true, roleplay segment jobs do not trigger global playback preview. */
+  roleplay_mute_preview?: boolean;
+  /** Show the bottom-right playback popup window. */
+  playback_popup_enabled?: boolean;
 }
 
 export { DEFAULT_TIMELINE_VIEW };

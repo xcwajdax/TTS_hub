@@ -35,6 +35,7 @@ export function createDefaultLayer(type: VideoLayerType, canvasW: number, canvas
         highlightColor: "#FACC15",
         outline: 2,
         alignment: 2,
+        scrollMode: "classic",
       };
     case "footer":
       return {
@@ -73,10 +74,38 @@ export function createDefaultLayer(type: VideoLayerType, canvasW: number, canvas
         strokeWidth: 2,
         opacity: 0.85,
       };
+    case "customText":
+      return {
+        ...base,
+        type: "customText",
+        rect: { x: Math.round(canvasW * 0.1), y: Math.round(canvasH * 0.4), width: Math.round(canvasW * 0.8), height: Math.round(canvasH * 0.2) },
+        text: "Twój tekst tutaj",
+        fontName: "Arial",
+        fontSize: 36,
+        color: "#FFFFFF",
+        background: true,
+        backgroundColor: "#000000",
+        backgroundOpacity: 0.55,
+        align: "center",
+        verticalAlign: "middle",
+        bold: true,
+        italic: false,
+      };
+    case "videoLoop":
+      return {
+        ...base,
+        type: "videoLoop",
+        rect: { x: Math.round(canvasW * 0.25), y: Math.round(canvasH * 0.05), width: Math.round(canvasW * 0.5), height: Math.round(canvasW * 0.5) },
+        videoPath: "tshub_baner.mp4",
+        rotationSpeed: 0.5,
+        opacity: 1,
+      };
   }
 }
 
 export const ADD_LAYER_OPTIONS: { type: VideoLayerType; label: string }[] = [
+  { type: "videoLoop", label: "Animowany baner (MP4)" },
+  { type: "customText", label: "Custom tekst" },
   { type: "image", label: "Obraz (raster)" },
   { type: "shape", label: "Kształt (wektor)" },
   { type: "cover", label: "Okładka" },

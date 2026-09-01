@@ -13,11 +13,26 @@ export interface CustomTextFilter {
   flags?: string;
 }
 
+export type StepPlaybackMode = "off" | "auto" | "force";
+
+export interface StepPlaybackSettings {
+  mode: StepPlaybackMode;
+  min_steps: number;
+  synth_per_step: boolean;
+  auto_advance: boolean;
+  pause_between_ms: number;
+  show_intro: boolean;
+}
+
+export type PlaybackPreviewMode = "karaoke-scroll" | "step-guide" | "compact-title";
+
 export interface TextFilterPreset {
   id: string;
   name: string;
   builtins: BuiltinFilterToggles;
   custom: CustomTextFilter[];
+  playback_preview?: PlaybackPreviewMode;
+  step_playback?: StepPlaybackSettings;
 }
 
 export interface TextFiltersSettings {

@@ -1,6 +1,8 @@
 import type { TtsVoiceProfile } from "../appSettings";
 import { useVoiceAvatar } from "../hooks/useAvatars";
+import { minimaxLanguageLabel } from "../lib/minimaxLanguages";
 import { profileVoiceId } from "../lib/voiceProfiles";
+import { shortModelLabel } from "../ttsModels";
 import type { TtsProvider } from "../types";
 import ProviderAvatar from "./ProviderAvatar";
 
@@ -25,6 +27,12 @@ export default function VoiceProfileChatRow({
 }: Props) {
   const voiceId = profileVoiceId(profile);
   const avatar = useVoiceAvatar(profile.provider as TtsProvider, voiceId);
+  const modelLabel = shortModelLabel(profile.model);
+  const langCode = profile.language?.trim().toLowerCase() || "";
+  const langName = langCode ? minimaxLanguageLabel(langCode) : "";
+  const modelLineTitle = langCode
+    ? `Aktywny model: ${modelLabel} · Język: ${langName} (${langCode})`
+    : `Aktywny model: ${modelLabel}`;
 
   return (
     <button
@@ -59,6 +67,19 @@ export default function VoiceProfileChatRow({
               title={`Skrót: ${shortcutHint}`}
             >
               {shortcutHint}
+            </span>
+          ) : null}
+        </div>
+        <div
+          className="flex items-baseline gap-1 min-w-0"
+          title={modelLineTitle}
+        >
+          <p className="text-[10px] text-muted/80 truncate leading-tight min-w-0">
+            {modelLabel}
+          </p>
+          {langCode ? (
+            <span className="text-[10px] text-muted/80 shrink-0 leading-tight">
+              · {langCode}
             </span>
           ) : null}
         </div>

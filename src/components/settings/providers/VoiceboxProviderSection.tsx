@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   listVoiceboxModels,
   probeVoicebox,
+  voiceboxListPlModelStatus,
+  voiceboxServerInstall,
   voiceboxServerStart,
   voiceboxServerStatus,
   voiceboxServerStop,
@@ -17,7 +19,7 @@ interface Props {
   serverMode?: VoiceboxServerMode;
   onBaseUrlChange: (v: string) => void;
   onServerModeChange?: (mode: VoiceboxServerMode) => void;
-  onOpenVoiceboxView?: () => void;
+  onOpenVoiceboxView?: (section?: "models" | "profiles" | "history" | "log") => void;
 }
 
 function modeLabel(mode: VoiceboxServerMode): string {
@@ -44,6 +46,7 @@ export default function VoiceboxProviderSection({
   const [serverStatus, setServerStatus] = useState<VoiceboxServerStatus | null>(null);
   const [serverBusy, setServerBusy] = useState(false);
   const [modelCount, setModelCount] = useState<number | null>(null);
+  const [plDownloaded, setPlDownloaded] = useState<number | null>(null);
 
   const refreshServerStatus = useCallback(async () => {
     try {
@@ -52,8 +55,11 @@ export default function VoiceboxProviderSection({
       if (s.reachable) {
         const models = await listVoiceboxModels().catch(() => []);
         setModelCount(models.length);
+        const pl = await voiceboxListPlModelStatus().catch(() => []);
+        setPlDownloaded(pl.filter((m) => m.downloaded).length);
       } else {
         setModelCount(null);
+        setPlDownloaded(null);
       }
     } catch {
       setServerStatus(null);
@@ -87,6 +93,8 @@ export default function VoiceboxProviderSection({
       if (s.reachable) {
         const models = await listVoiceboxModels().catch(() => []);
         setModelCount(models.length);
+        const pl = await voiceboxListPlModelStatus().catch(() => []);
+        setPlDownloaded(pl.filter((m) => m.downloaded).length);
       }
     } catch (e) {
       setServerStatus({
@@ -98,6 +106,27 @@ export default function VoiceboxProviderSection({
       });
     } finally {
       setServerBusy(false);
+    }
+  };
+
+  const installServer = async () => {
+    setServerBusy(true);
+    try {
+      const s = await voiceboxServerInstall();
+      setServerStatus(s);
+    } catch (e) {
+      setServerStatus({
+        mode: serverMode,
+        base_url: effectiveUrl ?? "http://127.0.0.1:17493",
+        reachable: false,
+        bundled_spawn_ready: false,
+        dev_install_available: true,
+        dev_venv_ready: false,
+        message: String(e),
+      });
+    } finally {
+      setServerBusy(false);
+      await refreshServerStatus();
     }
   };
 
@@ -138,16 +167,20 @@ export default function VoiceboxProviderSection({
               className={
                 serverStatus.reachable
                   ? "text-emerald-400"
-                  : serverStatus.bundled_spawn_ready
+                  : serverStatus.dev_venv_ready || serverStatus.bundled_spawn_ready
                     ? "text-amber-300"
                     : "text-red-400"
               }
             >
               {serverStatus.reachable
                 ? "● Serwer działa"
-                : serverStatus.bundled_spawn_ready
-                  ? "○ Serwer zatrzymany"
-                  : "○ Sidecar niedostępny"}
+                : serverStatus.installing
+                  ? "○ Instalacja w toku…"
+                  : serverStatus.dev_install_available && !serverStatus.dev_venv_ready
+                    ? "○ Silnik do zainstalowania"
+                    : serverStatus.bundled_spawn_ready || serverStatus.dev_venv_ready
+                      ? "○ Serwer zatrzymany"
+                      : "○ Sidecar niedostępny"}
             </span>
             {serverStatus.health_status ? (
               <span className="text-muted">({serverStatus.health_status})</span>
@@ -157,10 +190,24 @@ export default function VoiceboxProviderSection({
             <p className="text-muted leading-snug">{serverStatus.message}</p>
           ) : null}
           <div className="flex flex-wrap gap-2 pt-1">
+            {serverStatus.dev_install_available && !serverStatus.dev_venv_ready ? (
+              <button
+                type="button"
+                className="btn text-xs"
+                disabled={serverBusy || !!serverStatus.installing}
+                onClick={() => void installServer()}
+              >
+                {serverBusy || serverStatus.installing ? "Instaluję…" : "Zainstaluj silnik lokalny"}
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn text-xs"
-              disabled={serverBusy || !serverStatus.bundled_spawn_ready}
+              disabled={
+                serverBusy ||
+                (!serverStatus.bundled_spawn_ready && !serverStatus.dev_venv_ready) ||
+                (!!serverStatus.dev_install_available && !serverStatus.dev_venv_ready)
+              }
               onClick={() => void startServer()}
             >
               {serverBusy ? "…" : "Uruchom serwer"}
@@ -181,21 +228,38 @@ export default function VoiceboxProviderSection({
             >
               Odśwież status
             </button>
-          </div>
-          {serverStatus.reachable && modelCount === 0 ? (
-            <p className="text-amber-200/90 pt-1 leading-snug">
-              Brak pobranych modeli TTS. Otwórz Voice Box → pobierz model (np. Chatterbox lub
-              Kokoro). Pełna aplikacja{" "}
-              <a
-                className="underline"
-                href="https://github.com/jamiepine/voicebox"
-                target="_blank"
-                rel="noreferrer"
+            {onOpenVoiceboxView ? (
+              <button
+                type="button"
+                className="btn text-xs"
+                onClick={() => onOpenVoiceboxView("log")}
               >
-                Voicebox
-              </a>{" "}
-              nadal oferuje STT, dyktowanie i Stories.
+                Log instalacji
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {serverStatus?.reachable || modelCount != null ? (
+        <div className="rounded-md border border-border/60 bg-surface/40 px-3 py-2 text-[11px] flex flex-col gap-1">
+          <p className="text-muted leading-snug">
+            Modele PL (Chatterbox / TADA):{" "}
+            <span className="text-heading">{plDownloaded ?? modelCount ?? 0}/3</span> pobrane
+          </p>
+          {(plDownloaded ?? 0) === 0 ? (
+            <p className="text-amber-200/90 leading-snug">
+              Brak lokalnych modeli do klonu PL. Pobierz Chatterbox lub TADA w Voice Box → Modele.
             </p>
+          ) : null}
+          {onOpenVoiceboxView ? (
+            <button
+              type="button"
+              className="btn text-xs self-start mt-1"
+              onClick={() => onOpenVoiceboxView("models")}
+            >
+              Otwórz Voice Box → Modele
+            </button>
           ) : null}
         </div>
       ) : null}
@@ -231,7 +295,11 @@ export default function VoiceboxProviderSection({
         <ProbeStatus probing={probing} result={result} />
       </div>
       {onOpenVoiceboxView ? (
-        <button type="button" className="btn text-xs self-start" onClick={onOpenVoiceboxView}>
+        <button
+          type="button"
+          className="btn text-xs self-start"
+          onClick={() => onOpenVoiceboxView("profiles")}
+        >
           Zarządzaj profilami Voice Box →
         </button>
       ) : null}

@@ -7,8 +7,137 @@
   padding: 0 2px;
 }
 
+.roleplay-book-editor .ProseMirror p[style*="text-align"] {
+  margin-bottom: 0.75em;
+}
+
+.roleplay-editor-toolbar {
+  border-radius: 0;
+}
+
+.roleplay-editor-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.35rem;
+  font-size: 0.8125rem;
+  color: rgb(var(--color-text-muted));
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  cursor: default;
+}
+
+.roleplay-editor-tool:hover {
+  color: rgb(var(--color-text-heading));
+  background: rgb(var(--color-panel));
+  border-color: rgb(var(--color-border) / 0.6);
+}
+
+.roleplay-editor-tool--active {
+  color: rgb(var(--color-text-heading));
+  background: rgb(var(--color-panel));
+  border-color: rgb(var(--color-accent) / 0.5);
+  box-shadow: inset 0 0 0 1px rgb(var(--color-accent) / 0.25);
+}
+
+.roleplay-editor-toolbar__sep {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 0.25rem;
+  background: rgb(var(--color-border) / 0.7);
+}
+
+.roleplay-summary-bar {
+  border-radius: 0;
+}
+
 .roleplay-studio input[type="range"] {
   accent-color: rgb(var(--color-accent));
+}
+
+.roleplay-track-header {
+  box-sizing: border-box;
+}
+
+.roleplay-gain-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.roleplay-gain-slider__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 0.45rem;
+  background: rgb(var(--color-panel) / 0.65);
+  border: 1px solid rgb(var(--color-border) / 0.7);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.roleplay-gain-slider__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(var(--color-accent) / 0.35) 0%,
+    rgb(var(--color-accent) / 0.75) 100%
+  );
+  pointer-events: none;
+}
+
+.roleplay-gain-slider__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+}
+
+.roleplay-gain-slider__value {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--color-text-muted));
+  min-width: 2.75rem;
+  text-align: right;
+}
+
+.roleplay-zoom-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.roleplay-zoom-slider__label {
+  font-size: 0.75rem;
+  color: rgb(var(--color-text-muted));
+  flex-shrink: 0;
+}
+
+.roleplay-zoom-slider__track {
+  width: 6.5rem;
+  flex: none;
+}
+
+.roleplay-zoom-slider__value {
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--color-text-muted));
+  min-width: 2.5rem;
+  flex-shrink: 0;
 }
 
 .roleplay-studio input[type="range"]::-webkit-slider-thumb {
@@ -220,6 +349,9 @@ html, body, #root {
 .title-bar__logo {
   flex-shrink: 0;
   opacity: 0.9;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .title-bar__title {
@@ -531,6 +663,73 @@ html, body, #root {
   gap: 0.5rem;
 }
 
+.app-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.app-dialog {
+  width: min(420px, 100%);
+  padding: 1.25rem 1.35rem;
+  background: rgb(var(--color-panel));
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.45);
+}
+
+.app-dialog h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: rgb(var(--color-text-heading));
+}
+
+.app-dialog--danger h3 {
+  color: #fca5a5;
+}
+
+.app-dialog p {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgb(var(--color-text-muted));
+}
+
+.app-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.app-dialog__actions .btn--danger,
+.app-dialog__actions .btn.btn--danger {
+  color: #fecaca;
+  border-color: rgb(248 113 113 / 0.45);
+  background: rgb(220 38 38 / 0.22);
+}
+
+.app-dialog__actions .btn--danger:hover,
+.app-dialog__actions .btn.btn--danger:hover {
+  background: rgb(220 38 38 / 0.38);
+}
+
+.app-dialog__actions .btn--primary,
+.app-dialog__actions .btn.btn--primary {
+  color: #fff;
+  border-color: transparent;
+  background: var(--gradient-primary);
+}
+
+.app-dialog__actions .btn--ghost,
+.app-dialog__actions .btn.btn--ghost {
+  background: transparent;
+}
+
 .title-bar__privacy-badge {
   position: absolute;
   top: 2px;
@@ -597,6 +796,24 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover { background: rgb(var(--color-scrollbar-hover)); }
 
 textarea:focus, input:focus, select:focus { outline: none; }
+
+/* Wszystkie natywne selecty i ich rozwijane listy dziedziczą kolory skina.
+   Bez tego na Windows/WebView2 popup <option> renderuje się na białym tle
+   (systemowym), a jasny tekst z --color-text jest niewidoczny (biały na białym). */
+select {
+  color: rgb(var(--color-text));
+  background-color: rgb(var(--color-panel2));
+}
+select option,
+select optgroup {
+  color: rgb(var(--color-text));
+  background-color: rgb(var(--color-panel2));
+}
+select option:checked,
+select option:hover {
+  color: rgb(var(--color-text-heading));
+  background-color: rgb(var(--color-accent) / 0.25);
+}
 
 .btn {
   @apply px-3 py-1.5 rounded-md bg-panel2 border border-border text-sm hover:bg-border transition-colors;
@@ -824,6 +1041,10 @@ textarea:focus, input:focus, select:focus { outline: none; }
 
 .history-quick-item__action-btn .vl-icon {
   @apply block m-auto;
+}
+
+.history-quick-item__action-btn--playing {
+  @apply text-accent;
 }
 
 .history-quick-item__status {
@@ -1072,12 +1293,61 @@ textarea:focus, input:focus, select:focus { outline: none; }
 
 .active-voice-profile-hero {
   align-items: center;
-  height: 2.25rem;
+  min-height: 2.25rem;
+}
+
+.active-voice-profile-hero__text {
+  min-width: 0;
+}
+
+.active-voice-profile-hero__meta {
+  max-width: 18rem;
+}
+
+.active-voice-context__trigger {
+  padding: 0.125rem 0.25rem;
+  margin: -0.125rem -0.25rem;
+}
+
+.active-voice-context-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.35rem;
+  font-size: 0.625rem;
+  line-height: 1.25rem;
+  font-family: ui-monospace, monospace;
+  color: rgb(var(--color-muted));
+  background-color: rgb(var(--color-panel2));
+  border: 1px solid rgb(var(--color-border) / 0.6);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.active-voice-context__panel {
+  animation: active-voice-context-in 120ms ease-out;
+}
+
+@keyframes active-voice-context-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .active-voice-profile-hero__avatar {
   display: block;
   line-height: 0;
+}
+
+/* Obwódka okrągłego awatara głosu — inset box-shadow rysuje się w kształcie `rounded-full`
+   rodzica, więc nie tworzy kwadratowej ramki jak `ring-*`. Wymaga `rounded-full` + `overflow-hidden`. */
+.voice-avatar-frame {
+  border-radius: 9999px;
+  box-shadow: inset 0 0 0 1px rgb(var(--color-border) / 0.6);
 }
 
 /* Kompaktowe selecty w pasku TTS */
@@ -1110,6 +1380,10 @@ textarea:focus, input:focus, select:focus { outline: none; }
   max-width: 10rem;
   height: 2rem;
   line-height: 2rem;
+}
+
+.toolbar-select--model {
+  max-width: 11rem;
 }
 
 .tts-editor-surface {
@@ -1207,6 +1481,15 @@ textarea:focus, input:focus, select:focus { outline: none; }
 
 .editor-tab-menu__item:hover {
   background: rgb(var(--color-panel2));
+}
+
+.editor-tab-menu__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.editor-tab-menu__item:disabled:hover {
+  background: transparent;
 }
 
 /* Belka timeline — wyeksponowany avatar profilu */
@@ -1328,6 +1611,18 @@ textarea:focus, input:focus, select:focus { outline: none; }
   color: rgb(var(--color-text-preview));
 }
 
+.playback-toast-preview {
+  height: 3.75rem;
+}
+
+.playback-toast-preview.history-text-preview--scrolling .history-text-preview__inner {
+  color: rgb(var(--color-text-preview));
+}
+
+.playback-toast-step-guide {
+  min-height: 3.75rem;
+}
+
 .history-item-timeline__track:focus-visible {
   @apply outline outline-1 outline-offset-1 outline-accent2/60;
 }
@@ -1435,6 +1730,11 @@ html.toast-window body {
 }
 
 .voice-profile-chat-list {
+  background: rgb(var(--color-panel));
+}
+
+.voice-profile-chat-group-heading {
+  @apply sticky top-0 z-10 flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-muted border-b border-border/50;
   background: rgb(var(--color-panel));
 }
 
@@ -2017,5 +2317,32 @@ html.toast-window body {
   border-top: 1px solid rgb(var(--color-border));
   font-size: 10px;
   color: rgb(var(--color-text-muted));
+}
+
+.mp4-preview-timeline::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: rgb(var(--color-accent, 99 102 241));
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+}
+.mp4-preview-timeline::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: rgb(var(--color-accent, 99 102 241));
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+}
+.mp4-preview-timeline:disabled::-webkit-slider-thumb {
+  background: rgba(150, 150, 150, 0.6);
+  cursor: not-allowed;
+}
+.mp4-preview-timeline:disabled::-moz-range-thumb {
+  background: rgba(150, 150, 150, 0.6);
+  cursor: not-allowed;
 }
 

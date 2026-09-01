@@ -1,23 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import type { TtsVoiceProfile } from "../appSettings";
 import type { ArchiveFolder, AudioFormat, Generation } from "../types";
 import {
   archiveGeneration,
   copyGenerationAudioToClipboard,
-  copyGenerationMp4ToClipboard,
 } from "../api/tauri";
 import { displayTitle } from "../lib/generationTitle";
-import { formatDurationMs } from "../lib/formatTime";
+import { formatDurationMs, formatGenerationMs } from "../lib/formatTime";
 import { historyQuickItemSurfaceStyle, resolveHistoryItemColor } from "../lib/historySourceUi";
 import {
   AUDIO_CLIPBOARD_SUCCESS_TOAST,
-  MP4_CLIPBOARD_SUCCESS_TOAST,
   subscribeMp4ExportProgress,
   type Mp4ExportProgress,
 } from "../lib/mp4ExportProgress";
 import { resolveProfileForGeneration } from "../lib/voiceProfiles";
+import { usePlayback } from "../context/PlaybackContext";
 import { usePrivateShareConfirm } from "../lib/usePrivateShareConfirm";
+import { useAppView } from "../context/AppViewContext";
+import { openMp4Studio } from "../mp4/openMp4Studio";
 import Icon from "./Icon";
+import HistoryGenerationContextMenu from "./history/HistoryGenerationContextMenu";
 import HistoryItemProfileAvatar from "./history/HistoryItemProfileAvatar";
 import PrivateBadge from "./history/PrivateBadge";
 
@@ -93,18 +95,20 @@ export default function HistoryQuickItem({
   onToast,
   voiceProfiles = [],
 }: Props) {
+  const { playing } = usePlayback();
   const { requestShare, dialog } = usePrivateShareConfirm();
+  const appView = useAppView();
   const [saving, setSaving] = useState(false);
-  const [copyingMp4, setCopyingMp4] = useState(false);
   const [copyingAudio, setCopyingAudio] = useState(false);
   const [mp4Progress, setMp4Progress] = useState<Mp4ExportProgress | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let unsub: (() => void) | undefined;
     void subscribeMp4ExportProgress(gen.id, setMp4Progress).then((fn) => {
-      unlisten = fn;
+      unsub = fn;
     });
-    return () => unlisten?.();
+    return () => unsub?.();
   }, [gen.id]);
 
   const accentColor = resolveHistoryItemColor(gen);
@@ -113,11 +117,18 @@ export default function HistoryQuickItem({
     resolvedVoiceProfile?.name ?? gen.voice?.trim() ?? "Profil usunięty";
   const titleLabel = displayTitle(gen);
   const durationLabel = formatDurationMs(gen.duration_ms);
+  const generationLabel = formatGenerationMs(gen.generation_ms);
   const showDuration = gen.status === "done" && (gen.duration_ms ?? 0) > 0;
+  const showGenerationTime = gen.status === "done" && Boolean(generationLabel);
   const canPlay = gen.status === "done" && Boolean(gen.file_path?.trim());
   const canCopy = Boolean(gen.file_path?.trim());
-  const copying = copyingMp4 || copyingAudio;
+  const copying = copyingAudio;
   const playHandler = onPlay ?? onSelect;
+  const isPlaying = isCurrent && playing;
+  const mp4Busy =
+    mp4Progress != null &&
+    mp4Progress.phase !== "done" &&
+    mp4Progress.phase !== "error";
 
   const folderLabel = gen.folder_id
     ? (folders.find((f) => f.id === gen.folder_id)?.name ?? "Folder")
@@ -135,18 +146,14 @@ export default function HistoryQuickItem({
     }
   };
 
-  const handleCopyMp4 = async () => {
-    setCopyingMp4(true);
-    setMp4Progress(null);
-    try {
-      await copyGenerationMp4ToClipboard(gen.id);
-      onToast?.(MP4_CLIPBOARD_SUCCESS_TOAST);
-    } catch (e) {
-      onError(String(e));
-    } finally {
-      setCopyingMp4(false);
-      window.setTimeout(() => setMp4Progress(null), 600);
-    }
+  const handleOpenMp4Studio = () => {
+    requestShare(gen, "MP4", () => {
+      if (appView.openMp4Studio) {
+        appView.openMp4Studio(gen.id);
+      } else {
+        openMp4Studio(gen.id);
+      }
+    });
   };
 
   const handleCopyAudio = async () => {
@@ -161,13 +168,19 @@ export default function HistoryQuickItem({
     }
   };
 
-  const showMp4Bar =
-    copyingMp4 || (mp4Progress != null && mp4Progress.phase !== "done");
-  const mp4Pct = Math.round((mp4Progress?.percent ?? (copyingMp4 ? 0.04 : 0)) * 100);
+  const showMp4Bar = mp4Busy;
+  const mp4Pct = Math.round((mp4Progress?.percent ?? (mp4Busy ? 0.04 : 0)) * 100);
 
   const handleClick = () => {
     if (saving) return;
     onSelect(gen);
+  };
+
+  const handleContextMenu = (e: MouseEvent) => {
+    if (gen.status !== "done" || !gen.file_path?.trim()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
   return (
@@ -181,6 +194,7 @@ export default function HistoryQuickItem({
       ].join(" ")}
       style={historyQuickItemSurfaceStyle(accentColor, isCurrent)}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -190,7 +204,9 @@ export default function HistoryQuickItem({
       title={gen.text.trim() || titleLabel}
       aria-label={
         showDuration
-          ? `Załaduj: ${titleLabel}, ${durationLabel}`
+          ? `Załaduj: ${titleLabel}, ${durationLabel}${
+              generationLabel ? `, wygenerowano w ${generationLabel}` : ""
+            }`
           : `Załaduj: ${titleLabel}`
       }
     >
@@ -213,9 +229,12 @@ export default function HistoryQuickItem({
         <div className="history-quick-item__hover-actions">
           <button
             type="button"
-            className="history-quick-item__action-btn"
-            title="Odtwórz"
-            aria-label="Odtwórz"
+            className={[
+              "history-quick-item__action-btn",
+              isPlaying ? "history-quick-item__action-btn--playing" : "",
+            ].join(" ")}
+            title={isPlaying ? "Odtwarzanie" : "Odtwórz"}
+            aria-label={isPlaying ? "Odtwarzanie" : "Odtwórz"}
             disabled={saving || !canPlay}
             onClick={(e) => {
               e.stopPropagation();
@@ -227,12 +246,12 @@ export default function HistoryQuickItem({
           <button
             type="button"
             className="history-quick-item__action-btn"
-            title="Kopiuj MP4 do schowka (domyślny layout)"
-            aria-label="Kopiuj MP4 do schowka"
-            disabled={saving || copying || !canCopy}
+            title="Otwórz w Studio MP4"
+            aria-label="Otwórz w Studio MP4"
+            disabled={saving || !canCopy}
             onClick={(e) => {
               e.stopPropagation();
-              requestShare(gen, "MP4", () => void handleCopyMp4());
+              handleOpenMp4Studio();
             }}
           >
             <Icon name="film" size={ACTION_ICON} />
@@ -252,14 +271,24 @@ export default function HistoryQuickItem({
           </button>
         </div>
 
-        {showDuration && (
-          <div
-            className="history-quick-item__duration flex items-start justify-end pt-2 px-1 min-w-[2.25rem]"
-            title="Długość nagrania"
-          >
-            <span className="text-[11px] font-semibold text-heading tabular-nums whitespace-nowrap">
-              {durationLabel}
-            </span>
+        {(showDuration || showGenerationTime) && (
+          <div className="history-quick-item__duration flex flex-col items-end justify-start pt-1.5 px-1 min-w-[2.5rem] gap-0">
+            {showDuration && (
+              <span
+                className="text-[11px] font-semibold text-heading tabular-nums whitespace-nowrap"
+                title="Długość nagrania"
+              >
+                {durationLabel}
+              </span>
+            )}
+            {showGenerationTime && (
+              <span
+                className="text-[9px] text-muted tabular-nums whitespace-nowrap"
+                title="Czas generacji"
+              >
+                {generationLabel}
+              </span>
+            )}
           </div>
         )}
 
@@ -282,11 +311,22 @@ export default function HistoryQuickItem({
         >
           <div
             className="h-full bg-accent transition-[width] duration-200 ease-out"
-            style={{ width: `${Math.max(mp4Pct, copyingMp4 ? 4 : 0)}%` }}
+            style={{ width: `${Math.max(mp4Pct, mp4Busy ? 4 : 0)}%` }}
           />
         </div>
       )}
       {dialog}
+      {contextMenu && (
+        <HistoryGenerationContextMenu
+          anchorX={contextMenu.x}
+          anchorY={contextMenu.y}
+          gen={gen}
+          voiceProfiles={voiceProfiles}
+          onChanged={onChanged}
+          onError={onError}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

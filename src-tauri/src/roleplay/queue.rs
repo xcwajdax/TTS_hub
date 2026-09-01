@@ -244,9 +244,15 @@ impl RoleplayQueue {
             .ok_or_else(|| "segment nie istnieje".to_string())?;
 
         let profile = resolve_voice_profile(&state, &seg.voice_profile_id)?;
+        // Roleplay clips: MP3 by default (smaller, timeline-friendly); respect explicit ogg choice.
         let format = {
             let settings = state.settings.read().map_err(|e| e.to_string())?;
-            settings.save_format.clone()
+            let f = settings.save_format.as_str();
+            if f.eq_ignore_ascii_case("ogg") {
+                "ogg".to_string()
+            } else {
+                "mp3".to_string()
+            }
         };
 
         let req = build_generate_req_from_profile(&profile, &seg.text, &format);
@@ -299,7 +305,12 @@ impl RoleplayQueue {
 
         match result {
             Ok(()) => {
-                self.on_segment_done(&state, &app, project_id, &mut seg, &gen)
+                let fresh_gen = state
+                    .db
+                    .get(&gen.id)
+                    .map_err(|e| e.to_string())?
+                    .unwrap_or_else(|| gen.clone());
+        self.on_segment_done(&state, &app, project_id, &mut seg, &fresh_gen)
                     .await?;
             }
             Err(err_msg) => {
@@ -316,18 +327,18 @@ impl RoleplayQueue {
         app: &AppHandle,
         project_id: &str,
         seg: &mut RoleplaySegment,
-        gen: &Generation,
+        _gen: &Generation,
     ) -> Result<(), String> {
         seg.status = SEG_STATUS_DONE.to_string();
         seg.error = None;
         state.db.roleplay_update_segment(seg).map_err(|e| e.to_string())?;
 
         if let Ok(Some(project)) = state.db.roleplay_get_project(project_id) {
-            let timeline = append_clip_to_timeline(
+            let timeline = rebuild_timeline_from_done_segments(
+                state,
                 &project.timeline_json,
-                seg,
-                gen,
-            );
+                &project.segments,
+            )?;
             let _ = state.db.roleplay_update_timeline(project_id, &timeline);
         }
 
@@ -420,15 +431,19 @@ impl RoleplayQueue {
     }
 }
 
-fn append_clip_to_timeline(timeline_json: &str, seg: &RoleplaySegment, gen: &Generation) -> String {
-    #[derive(serde::Deserialize, serde::Serialize, Default)]
+fn rebuild_timeline_from_done_segments(
+    state: &Arc<AppState>,
+    timeline_json: &str,
+    segments: &[RoleplaySegment],
+) -> Result<String, String> {
+    #[derive(serde::Deserialize, serde::Serialize, Default, Clone)]
     struct Timeline {
         #[serde(default)]
         tracks: Vec<TimelineTrack>,
         #[serde(default)]
         clips: Vec<TimelineClip>,
     }
-    #[derive(serde::Deserialize, serde::Serialize)]
+    #[derive(serde::Deserialize, serde::Serialize, Clone)]
     struct TimelineTrack {
         id: String,
         name: String,
@@ -443,7 +458,7 @@ fn append_clip_to_timeline(timeline_json: &str, seg: &RoleplaySegment, gen: &Gen
         #[serde(default)]
         effects: Vec<serde_json::Value>,
     }
-    #[derive(serde::Deserialize, serde::Serialize)]
+    #[derive(serde::Deserialize, serde::Serialize, Clone)]
     struct TimelineClip {
         id: String,
         track_id: String,
@@ -468,42 +483,127 @@ fn append_clip_to_timeline(timeline_json: &str, seg: &RoleplaySegment, gen: &Gen
     }
 
     let mut timeline: Timeline = serde_json::from_str(timeline_json).unwrap_or_default();
-    let track_id = format!("track-{}", seg.voice_profile_id);
-    if !timeline.tracks.iter().any(|t| t.id == track_id) {
-        timeline.tracks.push(TimelineTrack {
-            id: track_id.clone(),
-            name: seg.voice_profile_id.clone(),
-            voice_profile_id: Some(seg.voice_profile_id.clone()),
-            gain_db: 0.0,
-            muted: false,
-            solo: false,
-            effects: Vec::new(),
-        });
-    }
-    let start_sec = timeline
+
+    let existing_by_segment: std::collections::HashMap<String, TimelineClip> = timeline
         .clips
         .iter()
-        .map(|c| c.start_sec + c.duration_sec)
-        .fold(0.0_f64, f64::max);
-    let duration_sec = gen
-        .duration_ms
+        .filter_map(|c| c.segment_id.as_ref().map(|sid| (sid.clone(), c.clone())))
+        .collect();
+
+    let manual_clips: Vec<TimelineClip> = timeline
+        .clips
+        .into_iter()
+        .filter(|c| c.segment_id.is_none())
+        .collect();
+
+    let mut done_segments: Vec<&RoleplaySegment> = segments
+        .iter()
+        .filter(|s| s.status == SEG_STATUS_DONE && s.generation_id.is_some())
+        .collect();
+    done_segments.sort_by_key(|s| s.order_index);
+
+    let mut segment_clips = Vec::with_capacity(done_segments.len());
+    let mut cursor = 0.0_f64;
+
+    for seg in done_segments {
+        let gen_id = seg.generation_id.as_ref().unwrap();
+        let gen = state
+            .db
+            .get(gen_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("generacja {gen_id} nie istnieje"))?;
+
+        let track_id = format!("track-{}", seg.voice_profile_id);
+        if !timeline.tracks.iter().any(|t| t.id == track_id) {
+            timeline.tracks.push(TimelineTrack {
+                id: track_id.clone(),
+                name: seg.voice_profile_id.clone(),
+                voice_profile_id: Some(seg.voice_profile_id.clone()),
+                gain_db: 0.0,
+                muted: false,
+                solo: false,
+                effects: Vec::new(),
+            });
+        }
+
+        let duration_from_gen = clip_duration_from_generation(&gen);
+        let prev = existing_by_segment.get(&seg.id);
+
+        let duration_sec = prev
+            .map(|p| {
+                if p.offset_sec > 0.01 {
+                    p.duration_sec.max(0.1)
+                } else if p.duration_sec + 0.25 < duration_from_gen {
+                    duration_from_gen
+                } else {
+                    p.duration_sec.max(0.1)
+                }
+            })
+            .unwrap_or(duration_from_gen);
+
+        segment_clips.push(TimelineClip {
+            id: prev
+                .map(|p| p.id.clone())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            track_id,
+            segment_id: Some(seg.id.clone()),
+            source_path: gen.file_path.clone(),
+            generation_id: Some(gen.id.clone()),
+            start_sec: cursor,
+            offset_sec: prev.map(|p| p.offset_sec).unwrap_or(0.0),
+            duration_sec,
+            gain_db: prev.map(|p| p.gain_db).unwrap_or(0.0),
+            fade_in_sec: prev.map(|p| p.fade_in_sec).unwrap_or(0.0),
+            fade_out_sec: prev.map(|p| p.fade_out_sec).unwrap_or(0.02),
+            gain_envelope: prev
+                .map(|p| p.gain_envelope.clone())
+                .unwrap_or_default(),
+        });
+
+        cursor += duration_sec;
+    }
+
+    timeline.clips = manual_clips;
+    timeline.clips.extend(segment_clips);
+
+    serde_json::to_string(&timeline).map_err(|e| e.to_string())
+}
+
+pub fn rebuild_roleplay_timeline(
+    state: &Arc<AppState>,
+    project_id: &str,
+) -> Result<String, String> {
+    let project = state
+        .db
+        .roleplay_get_project(project_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "projekt nie istnieje".to_string())?;
+    rebuild_timeline_from_done_segments(state, &project.timeline_json, &project.segments)
+}
+
+fn clip_duration_from_generation(gen: &Generation) -> f64 {
+    gen.duration_ms
         .map(|ms| ms as f64 / 1000.0)
+        .or_else(|| probe_wav_duration_sec(&gen.file_path))
         .unwrap_or(3.0)
-        .max(0.1);
-    timeline.clips.push(TimelineClip {
-        id: uuid::Uuid::new_v4().to_string(),
-        track_id,
-        segment_id: Some(seg.id.clone()),
-        source_path: gen.file_path.clone(),
-        generation_id: Some(gen.id.clone()),
-        start_sec,
-        offset_sec: 0.0,
-        duration_sec,
-        gain_db: 0.0,
-        fade_in_sec: 0.05,
-        fade_out_sec: 0.05,
-        gain_envelope: Vec::new(),
-    });
-    serde_json::to_string(&timeline).unwrap_or_else(|_| timeline_json.to_string())
+        .max(0.1)
+}
+
+fn probe_wav_duration_sec(file_path: &str) -> Option<f64> {
+    if file_path.is_empty() {
+        return None;
+    }
+    let path = std::path::Path::new(file_path);
+    if path.extension()?.to_str()?.eq_ignore_ascii_case("wav") {
+        let reader = hound::WavReader::open(path).ok()?;
+        let rate = reader.spec().sample_rate;
+        if rate > 0 {
+            let secs = reader.duration() as f64 / rate as f64;
+            if secs > 0.0 {
+                return Some(secs);
+            }
+        }
+    }
+    None
 }
 

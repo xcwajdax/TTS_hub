@@ -133,6 +133,7 @@ pub async fn serve(state: AppArc, app_handle: AppHandle) -> Result<()> {
         .route("/jobs/:id/cancel", post(job_cancel))
         .route("/jobs/:id/resume", post(job_resume))
         .route("/cursor/config", get(cursor_config))
+        .route("/providers/enabled", get(providers_enabled))
         .route("/minimax/sync-voices", post(minimax_sync_voices_http))
         .route("/minimax/clone-voice", post(minimax_clone_voice_http))
         .route("/minimax/voice-design", post(minimax_voice_design_http))
@@ -491,6 +492,14 @@ async fn generate(
     if req.source.is_none() {
         req.source = Some("http".to_string());
     }
+
+    // Walidacja providera przed enqueue — zwraca 422 zamiast 500, gdy provider
+    // nie jest skonfigurowany (np. request z provider=google, a google wyłączony
+    // w kreatorze Szybka konfiguracja). (2026-09-01)
+    if let Err(e) = validate_provider_for_request(&state, &req) {
+        return json_err(StatusCode::UNPROCESSABLE_ENTITY, e);
+    }
+
     let queue = match state.job_queue() {
         Some(q) => q,
         None => return json_err(StatusCode::SERVICE_UNAVAILABLE, "job queue not ready"),
@@ -785,14 +794,90 @@ async fn minimax_upload_text_http(
 async fn cursor_config(State(state): State<AppArc>) -> Response {
     match state.settings.read() {
         Ok(s) => {
+            let enabled: Vec<String> = s.enabled_provider_set().into_iter().collect();
             let cfg = TtsHubExportedConfig {
                 cursor: s.cursor_integration.clone(),
                 text_filters: s.text_filters.clone(),
+                enabled_providers: enabled,
             };
             Json(cfg).into_response()
         }
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
+}
+
+/// Lekki endpoint dla MCP / skryptów: które providery są włączone w Quick Setup
+/// oraz jaki jest domyślny (`cursor_integration.provider`). Zwraca też listę
+/// z priorytetem (minimax → voicebox → google) do łatwego fallbacku w klientach.
+async fn providers_enabled(State(state): State<AppArc>) -> Response {
+    let (enabled, default_provider) = match state.settings.read() {
+        Ok(s) => {
+            let set = s.enabled_provider_set();
+            let mut list: Vec<String> = [
+                PROVIDER_MINIMAX,
+                PROVIDER_VOICEBOX,
+                PROVIDER_GOOGLE,
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .filter(|p| set.contains(p))
+            .collect();
+            if list.is_empty() {
+                // Pustka tylko w przypadku developerskim / corruption settings.json;
+                // zwróć wszystkie dozwolone, żeby MCP nie utknął.
+                list = vec![
+                    PROVIDER_MINIMAX.to_string(),
+                    PROVIDER_VOICEBOX.to_string(),
+                    PROVIDER_GOOGLE.to_string(),
+                ];
+            }
+            let def = s
+                .cursor_integration
+                .provider
+                .trim()
+                .to_ascii_lowercase();
+            (list, def)
+        }
+        Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    Json(serde_json::json!({
+        "enabled": enabled,
+        "default": default_provider,
+    }))
+    .into_response()
+}
+
+/// Resolve effective provider for a generate request:
+    // 1) jeśli request podał `provider`, użyj go po normalizacji,
+    // 2) w przeciwnym razie weź `cursor_integration.provider`.
+    /// Zwraca `Err(msg)` gdy provider nieznany albo wyłączony w Quick Setup.
+fn validate_provider_for_request(state: &AppArc, req: &GenerateReq) -> Result<(), String> {
+    let settings = state.settings.read().map_err(|e| e.to_string())?;
+    let eff = req
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| settings.cursor_integration.provider.trim().to_ascii_lowercase());
+
+    let allowed = [PROVIDER_GOOGLE, PROVIDER_VOICEBOX, PROVIDER_MINIMAX];
+    if !allowed.contains(&eff.as_str()) {
+        return Err(format!(
+            "unknown provider '{eff}' (allowed: {PROVIDER_GOOGLE}, {PROVIDER_VOICEBOX}, {PROVIDER_MINIMAX})"
+        ));
+    }
+    if !settings.is_provider_enabled(&eff) {
+        let available: Vec<String> = settings
+            .enabled_provider_set()
+            .into_iter()
+            .collect();
+        return Err(format!(
+            "provider '{eff}' is not configured (Quick Setup wyłączył tego providera); available: [{}]",
+            available.join(", ")
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]

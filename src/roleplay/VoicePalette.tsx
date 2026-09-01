@@ -1,6 +1,9 @@
+import { useMemo } from "react";
 import type { TtsVoiceProfile } from "../appSettings";
+import { groupProfilesByProvider } from "../lib/voiceProfiles";
 import type { PaletteEntry } from "./types";
 import { ROLEPLAY_COLORS, profileLabel } from "./types";
+import VoiceProfileAvatar from "./VoiceProfileAvatar";
 
 interface Props {
   palette: PaletteEntry[];
@@ -17,6 +20,8 @@ export default function VoicePalette({
   onPaletteChange,
   onActiveColor,
 }: Props) {
+  const groups = useMemo(() => groupProfilesByProvider(profiles), [profiles]);
+
   const setProfileForColor = (color: string, voiceProfileId: string) => {
     const next = [...palette.filter((p) => p.color !== color)];
     if (voiceProfileId) next.push({ color, voiceProfileId });
@@ -32,6 +37,9 @@ export default function VoicePalette({
       <div className="flex flex-col gap-2">
         {ROLEPLAY_COLORS.map((color) => {
           const entry = palette.find((p) => p.color === color);
+          const profile = entry?.voiceProfileId
+            ? profiles.find((p) => p.id === entry.voiceProfileId)
+            : undefined;
           const isActive = activeColor === color;
           return (
             <div
@@ -45,20 +53,29 @@ export default function VoicePalette({
                 style={{ backgroundColor: color }}
                 onClick={() => onActiveColor(isActive ? null : color)}
               />
+              {profile ? (
+                <VoiceProfileAvatar profile={profile} size={28} className="shrink-0" />
+              ) : (
+                <div className="voice-avatar-frame w-7 h-7 bg-panel2 shrink-0" />
+              )}
               <select
-                className="flex-1 text-xs bg-panel border border-border rounded px-2 py-1"
+                className="flex-1 text-xs bg-panel border border-border rounded px-2 py-1 min-w-0"
                 value={entry?.voiceProfileId ?? ""}
                 onChange={(e) => setProfileForColor(color, e.target.value)}
               >
                 <option value="">— profil głosu —</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.provider})
-                  </option>
+                {groups.map((group) => (
+                  <optgroup key={group.provider} label={group.label}>
+                    {group.profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               {entry?.voiceProfileId && (
-                <span className="text-[10px] text-muted truncate max-w-[80px]">
+                <span className="text-[10px] text-muted truncate max-w-[80px] hidden sm:inline">
                   {profileLabel(profiles, entry.voiceProfileId)}
                 </span>
               )}

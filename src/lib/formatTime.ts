@@ -10,6 +10,17 @@ export function formatDurationMs(ms: number | null): string {
   return formatTime(ms / 1000);
 }
 
+/** Wall-clock synthesis time. Null when unknown (legacy rows). */
+export function formatGenerationMs(ms: number | null | undefined): string | null {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return null;
+  if (ms < 10_000) return `${(Math.round(ms / 100) / 10).toFixed(1)}s`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  const totalSec = Math.round(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
+
 export function countWords(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;

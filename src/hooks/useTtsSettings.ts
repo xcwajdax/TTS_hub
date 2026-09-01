@@ -71,7 +71,11 @@ export function useTtsSettings(onError: (message: string) => void) {
   const refreshVoicebox = useCallback(async () => {
     if (isMockUiMode()) {
       setVoiceboxProfiles(MOCK_VOICEBOX_PROFILES);
-      setVoiceboxModels([{ id: "voicebox:chatterbox", display_name: "Chatterbox (mock)" }]);
+      setVoiceboxModels([
+        { id: "voicebox:chatterbox", display_name: "Chatterbox (mock)" },
+        { id: "voicebox:tada-1b", display_name: "TADA 1B (mock)" },
+        { id: "voicebox:tada-3b-ml", display_name: "TADA 3B (mock)" },
+      ]);
       setVoiceboxStatus({
         status: "ok",
         model_loaded: true,

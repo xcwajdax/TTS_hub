@@ -58,8 +58,20 @@ import type { SettingsViewTab } from "./components/settings/settingsTabs";
 import type { TtsProviderId, TtsVoiceProfile } from "./appSettings";
 import { mergeSessionAndArchiveHistory, isGenerationPlayable } from "./lib/generationPlayback";
 import { getPrivacyModeSnapshot } from "./lib/privacyMode";
-import { voiceProfileToSettingsState } from "./lib/voiceProfiles";
+import {
+  getRoleplayMutePreview,
+  ROLEPLAY_MUTE_PREVIEW_CHANGED,
+  setRoleplayMutePreview,
+} from "./lib/roleplayMutePreview";
+import { updateVoiceProfileModel, voiceProfileToSettingsState } from "./lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "./lib/voiceProfilesEvents";
+import Mp4StudioView from "./mp4/Mp4StudioView";
+import {
+  MP4_STUDIO_OPEN_EVENT,
+  openMp4Studio as openMp4StudioFn,
+  takePendingMp4StudioGenerationId,
+  type Mp4StudioOpenDetail,
+} from "./mp4/openMp4Studio";
 
 interface AppInnerProps {
   appView: AppView;
@@ -75,6 +87,9 @@ interface AppInnerProps {
   settingsTab: SettingsViewTab;
   onStartProductTour: () => void;
   onGoToHistoryScope: (scope: HistoryScopeTab) => void;
+  mp4StudioGenerationId: string | null;
+  onClearMp4StudioGenerationId: () => void;
+  voiceProfiles: TtsVoiceProfile[];
 }
 
 function AppInner({
@@ -90,6 +105,9 @@ function AppInner({
   settingsTab,
   onStartProductTour,
   onGoToHistoryScope,
+  mp4StudioGenerationId,
+  onClearMp4StudioGenerationId,
+  voiceProfiles: voiceProfilesProp,
 }: AppInnerProps) {
   const { current, playing, playNonce, select, audioRef, setEditorText, playClip } = usePlayback();
   const { onDone } = useJobs();
@@ -222,6 +240,17 @@ function AppInner({
   }, []);
 
   useEffect(() => {
+    void getAppSettings().then((view) => {
+      setRoleplayMutePreview(view.roleplay_mute_preview !== false);
+    });
+    const onMuteChange = () => {
+      /* value already updated by StudioView */
+    };
+    window.addEventListener(ROLEPLAY_MUTE_PREVIEW_CHANGED, onMuteChange);
+    return () => window.removeEventListener(ROLEPLAY_MUTE_PREVIEW_CHANGED, onMuteChange);
+  }, []);
+
+  useEffect(() => {
     return onDone((g) => {
       const incognito = getPrivacyModeSnapshot() === "incognito";
       if (!incognito) {
@@ -231,6 +260,7 @@ function AppInner({
       // Cursor / skill / quick_hotkey autoplay: generation:ready → dedicated listeners.
       if (isCursorPlaybackSource(g.source) && cfg.autoplay) return;
       if (g.source === "quick_hotkey") return;
+      if (g.source === "roleplay" && getRoleplayMutePreview()) return;
       if (incognito) {
         select(g, { loadEditorText: true, autoPlay: true });
         return;
@@ -384,6 +414,19 @@ function AppInner({
     );
   }, []);
 
+  const handleVoiceboxModelChange = useCallback(
+    (modelId: string) => {
+      ttsSettings.setSettings((current) =>
+        current.model === modelId ? current : { ...current, model: modelId },
+      );
+      if (!activeVoiceProfileId) return;
+      void updateVoiceProfileModel(activeVoiceProfileId, modelId).catch((e) =>
+        setError(String(e)),
+      );
+    },
+    [activeVoiceProfileId, ttsSettings.setSettings],
+  );
+
   const nav: AppViewNav = useMemo(
     () => ({
       goToView: (v) => setAppViewState(v),
@@ -410,6 +453,7 @@ function AppInner({
         setVoiceboxSection(section);
         setAppViewState("voicebox");
       },
+      openMp4Studio: (id) => openMp4StudioFn(id),
       onBackToTts: () => setAppViewState("tts"),
     }),
     [setAppViewState, setSettingsTabState],
@@ -688,6 +732,44 @@ function AppInner({
     );
   }
 
+  if (appView === "mp4") {
+    return (
+      <AppViewContext.Provider value={nav}>
+        <div className="h-full w-full flex flex-col min-h-0 relative">
+          <Mp4StudioView
+            initialGenerationId={mp4StudioGenerationId}
+            generations={quickHistoryItems}
+            voiceProfiles={voiceProfilesProp}
+            onError={setError}
+            onToast={(msg) => {
+              setToast(msg);
+              window.setTimeout(() => setToast(null), 3000);
+            }}
+            onClose={onClearMp4StudioGenerationId}
+          />
+          {error && (
+            <div
+              className="fixed bottom-4 right-4 max-w-md bg-red-900/80 border border-red-700 text-red-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+              onClick={() => setError(null)}
+              title="Kliknij aby zamknac"
+            >
+              {error}
+            </div>
+          )}
+          {toast && (
+            <div
+              className="fixed bottom-4 left-4 max-w-md bg-emerald-900/80 border border-emerald-700 text-emerald-100 px-3 py-2 rounded shadow-lg text-sm cursor-pointer"
+              onClick={() => setToast(null)}
+              title="Kliknij aby zamknac"
+            >
+              {toast}
+            </div>
+          )}
+        </div>
+      </AppViewContext.Provider>
+    );
+  }
+
   if (appView === "extensions") {
     return (
       <AppViewContext.Provider value={nav}>
@@ -759,8 +841,10 @@ function AppInner({
             onError={setError}
             settings={ttsSettings.settings}
             voiceboxProfiles={ttsSettings.voiceboxProfiles}
+            voiceboxModels={ttsSettings.voiceboxModels}
             activeVoiceProfileId={activeVoiceProfileId}
             onVoiceProfileChange={(id) => void handleVoiceProfileIdChange(id)}
+            onVoiceboxModelChange={handleVoiceboxModelChange}
           />
           <PlaybackBar
             current={current}
@@ -853,6 +937,10 @@ export default function App() {
   const [onboardingRestart, setOnboardingRestart] = useState(0);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [enabledProviders, setEnabledProviders] = useState<TtsProviderId[] | undefined>();
+  const [mp4StudioGenerationId, setMp4StudioGenerationId] = useState<string | null>(
+    () => takePendingMp4StudioGenerationId(),
+  );
+  const [voiceProfilesForMp4, setVoiceProfilesForMp4] = useState<TtsVoiceProfile[]>([]);
 
   useEffect(() => {
     if (isMockUiMode()) {
@@ -864,6 +952,7 @@ export default function App() {
     void getAppSettings().then((view) => {
       if (!mounted) return;
       setEnabledProviders(view.enabled_providers);
+      setVoiceProfilesForMp4(view.voice_profiles ?? []);
     });
     return () => {
       mounted = false;
@@ -881,6 +970,32 @@ export default function App() {
     return () => {
       unlisten?.();
     };
+  }, [inTauri]);
+
+  // Listen for "open MP4 studio for generation X" requests from history items,
+  // context menus, roleplay studio, etc.
+  useEffect(() => {
+    const onOpen = (ev: Event) => {
+      const detail = (ev as CustomEvent<Mp4StudioOpenDetail>).detail;
+      const id = detail?.generationId;
+      if (!id) return;
+      setMp4StudioGenerationId(id);
+      setAppView("mp4");
+    };
+    window.addEventListener(MP4_STUDIO_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(MP4_STUDIO_OPEN_EVENT, onOpen);
+  }, []);
+
+  // Keep voice profiles fresh when settings emit VOICE_PROFILES_CHANGED.
+  useEffect(() => {
+    if (!inTauri) return;
+    const refresh = () => {
+      void getAppSettings().then((view) => {
+        setVoiceProfilesForMp4(view.voice_profiles ?? []);
+      });
+    };
+    window.addEventListener(VOICE_PROFILES_CHANGED, refresh);
+    return () => window.removeEventListener(VOICE_PROFILES_CHANGED, refresh);
   }, [inTauri]);
 
   const showMinimaxVoices = !enabledProviders || enabledProviders.includes("minimax");
@@ -903,6 +1018,7 @@ export default function App() {
               }}
               showMinimaxVoices={showMinimaxVoices}
               showVoicebox={showVoicebox}
+              showMp4
             />
             <JobsProvider>
               <div className="flex-1 min-h-0 min-w-0">
@@ -935,6 +1051,9 @@ export default function App() {
                     setAppView("history");
                     setHistoryInitialScope(scope);
                   }}
+                  mp4StudioGenerationId={mp4StudioGenerationId}
+                  onClearMp4StudioGenerationId={() => setMp4StudioGenerationId(null)}
+                  voiceProfiles={voiceProfilesForMp4}
                 />
               </div>
               <OnboardingOrchestrator

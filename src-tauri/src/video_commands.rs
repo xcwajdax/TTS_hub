@@ -13,7 +13,7 @@ use crate::video_library::{
 use crate::video_template::{
     delete_user_template, duplicate_template, ensure_builtin_template, list_template_metas,
     load_template_by_id, preset_landscape_169, preset_portrait_916, save_template_file,
-    template_file_path, VideoTemplate, VideoTemplateMeta, BUILTIN_WHATSAPP_ID,
+    template_file_path, VideoTemplate, VideoTemplateMeta,
 };
 
 type AppArc = Arc<AppState>;
@@ -43,9 +43,6 @@ pub fn save_video_template(
     template: VideoTemplate,
     state: State<'_, AppArc>,
 ) -> Result<VideoTemplate, String> {
-    if template.id == BUILTIN_WHATSAPP_ID {
-        return Err("cannot overwrite built-in template".into());
-    }
     template.validate().map_err(err)?;
     let paths = read_paths(&state)?;
     let path = template_file_path(&paths.video_templates, &template.id);
@@ -219,10 +216,15 @@ pub fn preview_video_template_frame(
     });
 
     let mut opts = ShareVideoExportOptions::default();
-    crate::video_export::apply_template_to_opts(&mut opts, &template);
+    crate::video_export::apply_template_to_opts(&mut opts, &template, None);
     opts.footer_line = Some("Przykładowy głos · model · 0:30 · TTS Hub".to_string());
     opts.fallback_karaoke_text = Some(
-        "To jest przykładowa linia karaoke do podglądu szablonu wideo.".to_string(),
+        "To jest przykładowa linia karaoke do podglądu szablonu wideo. \
+         Druga linia jedzie w górę gdy skończy się pierwsza. \
+         Trzecia zostaje na środku i świeci jaśniej od sąsiadów. \
+         Czwarta czeka poniżej, piąta ledwo widać na dole ramki. \
+         Szósta i siódma pokazują płynne justowanie bez przerw."
+            .to_string(),
     );
     opts.karaoke_enabled = true;
 

@@ -15,6 +15,8 @@ export interface AppViewNav {
   openVoiceProfiles: () => void;
   /** Open the Voice Box management view. */
   openVoiceboxView: (section?: VoiceboxSection) => void;
+  /** Open the MP4 studio for a specific generation (creates a tab if needed). */
+  openMp4Studio: (generationId: string) => void;
   /** Convenience: jump back to TTS view. */
   onBackToTts: () => void;
 }
@@ -30,6 +32,7 @@ export function useAppView(): AppViewNav {
       openMinimaxVoices: () => undefined,
       openVoiceProfiles: () => undefined,
       openVoiceboxView: () => undefined,
+      openMp4Studio: () => undefined,
       onBackToTts: () => undefined,
     };
   }

@@ -344,7 +344,7 @@ pub fn export_voice_pack(
         zip.write_all(&bytes)?;
     }
 
-    let avatar_path = voice_avatar_path(paths, &profile.provider, &effective_voice_id(profile));
+    let avatar_path = voice_avatar_path(paths, &profile.provider, profile.avatar_voice_id());
     if avatar_info(&avatar_path).exists {
         zip.start_file(AVATAR_PNG, options)?;
         let bytes = std::fs::read(&avatar_path)?;
@@ -353,17 +353,6 @@ pub fn export_voice_pack(
 
     zip.finish()?;
     Ok(())
-}
-
-fn effective_voice_id(profile: &TtsVoiceProfile) -> String {
-    if profile.provider == crate::app_settings::PROVIDER_VOICEBOX {
-        profile
-            .profile_id
-            .clone()
-            .unwrap_or_else(|| profile.voice.clone())
-    } else {
-        profile.voice.clone()
-    }
 }
 
 fn resolve_preview_path(paths: &AppPaths, profile: &TtsVoiceProfile) -> Option<PathBuf> {

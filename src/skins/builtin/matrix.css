@@ -1,5 +1,9 @@
 /* Matrix skin — subtle glow, no rain/scanlines */
 
+html[data-skin="matrix"] {
+  color-scheme: dark;
+}
+
 html[data-skin="matrix"] .btn-primary {
   text-shadow: 0 0 8px rgb(0 255 65 / 0.35);
 }

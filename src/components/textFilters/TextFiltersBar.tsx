@@ -1,8 +1,11 @@
 import { useState } from "react";
 import type { SaveMode, TextFilterPreset, TextFiltersSettings } from "../../appSettings";
 import type { SettingsState } from "../Settings";
-import { PROVIDER_TABS } from "../../lib/providerSwitch";
+import { PLAYBACK_PREVIEW_LABELS } from "../../lib/activeVoiceContext";
+import { resolvePlaybackPreviewMode } from "../../lib/playbackPreviewRegistry";
+import { voiceboxModelsForPicker } from "../../lib/voiceboxProfile";
 import type { IconSlug } from "../../lib/icons";
+import type { TtsModelInfo } from "../../ttsModels";
 import Icon from "../Icon";
 import ActiveVoiceProfileHero from "../ActiveVoiceProfileHero";
 import CustomFiltersModal from "./CustomFiltersModal";
@@ -21,6 +24,8 @@ interface Props {
   onPresetUpdate: (preset: TextFilterPreset) => void;
   onOpenSettings: (tab: SettingsTab) => void;
   onSaveModeToggle: () => void;
+  voiceboxModels?: TtsModelInfo[];
+  onVoiceboxModelChange?: (modelId: string) => void;
 }
 
 const TOOLBAR_BTN =
@@ -66,8 +71,18 @@ export default function TextFiltersBar({
   onPresetUpdate,
   onOpenSettings,
   onSaveModeToggle,
+  voiceboxModels = [],
+  onVoiceboxModelChange,
 }: Props) {
   const [rulesOpen, setRulesOpen] = useState(false);
+
+  const filterPreviewLabel =
+    PLAYBACK_PREVIEW_LABELS[resolvePlaybackPreviewMode(activePreset)];
+
+  const voiceboxModelOptions =
+    ttsSettings.provider === "voicebox"
+      ? voiceboxModelsForPicker(voiceboxModels, ttsSettings.model)
+      : [];
 
   const selectPreset = (id: string) => {
     onSettingsChange({ ...settings, active_preset_id: id });
@@ -82,10 +97,6 @@ export default function TextFiltersBar({
   };
 
   const autosaveOn = saveMode === "auto";
-  const providerLabel =
-    PROVIDER_TABS.find((t) => t.id === ttsSettings.provider)?.label ?? ttsSettings.provider;
-  const providerIcon =
-    PROVIDER_TABS.find((t) => t.id === ttsSettings.provider)?.icon ?? "info";
 
   return (
     <>
@@ -93,15 +104,28 @@ export default function TextFiltersBar({
         <ActiveVoiceProfileHero
           ttsSettings={ttsSettings}
           activeVoiceProfileId={activeVoiceProfileId}
+          activePreset={activePreset}
+          onOpenSettings={onOpenSettings}
         />
 
-        <span
-          className="inline-flex items-center gap-1 text-muted shrink-0"
-          title={`Dostawca: ${providerLabel}`}
-        >
-          <Icon name={providerIcon} size={13} />
-          <span className="truncate max-w-[5rem] hidden sm:inline">{providerLabel}</span>
-        </span>
+        {ttsSettings.provider === "voicebox" ? (
+          <label className="inline-flex items-center gap-1 text-muted shrink-0">
+            <span className="hidden md:inline">Model</span>
+            <select
+              className="toolbar-select toolbar-select--model"
+              value={ttsSettings.model}
+              onChange={(e) => onVoiceboxModelChange?.(e.target.value)}
+              disabled={!onVoiceboxModelChange || voiceboxModelOptions.length === 0}
+              title="Model TTS używany przy generacji tym profilem Voice Box"
+            >
+              {voiceboxModelOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label className="inline-flex items-center gap-1 text-muted shrink-0">
           <span className="hidden md:inline">Filtr</span>
@@ -116,6 +140,12 @@ export default function TextFiltersBar({
               </option>
             ))}
           </select>
+          <span
+            className="active-voice-context-chip shrink-0 hidden sm:inline-flex"
+            title={`Tryb podglądu odtwarzania: ${filterPreviewLabel}`}
+          >
+            {filterPreviewLabel}
+          </span>
         </label>
 
         <button

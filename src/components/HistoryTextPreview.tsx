@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePlayback } from "../context/PlaybackContext";
+import { useSyncedTextScroll } from "../hooks/useSyncedTextScroll";
 
 interface Props {
   text: string;
@@ -8,54 +9,17 @@ interface Props {
 
 /** Podgląd 3 linii; przy scroll=true przewija się wraz z postępem audio. */
 export default function HistoryTextPreview({ text, scroll }: Props) {
-  const { audioRef } = usePlayback();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
-  const [offsetY, setOffsetY] = useState(0);
-  const [overflows, setOverflows] = useState(false);
+  const { audioRef, playing } = usePlayback();
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   useEffect(() => {
-    const container = containerRef.current;
-    const inner = innerRef.current;
-    if (!container || !inner) return;
-
-    const measure = () => {
-      setOverflows(inner.scrollHeight > container.clientHeight + 1);
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(container);
-    ro.observe(inner);
-    return () => ro.disconnect();
-  }, [text]);
-
-  useEffect(() => {
-    if (!scroll || !overflows) {
-      setOffsetY(0);
-      return;
-    }
-
     const audio = audioRef.current;
     if (!audio) return;
 
     const sync = () => {
-      const container = containerRef.current;
-      const inner = innerRef.current;
-      if (!container || !inner) return;
-
-      const maxScroll = inner.scrollHeight - container.clientHeight;
-      if (maxScroll <= 0) {
-        setOffsetY(0);
-        return;
-      }
-
-      const duration = audio.duration;
-      const ratio =
-        Number.isFinite(duration) && duration > 0
-          ? Math.min(1, Math.max(0, audio.currentTime / duration))
-          : 0;
-      setOffsetY(-ratio * maxScroll);
+      setCurrentTime(audio.currentTime);
+      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     };
 
     sync();
@@ -68,7 +32,14 @@ export default function HistoryTextPreview({ text, scroll }: Props) {
       audio.removeEventListener("seeked", sync);
       audio.removeEventListener("loadedmetadata", sync);
     };
-  }, [scroll, overflows, audioRef, text]);
+  }, [audioRef, scroll, text]);
+
+  const { containerRef, innerRef, offsetY, overflows } = useSyncedTextScroll({
+    text,
+    currentTime,
+    duration,
+    scroll: scroll && (playing || currentTime > 0),
+  });
 
   return (
     <div

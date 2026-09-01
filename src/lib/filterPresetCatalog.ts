@@ -1,5 +1,6 @@
 import type { TextFilterPreset } from "./textFiltersTypes";
 import { DEFAULT_BUILTIN_TOGGLES } from "./textFiltersTypes";
+import { defaultStepPlaybackSettings } from "./playbackPreviewRegistry";
 
 /** Stable factory preset ids — merged into user settings without overwriting custom presets. */
 export const FACTORY_PRESET_IDS = [
@@ -8,10 +9,14 @@ export const FACTORY_PRESET_IDS = [
   "factory-docs",
   "factory-cursor-summary",
   "factory-voiceover-brief",
+  "factory-tutorial-steps",
 ] as const;
 
 /** Factory preset for portfolio / social voiceover scripts (markdown briefs). */
 export const FACTORY_VOICEOVER_BRIEF_ID = "factory-voiceover-brief";
+
+/** Factory preset for step-by-step tutorials. */
+export const FACTORY_TUTORIAL_STEPS_ID = "factory-tutorial-steps";
 
 /** Target speaking rate for voiceover brief preset (~90–100 wpm). */
 export const VOICEOVER_BRIEF_TARGET_WPM = 95;
@@ -203,6 +208,22 @@ export const FACTORY_PRESETS: TextFilterPreset[] = [
         flags: "g",
       },
     ],
+  },
+  {
+    id: FACTORY_TUTORIAL_STEPS_ID,
+    name: "Tutorial / kroki",
+    builtins: {
+      strip_fenced_code: true,
+      strip_inline_code: true,
+      strip_blockquotes: false,
+    },
+    custom: [],
+    playback_preview: "step-guide",
+    step_playback: {
+      ...defaultStepPlaybackSettings(),
+      mode: "auto",
+      min_steps: 2,
+    },
   },
 ];
 

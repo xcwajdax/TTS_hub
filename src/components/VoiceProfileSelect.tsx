@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getAppSettings } from "../api/tauri";
 import type { TtsVoiceProfile } from "../appSettings";
+import { groupProfilesByProvider } from "../lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 
 interface Props {
@@ -32,6 +33,8 @@ export default function VoiceProfileSelect({
     return () => window.removeEventListener(VOICE_PROFILES_CHANGED, refresh);
   }, []);
 
+  const groups = useMemo(() => groupProfilesByProvider(profiles), [profiles]);
+
   if (profiles.length === 0) {
     return (
       <p className="text-[10px] text-muted leading-snug">
@@ -47,10 +50,14 @@ export default function VoiceProfileSelect({
       onChange={(e) => onChange(e.target.value || null)}
     >
       {allowEmpty ? <option value="">{emptyLabel}</option> : null}
-      {profiles.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.name}
-        </option>
+      {groups.map((group) => (
+        <optgroup key={group.provider} label={group.label}>
+          {group.profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </optgroup>
       ))}
     </select>
   );

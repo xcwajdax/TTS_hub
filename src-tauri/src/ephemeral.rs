@@ -90,6 +90,7 @@ impl EphemeralStore {
         file_path: &str,
         format: &str,
         duration_ms: Option<i64>,
+        generation_ms: Option<i64>,
         title: Option<&str>,
         usage: Option<&GenerationUsage>,
     ) -> Option<Generation> {
@@ -103,6 +104,7 @@ impl EphemeralStore {
         g.file_path = file_path.to_string();
         g.format = format.to_string();
         g.duration_ms = duration_ms;
+        g.generation_ms = generation_ms;
         if let Some(t) = title {
             g.title = Some(t.to_string());
         }

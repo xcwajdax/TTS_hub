@@ -40,6 +40,8 @@ const DND_PRESETS: { label: string; minutes: number }[] = [
 
 const FALLBACK_VOICEBOX_MODELS: TtsModelInfo[] = [
   { id: "voicebox:chatterbox", display_name: "Voice Box Chatterbox" },
+  { id: "voicebox:tada-1b", display_name: "Voice Box TADA 1B" },
+  { id: "voicebox:tada-3b-ml", display_name: "Voice Box TADA 3B" },
 ];
 
 function formatTs(ts: number | null | undefined): string {

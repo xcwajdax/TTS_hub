@@ -19,6 +19,7 @@ import UsagePage from "./pages/UsagePage";
 import FiltersPage from "./pages/FiltersPage";
 import QuickHotkeysPage from "./pages/QuickHotkeysPage";
 import CursorPage from "./pages/CursorPage";
+import McpPage from "./pages/McpPage";
 import AppearancePage from "./pages/AppearancePage";
 import AvatarsPage from "./pages/AvatarsPage";
 import OrganizationPage from "./pages/OrganizationPage";
@@ -164,6 +165,7 @@ export default function SettingsView({
                 onError={onError}
               />
             )}
+            {tab === "mcp" && <McpPage onError={onError} />}
             {tab === "appearance" && (
               <AppearancePage
                 view={settings.view}

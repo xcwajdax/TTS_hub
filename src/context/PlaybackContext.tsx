@@ -21,6 +21,7 @@ import {
 } from "../lib/playbackPrefs";
 import { openGenerationInEditor } from "../lib/editorTextLoad";
 import { isGenerationPlayable } from "../lib/generationPlayback";
+import { getSavedPlaybackPosition } from "../lib/playbackPositionLock";
 import type { Generation } from "../types";
 
 export interface SelectOptions {
@@ -117,9 +118,14 @@ function ensureAudioGraph(audio: HTMLMediaElement): AudioGraph | null {
   }
 }
 
+function canStartPlayback(audio: HTMLAudioElement): boolean {
+  return audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+}
+
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const skipAutoplayRef = useRef(false);
+  const loadedSrcRef = useRef<string | null>(null);
   const clipAudioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -222,33 +228,70 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio || !src) return;
 
-    setPlaying(false);
+    const genId = current?.id ?? null;
+
+    const markSrcLoaded = () => {
+      loadedSrcRef.current = src;
+    };
+
+    const startPlayback = () => {
+      markSrcLoaded();
+      const saved = genId ? getSavedPlaybackPosition(genId) : null;
+      if (saved != null && saved > 0) {
+        audio.currentTime = saved;
+      }
+      void playAudio();
+    };
 
     if (skipAutoplayRef.current) {
       skipAutoplayRef.current = false;
+      setPlaying(false);
+
+      let buffered = false;
+      const onBuffered = () => {
+        if (buffered) return;
+        buffered = true;
+        markSrcLoaded();
+      };
+
+      audio.addEventListener("canplay", onBuffered, { once: true });
       audio.load();
+      if (canStartPlayback(audio)) onBuffered();
+
+      return () => audio.removeEventListener("canplay", onBuffered);
+    }
+
+    if (loadedSrcRef.current === src && canStartPlayback(audio)) {
+      startPlayback();
       return;
     }
 
-    const start = () => void playAudio();
-    audio.addEventListener("canplay", start, { once: true });
-    audio.load();
+    setPlaying(false);
 
-    return () => audio.removeEventListener("canplay", start);
-  }, [src, playNonce, playAudio]);
+    let started = false;
+    const onReady = () => {
+      if (started) return;
+      started = true;
+      startPlayback();
+    };
+
+    audio.addEventListener("canplay", onReady, { once: true });
+    audio.load();
+    if (canStartPlayback(audio)) onReady();
+
+    return () => audio.removeEventListener("canplay", onReady);
+  }, [src, playNonce, playAudio, current?.id]);
 
   const select = useCallback((g: Generation, options?: SelectOptions) => {
     if (options?.loadEditorText !== false) {
       setEditorText(g.text);
       openGenerationInEditor(g);
     }
-    if (options?.autoPlay === false) {
-      skipAutoplayRef.current = true;
+    skipAutoplayRef.current = options?.autoPlay === false;
+    setCurrent(g);
+    if (options?.autoPlay !== false) {
+      setPlayNonce((n) => n + 1);
     }
-    setCurrent((prev) => {
-      if (prev?.id === g.id && options?.autoPlay !== false) setPlayNonce((n) => n + 1);
-      return g;
-    });
   }, []);
 
   const playClip = useCallback(

@@ -1,4 +1,3 @@
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import { formatModelLabel } from "../../ttsModels";
 import type { TtsVoiceProfile } from "../../appSettings";
@@ -9,9 +8,10 @@ import {
 } from "../../api/tauri";
 import { promptExportGenerationAudio } from "../../lib/exportGenerationMp3";
 import { usePlayback } from "../../context/PlaybackContext";
+import { useAppConfirm } from "../../lib/useAppConfirm";
 import { loadPlainTextIntoEditor } from "../../lib/editorTextLoad";
 import { deriveTitleFromText, displayTitle } from "../../lib/generationTitle";
-import { formatDurationMs } from "../../lib/formatTime";
+import { formatDurationMs, formatGenerationMs } from "../../lib/formatTime";
 import {
   getSourceUi,
   sourceLabelForGeneration,
@@ -46,6 +46,7 @@ export default function HistoryDetailPanel({
   onError,
 }: Props) {
   const { current } = usePlayback();
+  const { confirm: askConfirm, dialog: confirmDialog } = useAppConfirm();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -66,6 +67,7 @@ export default function HistoryDetailPanel({
 
   if (!gen) {
     return (
+      <>
       <aside className="history-detail-panel flex flex-col items-center justify-center h-full min-h-0 p-6 text-center border-l border-border bg-panel2/30">
         <Icon name="archive" size={32} className="opacity-30 mb-3" />
         <p className="text-sm text-muted">Wybierz generację z listy</p>
@@ -73,6 +75,8 @@ export default function HistoryDetailPanel({
           Kliknięcie załaduje tekst i nagranie do zakładki TTS bez auto-odtwarzania.
         </p>
       </aside>
+      {confirmDialog}
+      </>
     );
   }
 
@@ -82,6 +86,7 @@ export default function HistoryDetailPanel({
   const titleLabel = displayTitle(gen);
   const sourceUi = getSourceUi(gen.source);
   const durationLabel = formatDurationMs(gen.duration_ms);
+  const generationLabel = formatGenerationMs(gen.generation_ms);
   const date = new Date(gen.created_at);
   const createdLabel = `${date.toLocaleDateString()} · ${date.toLocaleTimeString([], {
     hour: "2-digit",
@@ -136,10 +141,12 @@ export default function HistoryDetailPanel({
   };
 
   const handleDelete = async () => {
-    const ok = await confirm(
-      `Czy na pewno usunąć „${titleLabel}" z historii? Plik audio zostanie trwale usunięty.`,
-      { title: "Usuń z historii", kind: "warning" },
-    );
+    const ok = await askConfirm({
+      title: "Usuń z historii",
+      message: `Czy na pewno usunąć „${titleLabel}" z historii? Plik audio zostanie trwale usunięty.`,
+      confirmLabel: "Usuń",
+      danger: true,
+    });
     if (!ok) return;
     try {
       await deleteGeneration(gen.id);
@@ -150,6 +157,7 @@ export default function HistoryDetailPanel({
   };
 
   return (
+    <>
     <aside className="history-detail-panel flex flex-col min-h-0 h-full border-l border-border bg-panel2/20 overflow-hidden">
       <div className="shrink-0 flex items-start gap-3 p-4 border-b border-border">
         <HistoryItemProfileAvatar
@@ -200,7 +208,13 @@ export default function HistoryDetailPanel({
           <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
             <span>{createdLabel}</span>
             <span>·</span>
-            <span>{durationLabel}</span>
+            <span title="Długość nagrania">{durationLabel}</span>
+            {generationLabel && (
+              <>
+                <span>·</span>
+                <span title="Czas generacji">gen {generationLabel}</span>
+              </>
+            )}
             <span className="hidden xl:inline">· {relative}</span>
           </div>
         </div>
@@ -284,9 +298,11 @@ export default function HistoryDetailPanel({
         <GenerationClipboardButtons gen={gen} showTemplatePicker showSave onError={onError} className="mt-1" />
 
         <p className="text-[10px] text-muted leading-snug">
-          Zapis MP3 (dyskietka) powyżej. MP4: wybierz profil layoutu, kopiuj do schowka lub zapisz na dysk.
+          Zapis MP3 (dyskietka) powyżej. MP4: przycisk „Studio” otwiera zakładkę MP4 z wyborem layoutu, podglądem i eksportem (Kopiuj / Zapisz).
         </p>
       </div>
     </aside>
+    {confirmDialog}
+    </>
   );
 }

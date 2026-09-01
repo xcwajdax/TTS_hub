@@ -34,6 +34,11 @@ export const SOURCE_UI: Record<GenerationSource, SourceUiConfig> = {
     defaultColor: "#f97316",
     icon: "source-quick-hotkey",
   },
+  roleplay: {
+    label: "Roleplay",
+    defaultColor: "#a78bfa",
+    icon: "tab-roleplay",
+  },
 };
 
 export const HISTORY_COLOR_PRESETS = [
@@ -163,6 +168,10 @@ export const SOURCE_FILTER_META: Record<
     label: "Skrót",
     description: "Szybka generacja ze zaznaczenia (hotkey)",
   },
+  roleplay: {
+    ...SOURCE_UI.roleplay,
+    description: "Segmenty trybu Roleplay (studio DAW)",
+  },
 };
 
 export const SOURCE_FILTER_ORDER: (GenerationSource | "all")[] = [
@@ -171,5 +180,6 @@ export const SOURCE_FILTER_ORDER: (GenerationSource | "all")[] = [
   "cursor",
   "cursor-skill",
   "quick_hotkey",
+  "roleplay",
   "http",
 ];

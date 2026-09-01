@@ -18,7 +18,7 @@ use crate::minimax::{
     MinimaxGenerateParams, DEFAULT_MINIMAX_LANGUAGE,
 };
 use crate::state::AppState;
-use crate::voicebox::engine_from_model;
+use crate::voicebox::{hub_phase_for_vb_status, is_allowed_pl_engine, parse_voicebox_model, VoiceBoxGenerateOutcome};
 
 fn finalize_generation_done(
     state: &Arc<AppState>,
@@ -27,19 +27,20 @@ fn finalize_generation_done(
     file_path: &str,
     format: &str,
     duration_ms: Option<i64>,
+    generation_ms: Option<i64>,
     title: &str,
     usage: Option<&GenerationUsage>,
 ) -> Result<(), String> {
     if is_ephemeral {
         state
             .ephemeral
-            .finalize_done(id, file_path, format, duration_ms, Some(title), usage)
+            .finalize_done(id, file_path, format, duration_ms, generation_ms, Some(title), usage)
             .ok_or_else(|| "ephemeral finalize failed".to_string())?;
         Ok(())
     } else {
         state
             .db
-            .finalize_done(id, file_path, format, duration_ms, Some(title), usage)
+            .finalize_done(id, file_path, format, duration_ms, generation_ms, Some(title), usage)
             .map_err(|e| format!("{e}"))
     }
 }
@@ -120,6 +121,10 @@ impl JobQueue {
 
     fn take_cancel(&self, id: &str) -> bool {
         self.cancelled.lock().unwrap().remove(id)
+    }
+
+    fn is_cancel_requested(&self, id: &str) -> bool {
+        self.cancelled.lock().unwrap().contains(id)
     }
 
     /// Adjust semaphore permits to reflect new concurrency setting at runtime.
@@ -232,13 +237,29 @@ impl JobQueue {
             .unwrap_or_else(|| req.text.clone());
         let synth_char_count = synth_text.chars().count() as i64;
 
-        self.emit_phase(app, id, started, "requesting", chars);
+        // Provider jest walidowany w `enqueue_request` (commands.rs). Tu już tylko
+        // fallback: gdyby ktoś ominął walidację (np. job z poprzedniej wersji
+        // odczytany z kolejki po restarcie), użyj cursor_integration.provider
+        // zamiast cichego "google". (2026-09-01)
         let provider = req
             .provider
             .as_deref()
-            .unwrap_or("google")
-            .trim()
-            .to_ascii_lowercase();
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_else(|| {
+                state
+                    .settings
+                    .read()
+                    .ok()
+                    .map(|s| s.cursor_integration.provider.trim().to_ascii_lowercase())
+                    .unwrap_or_else(|| "minimax".to_string())
+            });
+
+        // Voice Box emits vb_* phases from status poll; other providers stay on "requesting".
+        if provider != "voicebox" {
+            self.emit_phase(app, id, started, "requesting", chars);
+        }
 
         if provider == "voicebox" {
             let profile_id = req
@@ -256,72 +277,116 @@ impl JobQueue {
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .unwrap_or("pl");
-            let engine = req
+
+            let parsed = parse_voicebox_model(&req.model);
+            let raw_engine = req
                 .engine
                 .as_deref()
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
-                .or_else(|| engine_from_model(&req.model));
+                .map(str::to_string)
+                .or_else(|| parsed.as_ref().map(|(e, _)| e.clone()))
+                .unwrap_or_else(|| "chatterbox".to_string());
+            let (engine_owned, size_from_engine) = match raw_engine.as_str() {
+                "tada-1b" => ("tada".to_string(), Some("1B".to_string())),
+                "tada-3b-ml" | "tada-3b" => ("tada".to_string(), Some("3B".to_string())),
+                other => (other.to_string(), None),
+            };
+            if !is_allowed_pl_engine(&engine_owned) {
+                return Err(format!(
+                    "Silnik Voice Box „{engine_owned}” nie jest wspierany w TTS Hub. \
+                     Użyj Chatterbox lub TADA (klon PL)."
+                ));
+            }
+            let model_size_owned: Option<String> = if engine_owned == "tada" {
+                parsed
+                    .as_ref()
+                    .and_then(|(_, size)| size.clone())
+                    .or(size_from_engine)
+                    .or_else(|| Some("1B".to_string()))
+            } else {
+                None
+            };
             let instruct = req
                 .style
                 .as_deref()
                 .map(str::trim)
                 .filter(|s| !s.is_empty());
-            let mut vb_opts = req.voicebox_options.clone().unwrap_or_default();
-            vb_opts.normalize();
 
-            let audio = state
+            let queue = self.clone();
+            let job_id = id.to_string();
+            let app_for_phase = app.clone();
+            let started_at = started;
+            let chars_n = chars;
+
+            let outcome = state
                 .voicebox
-                .generate_audio(crate::voicebox::VoiceBoxGenerateParams {
-                    profile_id: &profile_id,
-                    text: &synth_text,
-                    language,
-                    engine,
-                    instruct,
-                    personality: req.personality,
-                    seed: vb_opts.seed,
-                    model_size: vb_opts.model_size.as_deref(),
-                    max_chunk_chars: vb_opts.max_chunk_chars,
-                    crossfade_ms: vb_opts.crossfade_ms,
-                    normalize: vb_opts.normalize,
-                })
+                .generate_audio_tracked(
+                    crate::voicebox::VoiceBoxGenerateParams {
+                        profile_id: &profile_id,
+                        text: &synth_text,
+                        language,
+                        engine: Some(engine_owned.as_str()),
+                        model_size: model_size_owned.as_deref(),
+                        instruct,
+                        personality: req.personality,
+                    },
+                    |vb_status| {
+                        if let Some(phase) = hub_phase_for_vb_status(vb_status) {
+                            queue.emit_phase(&app_for_phase, &job_id, started_at, phase, chars_n);
+                        }
+                    },
+                    || queue.is_cancel_requested(&job_id),
+                )
                 .await
                 .map_err(|e| format!("{e}"))?;
 
-            if self.take_cancel(id) {
-                self.handle_cancel(state, app, id);
-                return Ok(());
+            match outcome {
+                VoiceBoxGenerateOutcome::Cancelled => {
+                    let _ = self.take_cancel(id);
+                    self.handle_cancel(state, app, id);
+                    return Ok(());
+                }
+                VoiceBoxGenerateOutcome::Ready(audio) => {
+                    if self.take_cancel(id) {
+                        self.handle_cancel(state, app, id);
+                        return Ok(());
+                    }
+
+                    self.emit_phase(app, id, started, "writing", chars);
+                    let temp_dir: PathBuf = {
+                        let paths = state.paths.read().map_err(|e| format!("{e}"))?;
+                        paths.temp.clone()
+                    };
+                    let source_fmt =
+                        AudioFormat::from_str(&audio.format).unwrap_or(AudioFormat::Wav);
+                    let written =
+                        write_downloaded_audio(&audio.bytes, source_fmt, &temp_dir, id, fmt)
+                            .map_err(|e| format!("{e}"))?;
+
+                    let title_src = req.summary_text.as_deref().unwrap_or(&req.text);
+                    let title = derive_title(title_src);
+                    let file_path = written.path.to_string_lossy().to_string();
+                    let usage = GenerationUsage {
+                        provider: Some("voicebox".to_string()),
+                        input_chars: Some(synth_char_count),
+                        prompt_tokens: None,
+                        output_tokens: None,
+                        total_tokens: None,
+                    };
+                    finalize_generation_done(
+                        state,
+                        id,
+                        is_ephemeral,
+                        &file_path,
+                        written.format.ext(),
+                        audio.duration_ms,
+                        Some(started.elapsed().as_millis() as i64),
+                        &title,
+                        Some(&usage),
+                    )?;
+                }
             }
-
-            self.emit_phase(app, id, started, "writing", chars);
-            let temp_dir: PathBuf = {
-                let paths = state.paths.read().map_err(|e| format!("{e}"))?;
-                paths.temp.clone()
-            };
-            let source_fmt = AudioFormat::from_str(&audio.format).unwrap_or(AudioFormat::Wav);
-            let written = write_downloaded_audio(&audio.bytes, source_fmt, &temp_dir, id, fmt)
-                .map_err(|e| format!("{e}"))?;
-
-            let title_src = req.summary_text.as_deref().unwrap_or(&req.text);
-            let title = derive_title(title_src);
-            let file_path = written.path.to_string_lossy().to_string();
-            let usage = GenerationUsage {
-                provider: Some("voicebox".to_string()),
-                input_chars: Some(synth_char_count),
-                prompt_tokens: None,
-                output_tokens: None,
-                total_tokens: None,
-            };
-            finalize_generation_done(
-                state,
-                id,
-                is_ephemeral,
-                &file_path,
-                written.format.ext(),
-                audio.duration_ms,
-                &title,
-                Some(&usage),
-            )?;
         } else if provider == "minimax" {
             let voice_id = req.voice.trim().to_string();
             if voice_id.is_empty() {
@@ -420,6 +485,7 @@ impl JobQueue {
                 &file_path,
                 written.format.ext(),
                 None,
+                Some(started.elapsed().as_millis() as i64),
                 &title,
                 Some(&usage),
             )?;
@@ -476,6 +542,7 @@ impl JobQueue {
                 &file_path,
                 fmt.ext(),
                 Some(written.duration_ms as i64),
+                Some(started.elapsed().as_millis() as i64),
                 &title,
                 Some(&usage),
             )?;

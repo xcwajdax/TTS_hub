@@ -1,19 +1,21 @@
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { formatModelLabel } from "../ttsModels";
 import type { TtsVoiceProfile } from "../appSettings";
 import type { ArchiveFolder, ArchiveTag, Generation } from "../types";
 import { useRelativeTime } from "../hooks/useRelativeTime";
-import { promptExportGenerationAudio, promptExportGenerationMp4 } from "../lib/exportGenerationMp3";
+import { promptExportGenerationAudio } from "../lib/exportGenerationMp3";
 import { useVideoTemplatePicker } from "../hooks/useVideoTemplatePicker";
 import {
   deleteGeneration,
   updateGenerationTitle,
 } from "../api/tauri";
 import { usePlayback } from "../context/PlaybackContext";
+import { useAppConfirm } from "../lib/useAppConfirm";
 import { loadPlainTextIntoEditor } from "../lib/editorTextLoad";
+import { openMp4Studio } from "../mp4/openMp4Studio";
+import { useAppView } from "../context/AppViewContext";
 import { deriveTitleFromText, displayTitle } from "../lib/generationTitle";
-import { formatDurationMs } from "../lib/formatTime";
+import { formatDurationMs, formatGenerationMs } from "../lib/formatTime";
 import {
   getSourceUi,
   hexToRgba,
@@ -109,15 +111,18 @@ export default function HistoryItem({
   onToggleSelect,
 }: Props) {
   const { playing } = usePlayback();
+  const { confirm: askConfirm, dialog: confirmDialog } = useAppConfirm();
+  const appView = useAppView();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportingVideo, setExportingVideo] = useState(false);
   const { selectedId } = useVideoTemplatePicker();
   const playHandler = onPlay ?? onSelect;
   const inputRef = useRef<HTMLInputElement>(null);
   const relative = useRelativeTime(gen.created_at);
+  // selectedId kept for callers that pass it through (e.g. legacy code paths).
+  void selectedId;
 
   const isPlaying = isCurrent && playing;
   const accentColor = resolveHistoryItemColor(gen);
@@ -134,6 +139,7 @@ export default function HistoryItem({
     second: "2-digit",
   });
   const durationLabel = formatDurationMs(gen.duration_ms);
+  const generationLabel = formatGenerationMs(gen.generation_ms);
   const titleLabel = displayTitle(gen);
   const createdLabel = `${dateStr} · ${timeStr}`;
 
@@ -169,10 +175,12 @@ export default function HistoryItem({
   };
 
   const handleDelete = async () => {
-    const ok = await confirm(
-      `Czy na pewno usunąć „${titleLabel}" z historii? Plik audio zostanie trwale usunięty.`,
-      { title: "Usuń z historii", kind: "warning" },
-    );
+    const ok = await askConfirm({
+      title: "Usuń z historii",
+      message: `Czy na pewno usunąć „${titleLabel}" z historii? Plik audio zostanie trwale usunięty.`,
+      confirmLabel: "Usuń",
+      danger: true,
+    });
     if (!ok) return;
     try {
       await deleteGeneration(gen.id);
@@ -202,14 +210,11 @@ export default function HistoryItem({
   };
 
   const handleExportVideo = async () => {
-    setExportingVideo(true);
-    try {
-      await promptExportGenerationMp4(gen, voiceProfiles, selectedId);
-    } catch (e) {
-      onError(String(e));
-    } finally {
-      setExportingVideo(false);
+    if (appView.openMp4Studio) {
+      appView.openMp4Studio(gen.id);
+      return;
     }
+    openMp4Studio(gen.id);
   };
 
   const handleCompactClick = () => {
@@ -249,6 +254,7 @@ export default function HistoryItem({
 
   if (compact) {
     return (
+      <>
       <div
         tabIndex={0}
         className={[
@@ -301,14 +307,24 @@ export default function HistoryItem({
         <div className="shrink-0 flex flex-col items-end justify-center gap-0.5">
           <span className="text-[10px] text-muted tabular-nums whitespace-nowrap">{timeStr}</span>
           {gen.status === "done" && (gen.duration_ms ?? 0) > 0 && (
-            <span className="text-[9px] text-muted/80 tabular-nums">{durationLabel}</span>
+            <span className="text-[9px] text-muted/80 tabular-nums" title="Długość nagrania">
+              {durationLabel}
+            </span>
+          )}
+          {generationLabel && (
+            <span className="text-[9px] text-muted/70 tabular-nums" title="Czas generacji">
+              gen {generationLabel}
+            </span>
           )}
         </div>
       </div>
+      {confirmDialog}
+    </>
     );
   }
 
   return (
+    <>
     <div
       className={[
         "history-item relative min-w-0 overflow-hidden border rounded-md text-xs flex flex-row gap-2.5 p-2.5",
@@ -358,6 +374,9 @@ export default function HistoryItem({
           <div className="shrink-0 flex flex-col items-end gap-0.5 text-[10px] text-muted tabular-nums">
             <span>{createdLabel}</span>
             <span title="Długość nagrania">{durationLabel}</span>
+            {generationLabel && (
+              <span title="Czas generacji">gen {generationLabel}</span>
+            )}
             <span className="hidden sm:inline">{relative}</span>
           </div>
         </div>
@@ -456,9 +475,9 @@ export default function HistoryItem({
               e.stopPropagation();
               void handleExportVideo();
             }}
-            title="Zapisz MP4 z okładką (WhatsApp)"
-            aria-label="Zapisz MP4"
-            disabled={saving || exporting || exportingVideo || !gen.file_path?.trim()}
+            title="Otwórz w Studio MP4"
+            aria-label="Otwórz w Studio MP4"
+            disabled={saving || exporting || !gen.file_path?.trim()}
           >
             <Icon name="clip-external" size={ACTION_ICON} />
           </button>
@@ -472,7 +491,7 @@ export default function HistoryItem({
             }}
             title="Zapisz MP3 z okładką i tytułem"
             aria-label="Zapisz MP3"
-            disabled={saving || exporting || exportingVideo || !gen.file_path?.trim()}
+            disabled={saving || exporting || !gen.file_path?.trim()}
           >
             <Icon name="save" size={ACTION_ICON} />
           </button>
@@ -502,5 +521,7 @@ export default function HistoryItem({
         </div>
       </div>
     </div>
+    {confirmDialog}
+    </>
   );
 }

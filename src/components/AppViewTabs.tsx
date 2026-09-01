@@ -10,6 +10,7 @@ export type AppView =
   | "voicebox"
   | "extensions"
   | "chat"
+  | "mp4"
   | "settings";
 
 interface TabDef {
@@ -24,6 +25,7 @@ interface Props {
   onViewChange: (view: AppView) => void;
   showMinimaxVoices?: boolean;
   showVoicebox?: boolean;
+  showMp4?: boolean;
 }
 
 function TabButton({
@@ -56,7 +58,13 @@ function TabButton({
   );
 }
 
-export default function AppViewTabs({ view, onViewChange, showMinimaxVoices, showVoicebox }: Props) {
+export default function AppViewTabs({
+  view,
+  onViewChange,
+  showMinimaxVoices,
+  showVoicebox,
+  showMp4 = true,
+}: Props) {
   const tabs: TabDef[] = [
     { id: "tts", label: "TTS", icon: "tab-tts" },
     { id: "voice_profiles", label: "Profile Głosu", icon: "tab-voice-profiles" },
@@ -76,6 +84,7 @@ export default function AppViewTabs({ view, onViewChange, showMinimaxVoices, sho
     },
     { id: "extensions", label: "Rozszerzenia", icon: "tab-extensions" },
     { id: "chat", label: "Czat", icon: "tab-chat" },
+    { id: "mp4", label: "MP4", icon: "film", hidden: !showMp4 },
     { id: "settings", label: "Ustawienia", icon: "tab-settings" },
   ];
 

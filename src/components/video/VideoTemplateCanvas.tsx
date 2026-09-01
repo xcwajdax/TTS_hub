@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { VideoLayer, VideoTemplate } from "../../types/videoTemplate";
+import { videoCanvasCssBackground } from "../../types/videoTemplate";
 import { useLayerDragResize } from "../../hooks/useLayerDragResize";
 import VideoLayerBox from "./VideoLayerBox";
 
@@ -18,7 +19,7 @@ export default function VideoTemplateCanvas({
   onUpdateLayer,
   zoom,
 }: Props) {
-  const { width, height, background } = template.canvas;
+  const { width, height } = template.canvas;
   const scale = zoom;
 
   const onRectChange = (layerId: string, rect: VideoLayer["rect"]) => {
@@ -44,7 +45,7 @@ export default function VideoTemplateCanvas({
         style={{
           width: width * scale,
           height: height * scale,
-          background,
+          background: videoCanvasCssBackground(template.canvas),
         }}
         onPointerDown={() => onSelectLayer(null)}
         onPointerMove={drag.onPointerMove}

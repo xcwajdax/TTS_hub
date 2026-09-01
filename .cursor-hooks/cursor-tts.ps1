@@ -437,6 +437,24 @@ function Phase-Speak {
     }
     Write-AtomicFile -Path $dedupeFile -Content $hash
 
+    # Walidacja providera: /cursor/config zwraca pole `enabled_providers`
+    # (lista providerów włączonych w kreatorze Szybka konfiguracja). Jeśli
+    # $cfg.provider jest poza tą listą, nie wysyłamy POST — backend i tak
+    # zwróciłby 422, a hook ma być „fail-open” (wyciszenie, nie crash). (2026-09-01)
+    $enabledProviders = @()
+    if ($cfg.PSObject.Properties['enabled_providers'] -and $cfg.enabled_providers) {
+        $enabledProviders = @($cfg.enabled_providers | ForEach-Object { ([string]$_).ToLowerInvariant() })
+    }
+    $reqProvider = ''
+    if ($cfg.PSObject.Properties['provider'] -and $cfg.provider) {
+        $reqProvider = ([string]$cfg.provider).ToLowerInvariant()
+    }
+    if ($enabledProviders.Count -gt 0 -and $reqProvider -and ($enabledProviders -notcontains $reqProvider)) {
+        Write-HookLog -Phase 'speak' -ConvId $convId -Status 'skip' -DurationMs $sw.ElapsedMilliseconds `
+            -Reason "provider_not_configured:$reqProvider,available=$($enabledProviders -join ',')"
+        return
+    }
+
     $fmt = 'wav'
     if ($cfg.PSObject.Properties['format'] -and $cfg.format) {
         $fmt = [string]$cfg.format

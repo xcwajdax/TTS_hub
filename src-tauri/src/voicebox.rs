@@ -114,6 +114,9 @@ pub struct VoiceBoxAudioPayload {
     pub format: String,
 }
 
+/// Backend model_name values exposed for PL voice cloning in TTS Hub.
+pub const PL_MODEL_NAMES: &[&str] = &["chatterbox-tts", "tada-1b", "tada-3b-ml"];
+
 #[derive(Debug, Deserialize)]
 struct ModelStatusListResponse {
     models: Vec<ModelStatus>,
@@ -123,9 +126,72 @@ struct ModelStatusListResponse {
 struct ModelStatus {
     model_name: String,
     display_name: String,
+    #[serde(default)]
+    hf_repo_id: Option<String>,
     downloaded: bool,
     #[serde(default)]
+    downloading: bool,
+    #[serde(default)]
+    size_mb: Option<f64>,
+    #[serde(default)]
     loaded: bool,
+}
+
+/// Public PL model status for UI (always one entry per allowlisted model).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceBoxPlModelStatus {
+    pub model_name: String,
+    pub display_name: String,
+    pub hub_model_id: String,
+    pub engine: String,
+    pub model_size: Option<String>,
+    pub downloaded: bool,
+    pub downloading: bool,
+    pub loaded: bool,
+    pub size_mb: Option<f64>,
+    /// 0–100 when downloading; from `/tasks/active` when available.
+    pub progress: Option<f64>,
+    pub bytes_current: Option<u64>,
+    pub bytes_total: Option<u64>,
+    pub filename: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ActiveTasksResponse {
+    #[serde(default)]
+    downloads: Vec<ActiveDownloadTask>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ActiveDownloadTask {
+    model_name: String,
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    progress: Option<f64>,
+    #[serde(default)]
+    current: Option<i64>,
+    #[serde(default)]
+    total: Option<i64>,
+    #[serde(default)]
+    filename: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct DownloadProgressInfo {
+    progress: Option<f64>,
+    bytes_current: Option<u64>,
+    bytes_total: Option<u64>,
+    filename: Option<String>,
+    active: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ModelDownloadRequest<'a> {
+    model_name: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -136,19 +202,11 @@ struct GenerationRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     engine: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    model_size: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     instruct: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     personality: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    seed: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    model_size: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_chunk_chars: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    crossfade_ms: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    normalize: Option<bool>,
 }
 
 #[allow(dead_code)]
@@ -177,61 +235,58 @@ pub struct VoiceBoxAudio {
     pub duration_ms: Option<i64>,
 }
 
-/// Optional Voice Box `/generate` fields persisted on a TTS Hub voice profile.
-/// Additive JSON — missing keys deserialize as defaults / None.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct VoiceBoxGenerationOptions {
-    #[serde(default)]
-    pub seed: Option<i64>,
-    #[serde(default)]
-    pub model_size: Option<String>,
-    #[serde(default)]
-    pub max_chunk_chars: Option<i32>,
-    #[serde(default)]
-    pub crossfade_ms: Option<i32>,
-    #[serde(default)]
-    pub normalize: Option<bool>,
-}
-
-impl VoiceBoxGenerationOptions {
-    pub fn normalize(&mut self) {
-        if let Some(seed) = self.seed {
-            if seed < 0 {
-                self.seed = None;
-            }
-        }
-        if let Some(size) = self.model_size.as_mut() {
-            *size = size.trim().to_string();
-            if size.is_empty() || !matches!(size.as_str(), "1.7B" | "0.6B" | "1B" | "3B") {
-                self.model_size = Some("1.7B".to_string());
-            }
-        }
-        if let Some(chars) = self.max_chunk_chars {
-            self.max_chunk_chars = Some(chars.clamp(100, 5000));
-        }
-        if let Some(ms) = self.crossfade_ms {
-            self.crossfade_ms = Some(ms.clamp(0, 500));
-        }
-    }
-}
-
 pub struct VoiceBoxGenerateParams<'a> {
     pub profile_id: &'a str,
     pub text: &'a str,
     pub language: &'a str,
     pub engine: Option<&'a str>,
+    pub model_size: Option<&'a str>,
     pub instruct: Option<&'a str>,
     pub personality: Option<bool>,
-    pub seed: Option<i64>,
-    pub model_size: Option<&'a str>,
-    pub max_chunk_chars: Option<i32>,
-    pub crossfade_ms: Option<i32>,
-    pub normalize: Option<bool>,
+}
+
+/// Map Voicebox generation status → Hub `job:phase` string.
+pub fn hub_phase_for_vb_status(status: &str) -> Option<&'static str> {
+    match status {
+        "loading_model" => Some("vb_loading_model"),
+        "completed" | "done" | "failed" | "error" | "not_found" => None,
+        // "generating" and any other in-progress status
+        _ => Some("vb_generating"),
+    }
+}
+
+/// Result of tracked generate: audio, or cancelled mid-wait.
+pub enum VoiceBoxGenerateOutcome {
+    Ready(VoiceBoxAudio),
+    Cancelled,
+}
+
+/// Progress payload emitted as `voicebox-model-progress`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceBoxModelProgressEvent {
+    pub model_name: String,
+    pub downloading: bool,
+    pub downloaded: bool,
+    pub loaded: bool,
+    pub progress: Option<f64>,
+    pub bytes_current: Option<u64>,
+    pub bytes_total: Option<u64>,
+    pub filename: Option<String>,
+    pub error: Option<String>,
 }
 
 pub struct VoiceBoxClient {
     base_url: Arc<RwLock<String>>,
     client: reqwest::Client,
+}
+
+impl Clone for VoiceBoxClient {
+    fn clone(&self) -> Self {
+        Self {
+            base_url: Arc::clone(&self.base_url),
+            client: self.client.clone(),
+        }
+    }
 }
 
 fn voicebox_client_http() -> reqwest::Client {
@@ -410,31 +465,32 @@ impl VoiceBoxClient {
     }
 
     pub async fn count_downloaded_tts_models(&self) -> Result<usize> {
-        let response: ModelStatusListResponse = self.get_json("/models/status").await?;
-        Ok(response
-            .models
-            .iter()
-            .filter(|m| m.downloaded && is_tts_model(&m.model_name))
+        Ok(self
+            .list_pl_model_statuses()
+            .await?
+            .into_iter()
+            .filter(|m| m.downloaded)
             .count())
     }
 
     pub async fn count_loaded_tts_models(&self) -> Result<usize> {
-        let response: ModelStatusListResponse = self.get_json("/models/status").await?;
-        Ok(response
-            .models
-            .iter()
-            .filter(|m| m.downloaded && m.loaded && is_tts_model(&m.model_name))
+        Ok(self
+            .list_pl_model_statuses()
+            .await?
+            .into_iter()
+            .filter(|m| m.downloaded && m.loaded)
             .count())
     }
 
+    /// Downloaded PL-allowlisted models for TTS dropdowns.
     pub async fn list_tts_models(&self) -> Result<Vec<TtsModelInfo>> {
-        let response: ModelStatusListResponse = self.get_json("/models/status").await?;
-        let mut models: Vec<TtsModelInfo> = response
-            .models
+        let mut models: Vec<TtsModelInfo> = self
+            .list_pl_model_statuses()
+            .await?
             .into_iter()
-            .filter(|m| m.downloaded && is_tts_model(&m.model_name))
+            .filter(|m| m.downloaded)
             .map(|m| TtsModelInfo {
-                id: format!("voicebox:{}", engine_id(&m.model_name)),
+                id: m.hub_model_id.clone(),
                 display_name: if m.loaded {
                     format!("Voice Box {} (loaded)", m.display_name)
                 } else {
@@ -446,64 +502,278 @@ impl VoiceBoxClient {
         Ok(models)
     }
 
+    /// Status for each PL allowlisted model (including not-yet-downloaded).
+    pub async fn list_pl_model_statuses(&self) -> Result<Vec<VoiceBoxPlModelStatus>> {
+        let response: ModelStatusListResponse = self.get_json("/models/status").await?;
+        let progress_by_name = self
+            .active_download_progress()
+            .await
+            .unwrap_or_default();
+
+        let by_name: std::collections::HashMap<String, ModelStatus> = response
+            .models
+            .into_iter()
+            .map(|m| (m.model_name.clone(), m))
+            .collect();
+
+        let mut out = Vec::with_capacity(PL_MODEL_NAMES.len());
+        for &name in PL_MODEL_NAMES {
+            let (engine, model_size, default_display) = pl_model_meta(name);
+            let hub_model_id = hub_model_id_for(name).to_string();
+            let prog = progress_by_name.get(name).cloned().unwrap_or_default();
+            if let Some(m) = by_name.get(name) {
+                out.push(VoiceBoxPlModelStatus {
+                    model_name: name.to_string(),
+                    display_name: m.display_name.clone(),
+                    hub_model_id,
+                    engine: engine.to_string(),
+                    model_size: model_size.map(str::to_string),
+                    downloaded: m.downloaded,
+                    downloading: m.downloading || prog.active,
+                    loaded: m.loaded,
+                    size_mb: m.size_mb,
+                    progress: prog.progress,
+                    bytes_current: prog.bytes_current,
+                    bytes_total: prog.bytes_total,
+                    filename: prog.filename,
+                });
+            } else {
+                out.push(VoiceBoxPlModelStatus {
+                    model_name: name.to_string(),
+                    display_name: default_display.to_string(),
+                    hub_model_id,
+                    engine: engine.to_string(),
+                    model_size: model_size.map(str::to_string),
+                    downloaded: false,
+                    downloading: prog.active,
+                    loaded: false,
+                    size_mb: None,
+                    progress: prog.progress,
+                    bytes_current: prog.bytes_current,
+                    bytes_total: prog.bytes_total,
+                    filename: prog.filename,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    async fn active_download_progress(
+        &self,
+    ) -> Result<std::collections::HashMap<String, DownloadProgressInfo>> {
+        let resp: ActiveTasksResponse = self.get_json("/tasks/active").await?;
+        let mut map = std::collections::HashMap::new();
+        for d in resp.downloads {
+            if !is_pl_model(&d.model_name) {
+                continue;
+            }
+            let active = matches!(
+                d.status.as_str(),
+                "downloading" | "running" | "extracting" | "pending"
+            ) || d.progress.is_some();
+            // Do not invent 0.0 when progress is missing — that causes UI flicker.
+            map.insert(
+                d.model_name,
+                DownloadProgressInfo {
+                    progress: d.progress,
+                    bytes_current: d.current.filter(|v| *v >= 0).map(|v| v as u64),
+                    bytes_total: d.total.filter(|v| *v >= 0).map(|v| v as u64),
+                    filename: d.filename.filter(|s| !s.is_empty()),
+                    active,
+                },
+            );
+        }
+        Ok(map)
+    }
+
+    pub async fn download_model(&self, model_name: &str) -> Result<()> {
+        ensure_pl_model(model_name)?;
+        let _: serde_json::Value = self
+            .post_json(
+                "/models/download",
+                &ModelDownloadRequest { model_name },
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn cancel_model_download(&self, model_name: &str) -> Result<()> {
+        ensure_pl_model(model_name)?;
+        let _: serde_json::Value = self
+            .post_json(
+                "/models/download/cancel",
+                &ModelDownloadRequest { model_name },
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn unload_model(&self, model_name: &str) -> Result<()> {
+        ensure_pl_model(model_name)?;
+        let url = self.url(&format!("/models/{model_name}/unload"));
+        let resp = self
+            .client
+            .post(url)
+            .send()
+            .await
+            .context("Voice Box unload request failed")?;
+        let _: serde_json::Value = self.parse_json(resp).await?;
+        Ok(())
+    }
+
     pub async fn generate_audio(
         &self,
         params: VoiceBoxGenerateParams<'_>,
     ) -> Result<VoiceBoxAudio> {
+        match self
+            .generate_audio_tracked(params, |_| {}, || false)
+            .await?
+        {
+            VoiceBoxGenerateOutcome::Ready(audio) => Ok(audio),
+            VoiceBoxGenerateOutcome::Cancelled => {
+                Err(anyhow!("Voice Box generation was cancelled"))
+            }
+        }
+    }
+
+    /// Generate with status callbacks (poll `/history/{id}` every 1s until Voicebox finishes).
+    pub async fn generate_audio_tracked<F, C>(
+        &self,
+        params: VoiceBoxGenerateParams<'_>,
+        mut on_status: F,
+        mut is_cancelled: C,
+    ) -> Result<VoiceBoxGenerateOutcome>
+    where
+        F: FnMut(&str),
+        C: FnMut() -> bool,
+    {
         let body = GenerationRequest {
             profile_id: params.profile_id,
             text: params.text,
             language: params.language,
             engine: params.engine,
+            model_size: params.model_size,
             instruct: params.instruct,
             personality: params.personality,
-            seed: params.seed,
-            model_size: params.model_size,
-            max_chunk_chars: params.max_chunk_chars,
-            crossfade_ms: params.crossfade_ms,
-            normalize: params.normalize,
         };
 
         let mut generation: VoiceBoxGeneration = self.post_json("/generate", &body).await?;
-        generation = self.wait_until_ready(generation).await?;
+        on_status(generation.status.as_str());
+
+        generation = match self
+            .wait_until_ready(generation, &mut on_status, &mut is_cancelled)
+            .await?
+        {
+            Some(g) => g,
+            None => return Ok(VoiceBoxGenerateOutcome::Cancelled),
+        };
+
         let duration_ms = generation
             .duration
             .map(|seconds| (seconds * 1000.0).round() as i64);
         let (bytes, format) = self.download_audio(&generation.id).await?;
-        Ok(VoiceBoxAudio {
+        Ok(VoiceBoxGenerateOutcome::Ready(VoiceBoxAudio {
             bytes,
             format,
             duration_ms,
-        })
+        }))
     }
 
-    async fn wait_until_ready(
+    pub async fn cancel_generation(&self, generation_id: &str) -> Result<()> {
+        let url = self.url(&format!("/generate/{generation_id}/cancel"));
+        let resp = self
+            .client
+            .post(url)
+            .send()
+            .await
+            .context("Voice Box cancel request failed")?;
+        let status = resp.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let text = resp.text().await.unwrap_or_default();
+        // 400/409 if already finished — treat as soft success for Hub cancel UX
+        if status.as_u16() == 400 || status.as_u16() == 409 {
+            return Ok(());
+        }
+        Err(anyhow!(
+            "Voice Box cancel HTTP {}: {}",
+            status,
+            truncate(&text, 500)
+        ))
+    }
+
+    /// Returns `None` if cancelled mid-wait.
+    ///
+    /// Keeps polling while Voicebox reports an in-progress status. Long texts
+    /// (chunked Chatterbox/TADA) routinely exceed 3 minutes — a fixed poll cap
+    /// would fail the Hub job while the sidecar is still working.
+    async fn wait_until_ready<F, C>(
         &self,
         mut generation: VoiceBoxGeneration,
-    ) -> Result<VoiceBoxGeneration> {
-        for _ in 0..60 {
-            match generation.status.as_str() {
-                "completed" | "done" => return Ok(generation),
-                "failed" | "error" => {
+        on_status: &mut F,
+        is_cancelled: &mut C,
+    ) -> Result<Option<VoiceBoxGeneration>>
+    where
+        F: FnMut(&str),
+        C: FnMut() -> bool,
+    {
+        const POLL_INTERVAL: Duration = Duration::from_secs(1);
+        // Give up only after many consecutive poll failures (sidecar unreachable),
+        // not because wall-clock time passed while status is still generating.
+        const MAX_CONSECUTIVE_POLL_ERRORS: u32 = 30;
+        let mut consecutive_errors = 0u32;
+
+        loop {
+            if is_cancelled() {
+                let _ = self.cancel_generation(&generation.id).await;
+                return Ok(None);
+            }
+
+            match classify_generation_status(&generation.status) {
+                GenerationPoll::Ready => return Ok(Some(generation)),
+                GenerationPoll::Failed => {
                     return Err(anyhow!(
-                        "Voice Box generation failed: {}",
-                        generation
-                            .error
-                            .unwrap_or_else(|| "unknown error".to_string())
+                        "{}",
+                        humanize_voicebox_generation_error(
+                            generation
+                                .error
+                                .as_deref()
+                                .unwrap_or("unknown error")
+                        )
                     ));
                 }
-                _ => {
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    generation = self
-                        .get_json(&format!("/history/{}", generation.id))
+                GenerationPoll::Cancelled => return Ok(None),
+                GenerationPoll::InProgress => {
+                    tokio::time::sleep(POLL_INTERVAL).await;
+                    if is_cancelled() {
+                        let _ = self.cancel_generation(&generation.id).await;
+                        return Ok(None);
+                    }
+                    match self
+                        .get_json::<VoiceBoxGeneration>(&format!("/history/{}", generation.id))
                         .await
-                        .with_context(|| {
-                            format!("Voice Box generation {} did not finish", generation.id)
-                        })?;
+                    {
+                        Ok(updated) => {
+                            consecutive_errors = 0;
+                            generation = updated;
+                            on_status(generation.status.as_str());
+                        }
+                        Err(err) => {
+                            consecutive_errors += 1;
+                            if consecutive_errors >= MAX_CONSECUTIVE_POLL_ERRORS {
+                                return Err(err).with_context(|| {
+                                    format!(
+                                        "Voice Box generation {} lost contact after {MAX_CONSECUTIVE_POLL_ERRORS} failed status polls",
+                                        generation.id
+                                    )
+                                });
+                            }
+                        }
+                    }
                 }
             }
         }
-        Err(anyhow!("Voice Box generation timed out"))
     }
 
     async fn download_audio(&self, id: &str) -> Result<(Vec<u8>, String)> {
@@ -649,20 +919,38 @@ fn sample_mime_from_filename(filename: &str) -> String {
     }
 }
 
-fn is_tts_model(model_name: &str) -> bool {
-    matches!(
-        model_name,
-        "qwen-tts-1.7B"
-            | "qwen-tts-0.6B"
-            | "qwen-custom-voice-1.7B"
-            | "qwen-custom-voice-0.6B"
-            | "luxtts"
-            | "chatterbox-tts"
-            | "chatterbox-turbo"
-            | "tada-1b"
-            | "tada-3b-ml"
-            | "kokoro"
-    )
+fn is_pl_model(model_name: &str) -> bool {
+    PL_MODEL_NAMES.contains(&model_name)
+}
+
+fn ensure_pl_model(model_name: &str) -> Result<()> {
+    if is_pl_model(model_name) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Model „{model_name}” nie jest wspierany w TTS Hub. \
+             Dostępne: Chatterbox, TADA 1B, TADA 3B (klon PL)."
+        ))
+    }
+}
+
+fn pl_model_meta(model_name: &str) -> (&'static str, Option<&'static str>, &'static str) {
+    match model_name {
+        "chatterbox-tts" => ("chatterbox", None, "Chatterbox TTS (Multilingual)"),
+        "tada-1b" => ("tada", Some("1B"), "TADA 1B"),
+        "tada-3b-ml" => ("tada", Some("3B"), "TADA 3B Multilingual"),
+        _ => ("chatterbox", None, "Unknown"),
+    }
+}
+
+/// Hub TTS model id for a backend model_name.
+pub fn hub_model_id_for(model_name: &str) -> &'static str {
+    match model_name {
+        "chatterbox-tts" => "voicebox:chatterbox",
+        "tada-1b" => "voicebox:tada-1b",
+        "tada-3b-ml" => "voicebox:tada-3b-ml",
+        _ => "voicebox:chatterbox",
+    }
 }
 
 pub fn engine_id(model_id: &str) -> &'static str {
@@ -678,8 +966,37 @@ pub fn engine_id(model_id: &str) -> &'static str {
     }
 }
 
-pub fn engine_from_model(model: &str) -> Option<&str> {
-    model.strip_prefix("voicebox:").filter(|s| !s.is_empty())
+/// Parse Hub `voicebox:…` model id into (engine, optional model_size for TADA).
+pub fn parse_voicebox_model(model: &str) -> Option<(String, Option<String>)> {
+    let rest = model.strip_prefix("voicebox:")?.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    match rest {
+        "chatterbox" | "chatterbox-tts" => Some(("chatterbox".into(), None)),
+        "tada-1b" => Some(("tada".into(), Some("1B".into()))),
+        "tada-3b-ml" | "tada-3b" => Some(("tada".into(), Some("3B".into()))),
+        "tada" => Some(("tada".into(), Some("1B".into()))),
+        "chatterbox_turbo" => None, // not in PL allowlist
+        other if other == "qwen"
+            || other == "qwen_custom_voice"
+            || other == "luxtts"
+            || other == "kokoro" =>
+        {
+            None
+        }
+        other => Some((other.to_string(), None)),
+    }
+}
+
+/// Engine segment from Hub model id (legacy helper). Prefer `parse_voicebox_model`.
+pub fn engine_from_model(model: &str) -> Option<String> {
+    parse_voicebox_model(model).map(|(engine, _)| engine)
+}
+
+/// Whether engine is allowed for Hub Voice Box synthesis (PL clone).
+pub fn is_allowed_pl_engine(engine: &str) -> bool {
+    matches!(engine, "chatterbox" | "tada")
 }
 
 fn audio_format_from_content_type(content_type: &str) -> String {
@@ -701,40 +1018,83 @@ fn truncate(s: &str, n: usize) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GenerationPoll {
+    Ready,
+    Failed,
+    Cancelled,
+    InProgress,
+}
+
+fn classify_generation_status(status: &str) -> GenerationPoll {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "completed" | "done" => GenerationPoll::Ready,
+        "failed" | "error" => GenerationPoll::Failed,
+        "cancelled" | "canceled" => GenerationPoll::Cancelled,
+        _ => GenerationPoll::InProgress,
+    }
+}
+
+/// Map opaque Voicebox sidecar errors to an action the Hub user can take.
+/// Official Voicebox (external Mac app) does not run our Python fork patches.
+fn humanize_voicebox_generation_error(raw: &str) -> String {
+    let compact = raw.replace('\\', "/").to_ascii_lowercase();
+    if compact.contains("spacy_pkuseg")
+        && (compact.contains("default.pkl") || compact.contains("_mei"))
+    {
+        return "Voice Box generation failed: oficjalny Voice Box na Macu ma uszkodzony katalog tymczasowy (brak słownika pkuseg po TADA). Zamknij Voice Box na Macu całkowicie (Cmd+Q) i otwórz ponownie, potem generuj Chatterboxem jeszcze raz. Restart samego TTS Hub tego nie naprawia.".to_string();
+    }
+    if compact.contains("tls ca certificate") || compact.contains("cacert.pem") {
+        return "Voice Box generation failed: Voice Box nie znajduje pakietu certyfikatów TLS (stary katalog tymczasowy). Zamknij Voice Box na Macu całkowicie i otwórz ponownie.".to_string();
+    }
+    format!("Voice Box generation failed: {raw}")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::VoiceBoxGenerationOptions;
+    use super::{
+        classify_generation_status, humanize_voicebox_generation_error, GenerationPoll,
+    };
 
     #[test]
-    fn voicebox_options_normalize_clamps_and_rejects_bad_size() {
-        let mut opts = VoiceBoxGenerationOptions {
-            seed: Some(-1),
-            model_size: Some("huge".into()),
-            max_chunk_chars: Some(9),
-            crossfade_ms: Some(900),
-            normalize: Some(true),
-        };
-        opts.normalize();
-        assert_eq!(opts.seed, None);
-        assert_eq!(opts.model_size.as_deref(), Some("1.7B"));
-        assert_eq!(opts.max_chunk_chars, Some(100));
-        assert_eq!(opts.crossfade_ms, Some(500));
+    fn humanizes_stale_pkuseg_mei_path() {
+        let raw = "[Errno 2] No such file or directory: '/private/var/folders/w_/x/T/_MEItCp04f/spacy_pkuseg/dicts/default.pkl'";
+        let msg = humanize_voicebox_generation_error(raw);
+        assert!(msg.contains("Cmd+Q"), "{msg}");
+        assert!(msg.contains("pkuseg"), "{msg}");
+        assert!(!msg.contains("/private/var/folders"), "{msg}");
     }
 
     #[test]
-    fn voicebox_options_serde_is_additive() {
-        let parsed: VoiceBoxGenerationOptions = serde_json::from_str("{}").unwrap();
-        assert!(parsed.seed.is_none());
-        assert!(parsed.model_size.is_none());
-        let json = serde_json::to_value(&VoiceBoxGenerationOptions {
-            seed: Some(7),
-            model_size: Some("0.6B".into()),
-            max_chunk_chars: Some(800),
-            crossfade_ms: Some(50),
-            normalize: Some(true),
-        })
-        .unwrap();
-        assert_eq!(json["seed"], 7);
-        assert_eq!(json["model_size"], "0.6B");
+    fn passes_through_unknown_voicebox_errors() {
+        let msg = humanize_voicebox_generation_error("CUDA out of memory");
+        assert_eq!(msg, "Voice Box generation failed: CUDA out of memory");
+    }
+
+    #[test]
+    fn classifies_terminal_and_in_progress_statuses() {
+        assert_eq!(
+            classify_generation_status("completed"),
+            GenerationPoll::Ready
+        );
+        assert_eq!(classify_generation_status("DONE"), GenerationPoll::Ready);
+        assert_eq!(classify_generation_status("failed"), GenerationPoll::Failed);
+        assert_eq!(classify_generation_status("error"), GenerationPoll::Failed);
+        assert_eq!(
+            classify_generation_status("cancelled"),
+            GenerationPoll::Cancelled
+        );
+        assert_eq!(
+            classify_generation_status("generating"),
+            GenerationPoll::InProgress
+        );
+        assert_eq!(
+            classify_generation_status("loading_model"),
+            GenerationPoll::InProgress
+        );
+        assert_eq!(
+            classify_generation_status("queued"),
+            GenerationPoll::InProgress
+        );
     }
 }

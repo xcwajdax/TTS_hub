@@ -1,0 +1,8 @@
+src/components/settings/pages/AboutPage.tsx(4,14): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node`.
+src/components/settings/pages/AboutPage.tsx(4,41): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node`.
+src/components/settings/pages/AboutPage.tsx(5,15): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node`.
+src/lib/playbackPreviewRegistry.ts(24,16): error TS2339: Property 'playback_preview_override' does not exist on type 'TtsVoiceProfile'.
+src/lib/playbackPreviewRegistry.ts(25,20): error TS2339: Property 'playback_preview_override' does not exist on type 'TtsVoiceProfile'.
+src/lib/voiceoverBriefFilter.test.ts(1,30): error TS2307: Cannot find module 'node:fs' or its corresponding type declarations.
+src/lib/voiceoverBriefFilter.test.ts(2,31): error TS2307: Cannot find module 'node:path' or its corresponding type declarations.
+src/lib/voiceoverBriefFilter.test.ts(3,31): error TS2307: Cannot find module 'node:url' or its corresponding type declarations.

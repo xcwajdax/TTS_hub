@@ -150,14 +150,22 @@ fn run_full() {
             commands::hide_quick_hotkey_toast,
             commands::show_playback_toast,
             commands::hide_playback_toast,
+            commands::playback_toast_control,
             commands::list_voices,
             commands::list_models,
             commands::voicebox_health,
             commands::voicebox_server_status,
             commands::voicebox_server_start,
+            commands::voicebox_server_install,
             commands::voicebox_server_stop,
+            commands::voicebox_server_log_snapshot,
+            commands::voicebox_server_log_clear,
             commands::list_voicebox_profiles,
             commands::list_voicebox_models,
+            commands::voicebox_list_pl_model_status,
+            commands::voicebox_download_model,
+            commands::voicebox_cancel_model_download,
+            commands::voicebox_unload_model,
             commands::voicebox_get_profile,
             commands::voicebox_create_profile,
             commands::voicebox_update_profile,
@@ -248,6 +256,7 @@ fn run_full() {
             roleplay::commands::roleplay_load_project,
             roleplay::commands::roleplay_save_project,
             roleplay::commands::roleplay_delete_project,
+            roleplay::commands::roleplay_rebuild_timeline,
             roleplay::commands::roleplay_update_timeline,
             roleplay::commands::roleplay_start_queue,
             roleplay::commands::roleplay_pause_queue,
@@ -258,6 +267,7 @@ fn run_full() {
             roleplay::commands::roleplay_import_audio,
             roleplay::commands::roleplay_write_mix_wav,
             roleplay::commands::roleplay_export_mix,
+            roleplay::commands::roleplay_export_mp4,
             chat::commands::chat_create_session,
             chat::commands::chat_list_sessions,
             chat::commands::chat_get_session,
@@ -345,6 +355,7 @@ fn run_full() {
                         &data_dir,
                         mode,
                         crate::voicebox_server::default_port(),
+                        &voicebox_boot.voicebox_server_log,
                     )
                     .await;
                 }
@@ -376,7 +387,11 @@ fn run_full() {
         .expect("error while building tauri application")
         .run(move |_app, event| {
             if matches!(event, RunEvent::Exit) {
-                crate::voicebox_server::stop_child(&app_state_for_exit.voicebox_server_child);
+                crate::voicebox_server::stop_child(
+                    &app_state_for_exit.voicebox_server_child,
+                    Some(&app_state_for_exit.voicebox_server_log),
+                    None,
+                );
                 let _ = app_state_for_exit.purge_ephemeral_generations();
             }
         });

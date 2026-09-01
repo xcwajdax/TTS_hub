@@ -3,22 +3,26 @@ import { useEffect, useRef } from "react";
 interface Props {
   x: number;
   y: number;
+  canCloseOthers: boolean;
   onDuplicate: () => void;
   onIncrement: () => void;
   onCopyText: () => void;
   onSaveFile: () => void;
   onCloseTab: () => void;
+  onCloseOthers: () => void;
   onDismiss: () => void;
 }
 
 export default function EditorTabContextMenu({
   x,
   y,
+  canCloseOthers,
   onDuplicate,
   onIncrement,
   onCopyText,
   onSaveFile,
   onCloseTab,
+  onCloseOthers,
   onDismiss,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
@@ -65,6 +69,19 @@ export default function EditorTabContextMenu({
       <div className="h-px bg-border/60 my-1" />
       <button type="button" className="editor-tab-menu__item text-red-300/90" role="menuitem" onClick={() => run(onCloseTab)}>
         Zamknij
+      </button>
+      <button
+        type="button"
+        className="editor-tab-menu__item text-red-300/90"
+        role="menuitem"
+        disabled={!canCloseOthers}
+        aria-disabled={!canCloseOthers}
+        onClick={() => {
+          if (!canCloseOthers) return;
+          run(onCloseOthers);
+        }}
+      >
+        Zamknij pozostałe
       </button>
     </div>
   );

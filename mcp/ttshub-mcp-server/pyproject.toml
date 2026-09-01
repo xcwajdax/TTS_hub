@@ -1,0 +1,22 @@
+[project]
+name = "ttshub-mcp-server"
+version = "0.1.0"
+description = "Local MCP server bridging MCP clients (opencode, Cursor, etc.) to the TTS Hub desktop app HTTP API on 127.0.0.1:8765."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "TTS Hub" }]
+dependencies = [
+    "mcp>=1.2,<2",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+ttshub-mcp = "ttshub_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ttshub_mcp"]

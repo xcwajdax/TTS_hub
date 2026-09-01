@@ -40,6 +40,30 @@ pub struct CustomTextFilter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepPlaybackSettings {
+    #[serde(default = "step_mode_off")]
+    pub mode: String,
+    #[serde(default = "default_min_steps")]
+    pub min_steps: u32,
+    #[serde(default)]
+    pub synth_per_step: bool,
+    #[serde(default = "default_true")]
+    pub auto_advance: bool,
+    #[serde(default)]
+    pub pause_between_ms: u32,
+    #[serde(default = "default_true")]
+    pub show_intro: bool,
+}
+
+fn step_mode_off() -> String {
+    "off".to_string()
+}
+
+fn default_min_steps() -> u32 {
+    2
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextFilterPreset {
     pub id: String,
     pub name: String,
@@ -47,6 +71,10 @@ pub struct TextFilterPreset {
     pub builtins: BuiltinFilterToggles,
     #[serde(default)]
     pub custom: Vec<CustomTextFilter>,
+    #[serde(default)]
+    pub playback_preview: Option<String>,
+    #[serde(default)]
+    pub step_playback: Option<StepPlaybackSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +94,8 @@ pub fn default_preset() -> TextFilterPreset {
         name: "Domyślny".to_string(),
         builtins: BuiltinFilterToggles::default(),
         custom: Vec::new(),
+        playback_preview: None,
+        step_playback: None,
     }
 }
 
@@ -259,6 +289,8 @@ mod tests {
                 custom_rule("trim-pause-end", r"\s+\.\.\.\s*$", "", ""),
                 custom_rule("mic", "🎙️", "", "g"),
             ],
+            playback_preview: None,
+            step_playback: None,
         }
     }
 
