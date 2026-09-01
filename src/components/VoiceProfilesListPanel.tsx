@@ -6,19 +6,41 @@ import { getMockAppSettingsView } from "../lib/mockUi";
 import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 import {
   deleteVoiceProfile,
+  groupProfilesByProvider,
   isRerouteProfile,
   previewTextForProfile,
   setRerouteVoiceProfile,
-  sortProfilesForChatList,
 } from "../lib/voiceProfiles";
 import { exportVoicePackFromProfile, importVoicePackFromDialog } from "../lib/voicePack";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import { shortcutDisplayLabel } from "../lib/quickHotkeyPreset";
+import { providerBadgeMeta } from "../lib/providerBadge";
 import type { Generation } from "../types";
 import VoiceProfileChatRow from "./VoiceProfileChatRow";
 import VoiceProfileContextMenu from "./VoiceProfileContextMenu";
 import VoiceProfileShortcutFooter from "./VoiceProfileShortcutFooter";
 import FastWorkExportDialog from "./FastWorkExportDialog";
+
+function ProviderGroupHeading({
+  provider,
+  label,
+  count,
+  headingId,
+}: {
+  provider: string;
+  label: string;
+  count: number;
+  headingId: string;
+}) {
+  const badge = providerBadgeMeta(provider);
+  return (
+    <h3 id={headingId} className="voice-profile-chat-group-heading">
+      <img src={badge.iconUrl} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
+      <span className="truncate">{label}</span>
+      <span className="ml-auto tabular-nums text-muted/80 font-medium">{count}</span>
+    </h3>
+  );
+}
 
 interface Props {
   variant?: "sidebar" | "settings";
@@ -74,18 +96,19 @@ export default function VoiceProfilesListPanel({
     return () => window.removeEventListener(VOICE_PROFILES_CHANGED, refresh);
   }, []);
 
-  const sorted = useMemo(() => sortProfilesForChatList(profiles), [profiles]);
+  const groups = useMemo(() => groupProfilesByProvider(profiles), [profiles]);
+  const listed = useMemo(() => groups.flatMap((g) => g.profiles), [groups]);
 
   const selectedProfile = useMemo(
-    () => sorted.find((p) => p.id === activeProfileId) ?? null,
-    [sorted, activeProfileId],
+    () => listed.find((p) => p.id === activeProfileId) ?? null,
+    [listed, activeProfileId],
   );
 
   useEffect(() => {
-    if (activeProfileId && !sorted.some((p) => p.id === activeProfileId)) {
+    if (activeProfileId && !listed.some((p) => p.id === activeProfileId)) {
       setContextMenu(null);
     }
-  }, [sorted, activeProfileId]);
+  }, [listed, activeProfileId]);
 
   const handleDeleteProfile = useCallback(
     (profile: TtsVoiceProfile) => {
@@ -136,7 +159,7 @@ export default function VoiceProfilesListPanel({
     [onError, onSuccess],
   );
 
-  if (sorted.length === 0) {
+  if (listed.length === 0) {
     return (
       <div
         className={`flex flex-col items-center justify-center gap-2 text-center ${
@@ -168,7 +191,7 @@ export default function VoiceProfilesListPanel({
         }`}
       >
         <p className="text-muted leading-snug text-[10px] flex-1 min-w-0">
-          Kliknij profil, aby go wybrać. PPM — edycja, eksport Voice Pack, reroute lub usunięcie.
+          Profile są zgrupowane według providera. Kliknij, aby wybrać. PPM — edycja, Voice Pack, reroute lub usunięcie.
           {rerouteProfileId ? (
             <>
               {" "}
@@ -189,31 +212,45 @@ export default function VoiceProfilesListPanel({
           variant === "settings" ? "px-1" : ""
         }`}
       >
-        {sorted.map((profile) => {
-          const preview = previewTextForProfile(profile, recentGenerations);
-          const selected = profile.id === activeProfileId;
-          const reroute = isRerouteProfile(profile.id, rerouteProfileId);
-          const shortcutHint =
-            !reroute && profile.shortcut?.trim() && profile.shortcut_enabled !== false
-              ? shortcutDisplayLabel(profile.shortcut)
-              : null;
-          return (
-            <VoiceProfileChatRow
-              key={profile.id}
-              profile={profile}
-              preview={preview}
-              shortcutHint={shortcutHint}
-              selected={selected}
-              isReroute={reroute}
-              onSelect={() => onSelectProfile(profile)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                onSelectProfile(profile);
-                setContextMenu({ profile, x: e.clientX, y: e.clientY });
-              }}
+        {groups.map((group) => (
+          <section
+            key={group.provider}
+            className="voice-profile-chat-group"
+            aria-labelledby={`vp-provider-${group.provider}`}
+          >
+            <ProviderGroupHeading
+              headingId={`vp-provider-${group.provider}`}
+              provider={group.provider}
+              label={group.label}
+              count={group.profiles.length}
             />
-          );
-        })}
+            {group.profiles.map((profile) => {
+              const preview = previewTextForProfile(profile, recentGenerations);
+              const selected = profile.id === activeProfileId;
+              const reroute = isRerouteProfile(profile.id, rerouteProfileId);
+              const shortcutHint =
+                !reroute && profile.shortcut?.trim() && profile.shortcut_enabled !== false
+                  ? shortcutDisplayLabel(profile.shortcut)
+                  : null;
+              return (
+                <VoiceProfileChatRow
+                  key={profile.id}
+                  profile={profile}
+                  preview={preview}
+                  shortcutHint={shortcutHint}
+                  selected={selected}
+                  isReroute={reroute}
+                  onSelect={() => onSelectProfile(profile)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    onSelectProfile(profile);
+                    setContextMenu({ profile, x: e.clientX, y: e.clientY });
+                  }}
+                />
+              );
+            })}
+          </section>
+        ))}
       </div>
       {selectedProfile ? (
         <VoiceProfileShortcutFooter

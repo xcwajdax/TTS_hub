@@ -167,6 +167,20 @@ export function useEditorTabs({ defaultFilterPresetId, onTabActivated }: UseEdit
     [commit, activateTab],
   );
 
+  const closeOtherTabs = useCallback(
+    (keepTabId: string) => {
+      let tabToActivate: EditorTab | null = null;
+      commit((prev) => {
+        const keep = prev.tabs.find((t) => t.id === keepTabId);
+        if (!keep || prev.tabs.length <= 1) return prev;
+        if (prev.activeTabId !== keepTabId) tabToActivate = keep;
+        return { ...prev, tabs: [keep], activeTabId: keepTabId };
+      });
+      if (tabToActivate) void activateTab(tabToActivate);
+    },
+    [commit, activateTab],
+  );
+
   const duplicateTab = useCallback(
     (tabId: string, incrementTitle = false) => {
       const source = state.tabs.find((t) => t.id === tabId);
@@ -385,6 +399,7 @@ export function useEditorTabs({ defaultFilterPresetId, onTabActivated }: UseEdit
     switchTab,
     addTab,
     closeTab,
+    closeOtherTabs,
     duplicateTab,
     incrementTab,
     renameTab,

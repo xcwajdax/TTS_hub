@@ -46,31 +46,25 @@ Optional: `-ConversationId "<id>"` if known.
 
 - TTS Hub running (`npm run tauri dev`) — HTTP API on `http://127.0.0.1:8765`.
 - Copy `config.json.example` → `config.json` in this skill folder.
-- Provider keys: `MINIMAX_API_KEY`, `GOOGLE_API_KEY` in `studios.env` / app settings; Voice Box server for `voicebox` preset.
+- Voice Box server running for the `voicebox` preset (default). MiniMax / Gemini keys only if you switch `active_preset`.
 
 ## Configuration (hybrid)
 
 | Source | Role |
 |--------|------|
-| `config.json` | `active_preset` (`minimax` / `google` / `voicebox`), głos i model w `presets.{provider}` |
-| `GET /cursor/config` | Gdy `prefer_app_config: true` i integracja włączona — **provider, model, voice_id, format** oraz strojenie MiniMax z aplikacji (jak hooki). `presets.*` w `config.json` to tylko zapas, gdy API jest wyłączone. |
+| `config.json` | `active_preset` (`voicebox` / `minimax` / `google`), głos i model w `presets.{provider}` |
+| `GET /cursor/config` | Gdy `prefer_app_config: true` i integracja włączona — **provider, model, voice / profile_id, format** z aplikacji. Domyślnie `false`, żeby skill nie wracał do MiniMax, gdy panel Cursor w RAM jest nieaktualny. |
 
-### Głos Makłowicza (MiniMax)
+### Głos TOPKEK (Voice Box)
 
-**Źródło `voice_id`:** panel **Ustawienia → Cursor** w TTS Hub (np. preset `Polish_female_1_sample1`). Skill nie trzyma własnego ID — bierze to z aplikacji, żeby uniknąć rozjazdu z konfiguracją w aplikacji.
+Domyślny preset to **Voice Box + profil TOPKEK** (Chatterbox, język `pl`). Skrypt wysyła `profile_id` do `POST /generate`. Jeśli ID brakuje, woła `GET /voicebox/profiles` i wybiera profil o nazwie `TOPKEK`.
 
-W `config.json.example` preset `minimax` ma ten sam głos jako **fallback** (gdy integracja wyłączona lub brak API). Strojenie (tempo, pitch) ustaw w panelu Integracja Cursor:
+`prefer_app_config` jest **wyłączone**, bo działająca aplikacja może jeszcze zwracać MiniMax z pamięci, podczas gdy `settings.json` już ma Voicebox. Po restarcie TTS Hub możesz ustawić `prefer_app_config: true`, żeby panel **Ustawienia → Cursor** sterował głosem.
 
-| Pole | Domyślnie | Efekt |
-|------|-----------|--------|
-| `minimax_speed` | `0.9` | Wolniejsza, bardziej wyważona wymowa |
-| `minimax_pitch` | `-2` | Nieco niżej, cieplej |
-| `minimax_vol` | `1.0` | Standardowa głośność |
-
-Inny klon lub preset systemowy: zmień `voice` w `config.json` (np. `Polish_female_1_sample1`).
+Inny profil Voice Box: zmień `voice` / `profile_id` w `presets.voicebox` albo `active_preset`.
 
 Switch preset without the app: edit `active_preset` in `config.json`.  
-Switch provider with the app: Cursor integration panel in TTS Hub (Ustawienia zaawansowane).
+Switch provider with the app: Cursor integration panel in TTS Hub (Ustawienia zaawansowane) — only when `prefer_app_config` is true.
 
 ## Do not use hooks for TTS in this mode
 

@@ -1,7 +1,7 @@
 {
   "api_base": "http://127.0.0.1:8765",
-  "prefer_app_config": true,
-  "active_preset": "minimax",
+  "prefer_app_config": false,
+  "active_preset": "voicebox",
   "presets": {
     "minimax": {
       "provider": "minimax",
@@ -23,8 +23,8 @@
     "voicebox": {
       "provider": "voicebox",
       "model": "voicebox:chatterbox",
-      "voice": "<profile-id-from-GET-voicebox-profiles>",
-      "profile_id": "<profile-id>",
+      "voice": "TOPKEK",
+      "profile_id": "ae661599-9bf6-4361-9405-9279674ed347",
       "language": "pl",
       "format": "wav"
     }

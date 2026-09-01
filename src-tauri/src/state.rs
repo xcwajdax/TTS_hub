@@ -15,7 +15,7 @@ use crate::plugins::soundboard::{soundboard_settings_path, SoundboardSettings};
 use crate::plugins::state::PluginsState;
 use crate::minimax::MinimaxClient;
 use crate::voicebox::VoiceBoxClient;
-use crate::voicebox_server::VoiceboxServerProcess;
+use crate::voicebox_server::{VoiceboxLogBuffer, VoiceboxServerProcess};
 
 pub struct AppState {
     pub paths: RwLock<AppPaths>,
@@ -37,6 +37,7 @@ pub struct AppState {
     pub plugins_state_path: std::path::PathBuf,
     pub plugins_state: RwLock<PluginsState>,
     pub voicebox_server_child: Mutex<Option<VoiceboxServerProcess>>,
+    pub voicebox_server_log: Arc<VoiceboxLogBuffer>,
     pub ephemeral: EphemeralStore,
 }
 
@@ -95,6 +96,7 @@ impl AppState {
             plugins_state_path,
             plugins_state: RwLock::new(plugins_state),
             voicebox_server_child: Mutex::new(None),
+            voicebox_server_log: Arc::new(VoiceboxLogBuffer::new()),
             ephemeral: EphemeralStore::new(),
         };
         state.persist_settings()?;

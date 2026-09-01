@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import type { TtsVoiceProfile } from "../appSettings";
+import { groupProfilesByProvider } from "../lib/voiceProfiles";
 import type { PaletteEntry } from "./types";
 import { ROLEPLAY_COLORS, profileLabel } from "./types";
 import VoiceProfileAvatar from "./VoiceProfileAvatar";
@@ -18,6 +20,8 @@ export default function VoicePalette({
   onPaletteChange,
   onActiveColor,
 }: Props) {
+  const groups = useMemo(() => groupProfilesByProvider(profiles), [profiles]);
+
   const setProfileForColor = (color: string, voiceProfileId: string) => {
     const next = [...palette.filter((p) => p.color !== color)];
     if (voiceProfileId) next.push({ color, voiceProfileId });
@@ -52,7 +56,7 @@ export default function VoicePalette({
               {profile ? (
                 <VoiceProfileAvatar profile={profile} size={28} className="shrink-0" />
               ) : (
-                <div className="w-7 h-7 rounded-full bg-panel2 border border-border shrink-0" />
+                <div className="voice-avatar-frame w-7 h-7 bg-panel2 shrink-0" />
               )}
               <select
                 className="flex-1 text-xs bg-panel border border-border rounded px-2 py-1 min-w-0"
@@ -60,10 +64,14 @@ export default function VoicePalette({
                 onChange={(e) => setProfileForColor(color, e.target.value)}
               >
                 <option value="">— profil głosu —</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.provider})
-                  </option>
+                {groups.map((group) => (
+                  <optgroup key={group.provider} label={group.label}>
+                    {group.profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               {entry?.voiceProfileId && (

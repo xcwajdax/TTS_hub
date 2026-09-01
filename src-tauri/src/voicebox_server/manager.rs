@@ -1,17 +1,22 @@
 //! Spawn / stop forked Voicebox backend (dev Python + release PyInstaller sidecar).
 
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use tauri::AppHandle;
 #[cfg(not(debug_assertions))]
+use tauri_plugin_shell::process::CommandEvent;
+#[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
 
 use crate::voicebox::VoiceBoxClient;
 
+use super::log::VoiceboxLogBuffer;
 use super::process::{stop_process, VoiceboxServerProcess};
 use super::{probe_server, VoiceboxServerMode, VoiceboxServerStatus};
 
@@ -52,16 +57,51 @@ fn dev_python_executable(backend_root: &Path) -> Option<PathBuf> {
     None
 }
 
-fn spawn_dev_python(backend_root: &Path, host: &str, port: u16) -> Result<Child> {
+fn spawn_pipe_reader(
+    reader: impl std::io::Read + Send + 'static,
+    stream: &'static str,
+    log: Arc<VoiceboxLogBuffer>,
+    app: Option<AppHandle>,
+) {
+    thread::spawn(move || {
+        let buf = BufReader::new(reader);
+        for line in buf.lines() {
+            match line {
+                Ok(l) => log.push_line(app.as_ref(), stream, &l),
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+fn scrub_stale_ssl_env(cmd: &mut Command) {
+    for key in ["SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"] {
+        if let Some(val) = std::env::var_os(key) {
+            if !Path::new(&val).is_file() {
+                cmd.env_remove(key);
+            }
+        }
+    }
+}
+
+fn spawn_dev_python(
+    backend_root: &Path,
+    host: &str,
+    port: u16,
+    log: &Arc<VoiceboxLogBuffer>,
+    app: Option<&AppHandle>,
+) -> Result<Child> {
     let python = dev_python_executable(backend_root).ok_or_else(|| {
         anyhow!(
-            "voicebox-backend/.venv not found — run: cd voicebox-backend && python -m venv .venv && pip install -r backend/requirements.txt"
+            "voicebox-backend/.venv not found — użyj «Zainstaluj silnik lokalny» w Voice Box → Modele (albo: cd voicebox-backend && python -m venv .venv && pip install -r backend/requirements.txt)"
         )
     })?;
     let mut cmd = Command::new(&python);
     cmd.current_dir(backend_root)
         .env("PYTHONPATH", backend_root)
-        .args([
+        .env("PYTHONUNBUFFERED", "1");
+    scrub_stale_ssl_env(&mut cmd);
+    cmd.args([
             "-m",
             "backend.main",
             "--host",
@@ -70,27 +110,42 @@ fn spawn_dev_python(backend_root: &Path, host: &str, port: u16) -> Result<Child>
             &port.to_string(),
         ])
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    cmd.spawn()
-        .with_context(|| format!("spawn Voicebox dev server via {}", python.display()))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("spawn Voicebox dev server via {}", python.display()))?;
+
+    if let Some(out) = child.stdout.take() {
+        spawn_pipe_reader(out, "stdout", Arc::clone(log), app.cloned());
+    }
+    if let Some(err) = child.stderr.take() {
+        spawn_pipe_reader(err, "stderr", Arc::clone(log), app.cloned());
+    }
+    log.push_marker(
+        app,
+        &format!("--- started dev Voicebox on {host}:{port} ---"),
+    );
+    Ok(child)
 }
 
 #[cfg(not(debug_assertions))]
 fn spawn_release_sidecar(
     app: &AppHandle,
-    data_dir: &Path,
+    voicebox_data_dir: &Path,
     port: u16,
+    log: &Arc<VoiceboxLogBuffer>,
 ) -> Result<VoiceboxServerProcess> {
-    std::fs::create_dir_all(data_dir).with_context(|| format!("create {}", data_dir.display()))?;
+    std::fs::create_dir_all(voicebox_data_dir)
+        .with_context(|| format!("create {}", voicebox_data_dir.display()))?;
     let sidecar = app
         .shell()
         .sidecar("voicebox-server")
         .context("voicebox-server sidecar not bundled — run scripts/build-voicebox-server.ps1 before tauri build")?;
     let parent_pid = std::process::id().to_string();
     let port_str = port.to_string();
-    let data_dir_str = data_dir.to_string_lossy().to_string();
-    let (_rx, child) = sidecar
+    let data_dir_str = voicebox_data_dir.to_string_lossy().to_string();
+    let (mut rx, child) = sidecar
         .args([
             "--data-dir",
             &data_dir_str,
@@ -103,6 +158,42 @@ fn spawn_release_sidecar(
         ])
         .spawn()
         .context("spawn voicebox-server sidecar")?;
+
+    let log_c = Arc::clone(log);
+    let app_c = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    let s = String::from_utf8_lossy(&bytes);
+                    log_c.push_line(Some(&app_c), "stdout", &s);
+                }
+                CommandEvent::Stderr(bytes) => {
+                    let s = String::from_utf8_lossy(&bytes);
+                    log_c.push_line(Some(&app_c), "stderr", &s);
+                }
+                CommandEvent::Error(e) => {
+                    log_c.push_line(Some(&app_c), "stderr", &e);
+                }
+                CommandEvent::Terminated(payload) => {
+                    log_c.push_marker(
+                        Some(&app_c),
+                        &format!(
+                            "--- sidecar terminated code={:?} signal={:?} ---",
+                            payload.code, payload.signal
+                        ),
+                    );
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    log.push_marker(
+        Some(app),
+        &format!("--- started bundled voicebox-server on 127.0.0.1:{port} ---"),
+    );
     Ok(VoiceboxServerProcess::Sidecar(child))
 }
 
@@ -122,10 +213,11 @@ async fn wait_for_health(client: &VoiceBoxClient, attempts: u32) -> bool {
 pub async fn ensure_running(
     client: &VoiceBoxClient,
     child_slot: &Mutex<Option<VoiceboxServerProcess>>,
-    _app_handle: Option<&AppHandle>,
-    _voicebox_data_dir: &Path,
+    app_handle: Option<&AppHandle>,
+    voicebox_data_dir: &Path,
     mode: VoiceboxServerMode,
     port: u16,
+    log: &Arc<VoiceboxLogBuffer>,
 ) -> VoiceboxServerStatus {
     let mut status = probe_server(client, 1).await;
     status.mode = mode.as_str().to_string();
@@ -141,7 +233,7 @@ pub async fn ensure_running(
 
     #[cfg(debug_assertions)]
     if let Some(root) = dev_backend_root() {
-        match spawn_dev_python(&root, "127.0.0.1", port) {
+        match spawn_dev_python(&root, "127.0.0.1", port, log, app_handle) {
             Ok(child) => {
                 if let Ok(mut guard) = child_slot.lock() {
                     *guard = Some(VoiceboxServerProcess::Dev(child));
@@ -168,8 +260,8 @@ pub async fn ensure_running(
     }
 
     #[cfg(not(debug_assertions))]
-    if let Some(app) = _app_handle {
-        match spawn_release_sidecar(app, _voicebox_data_dir, port) {
+    if let Some(app) = app_handle {
+        match spawn_release_sidecar(app, voicebox_data_dir, port, log) {
             Ok(proc) => {
                 if let Ok(mut guard) = child_slot.lock() {
                     *guard = Some(proc);
@@ -199,6 +291,7 @@ pub async fn ensure_running(
 
     #[cfg(debug_assertions)]
     {
+        let _ = voicebox_data_dir;
         status.bundled_spawn_ready = dev_backend_root().is_some();
         status.message = Some(
             "Bundled sidecar binary not used in debug — use voicebox-backend/.venv or external server."
@@ -216,8 +309,15 @@ pub async fn ensure_running(
     status
 }
 
-pub fn stop_child(child_slot: &Mutex<Option<VoiceboxServerProcess>>) {
+pub fn stop_child(
+    child_slot: &Mutex<Option<VoiceboxServerProcess>>,
+    log: Option<&Arc<VoiceboxLogBuffer>>,
+    app: Option<&AppHandle>,
+) {
     stop_process(child_slot);
+    if let Some(log) = log {
+        log.push_marker(app, "--- server stopped ---");
+    }
 }
 
 pub fn default_port() -> u16 {

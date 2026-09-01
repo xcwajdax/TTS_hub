@@ -1,6 +1,9 @@
 import type { TtsVoiceProfile } from "../appSettings";
 
+/** @deprecated Używaj {@link RoleplayViewTab} — podsumowanie jest na stałym pasku. */
 export type RoleplayPhase = "script" | "summary" | "studio";
+
+export type RoleplayViewTab = "script" | "timeline";
 
 export interface PaletteEntry {
   color: string;

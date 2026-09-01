@@ -150,6 +150,23 @@ export default function GeneralPage({ view, update, onError, onSuccess }: Props)
         </p>
       </SettingsSection>
 
+      <SettingsSection title="Okienko odtwarzania" borderTop>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={view.playback_popup_enabled ?? true}
+            onChange={(e) => update("playback_popup_enabled", e.target.checked)}
+          />
+          <span>Pokazuj wyskakujące okienko odtwarzania w prawym dolnym rogu</span>
+        </label>
+        <p className="text-[11px] text-muted">
+          Okienko pojawia się automatycznie, gdy okno główne jest w tle, podczas generacji lub
+          po przypięciu sesji. Działa też jako mini-panel sterowania (pauza, głośność, archiwum,
+          drzemka, przypnij). Wyłączenie ukrywa je całkowicie — sterowanie nadal działa w głównym
+          oknie.
+        </p>
+      </SettingsSection>
+
       <SettingsSection title="Prywatność" borderTop>
         <p className="text-[11px] text-muted mb-2">
           Cykl w pasku tytułu: domyślny → prywatny → incognito. Ustawienie zapisuje się automatycznie.

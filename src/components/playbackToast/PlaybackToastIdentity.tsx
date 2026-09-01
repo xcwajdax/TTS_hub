@@ -28,7 +28,7 @@ export default function PlaybackToastIdentity({
         filePath={voiceAvatarPath}
         fallbackLabel={displayName}
         size={size}
-        className="ring-1 ring-border/60"
+        className="voice-avatar-frame"
         badgePosition="top-left"
       />
       <span

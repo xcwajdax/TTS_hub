@@ -1,6 +1,11 @@
-export type VoiceboxSection = "profiles" | "history";
+export type VoiceboxSection = "models" | "profiles" | "history" | "log";
 
-export const DEFAULT_VOICEBOX_SECTION: VoiceboxSection = "profiles";
+export const DEFAULT_VOICEBOX_SECTION: VoiceboxSection = "models";
+
+export type CloneProfilePrefill = {
+  default_engine: "chatterbox" | "tada";
+  tada_size?: "1B" | "3B";
+};
 
 export const VOICEBOX_LANGUAGES = [
   { code: "pl", label: "Polski" },
@@ -28,12 +33,13 @@ export const VOICEBOX_LANGUAGES = [
   { code: "el", label: "Ελληνικά" },
 ] as const;
 
+/** Engines exposed in TTS Hub for PL voice cloning. */
 export const VOICEBOX_ENGINES = [
   { id: "chatterbox", label: "Chatterbox" },
-  { id: "chatterbox_turbo", label: "Chatterbox Turbo" },
-  { id: "qwen", label: "Qwen TTS" },
-  { id: "qwen_custom_voice", label: "Qwen Custom Voice" },
-  { id: "luxtts", label: "LuxTTS" },
   { id: "tada", label: "TADA" },
-  { id: "kokoro", label: "Kokoro" },
+] as const;
+
+export const VOICEBOX_TADA_SIZES = [
+  { id: "1B" as const, label: "TADA 1B", model_name: "tada-1b", hub_id: "voicebox:tada-1b" },
+  { id: "3B" as const, label: "TADA 3B", model_name: "tada-3b-ml", hub_id: "voicebox:tada-3b-ml" },
 ] as const;

@@ -441,6 +441,11 @@ export interface VoiceboxServerStatus {
   reachable: boolean;
   health_status?: string | null;
   bundled_spawn_ready: boolean;
+  /** Dev: voicebox-backend/.venv ready */
+  dev_venv_ready?: boolean;
+  /** Dev: can run in-app install */
+  dev_install_available?: boolean;
+  installing?: boolean;
   message?: string | null;
 }
 
@@ -452,8 +457,26 @@ export async function voiceboxServerStart(): Promise<VoiceboxServerStatus> {
   return invoke<VoiceboxServerStatus>("voicebox_server_start");
 }
 
+export async function voiceboxServerInstall(): Promise<VoiceboxServerStatus> {
+  return invoke<VoiceboxServerStatus>("voicebox_server_install");
+}
+
 export async function voiceboxServerStop(): Promise<void> {
   return invoke("voicebox_server_stop");
+}
+
+export interface VoiceboxLogLine {
+  line: string;
+  stream: string;
+  ts: string;
+}
+
+export async function voiceboxServerLogSnapshot(): Promise<VoiceboxLogLine[]> {
+  return invoke<VoiceboxLogLine[]>("voicebox_server_log_snapshot");
+}
+
+export async function voiceboxServerLogClear(): Promise<void> {
+  return invoke("voicebox_server_log_clear");
 }
 
 export async function voiceboxHealth(): Promise<VoiceBoxHealth> {
@@ -466,6 +489,59 @@ export async function listVoiceboxProfiles(): Promise<VoiceBoxProfile[]> {
 
 export async function listVoiceboxModels(): Promise<TtsModelInfo[]> {
   return invoke<TtsModelInfo[]>("list_voicebox_models");
+}
+
+export interface VoiceBoxPlModelStatus {
+  model_name: string;
+  display_name: string;
+  hub_model_id: string;
+  engine: string;
+  model_size: string | null;
+  downloaded: boolean;
+  downloading: boolean;
+  loaded: boolean;
+  size_mb: number | null;
+  progress: number | null;
+  bytes_current: number | null;
+  bytes_total: number | null;
+  filename: string | null;
+}
+
+export interface VoiceBoxModelProgressEvent {
+  model_name: string;
+  downloading: boolean;
+  downloaded: boolean;
+  loaded: boolean;
+  progress: number | null;
+  bytes_current: number | null;
+  bytes_total: number | null;
+  filename: string | null;
+  error: string | null;
+}
+
+/** Backend model_name values for PL clone allowlist. */
+export const VOICEBOX_PL_MODEL_NAMES = [
+  "chatterbox-tts",
+  "tada-1b",
+  "tada-3b-ml",
+] as const;
+
+export type VoiceboxPlModelName = (typeof VOICEBOX_PL_MODEL_NAMES)[number];
+
+export async function voiceboxListPlModelStatus(): Promise<VoiceBoxPlModelStatus[]> {
+  return invoke<VoiceBoxPlModelStatus[]>("voicebox_list_pl_model_status");
+}
+
+export async function voiceboxDownloadModel(modelName: string): Promise<void> {
+  return invoke("voicebox_download_model", { modelName });
+}
+
+export async function voiceboxCancelModelDownload(modelName: string): Promise<void> {
+  return invoke("voicebox_cancel_model_download", { modelName });
+}
+
+export async function voiceboxUnloadModel(modelName: string): Promise<void> {
+  return invoke("voicebox_unload_model", { modelName });
 }
 
 export async function voiceboxGetProfile(profileId: string): Promise<VoiceBoxProfile> {
@@ -1066,6 +1142,10 @@ export async function roleplayDeleteProject(id: string): Promise<void> {
   return invoke("roleplay_delete_project", { id });
 }
 
+export async function roleplayRebuildTimeline(projectId: string): Promise<RoleplayProject> {
+  return invoke("roleplay_rebuild_timeline", { projectId });
+}
+
 export async function roleplayUpdateTimeline(projectId: string, timelineJson: string): Promise<void> {
   return invoke("roleplay_update_timeline", { projectId, timelineJson });
 }
@@ -1111,6 +1191,20 @@ export async function roleplayExportMix(
   format: string,
 ): Promise<string> {
   return invoke("roleplay_export_mix", { wavPath, destPath, format });
+}
+
+export async function roleplayExportMp4(
+  projectId: string,
+  wavPath: string,
+  destPath: string,
+  templateId?: string | null,
+): Promise<string> {
+  return invoke("roleplay_export_mp4", {
+    projectId,
+    wavPath,
+    destPath,
+    templateId: templateId ?? null,
+  });
 }
 
 // === chat-window (2026-06-06) ===

@@ -7,8 +7,11 @@ function formatTime(sec: number): string {
 function tickStep(pxPerSec: number): number {
   if (pxPerSec >= 120) return 1;
   if (pxPerSec >= 60) return 2;
-  if (pxPerSec >= 40) return 5;
-  return 10;
+  if (pxPerSec >= 30) return 5;
+  if (pxPerSec >= 12) return 10;
+  if (pxPerSec >= 6) return 30;
+  if (pxPerSec >= 3) return 60;
+  return 120;
 }
 
 interface Props {

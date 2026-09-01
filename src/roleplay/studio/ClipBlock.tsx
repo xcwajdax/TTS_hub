@@ -59,7 +59,7 @@ export default function ClipBlock({
 
     const mid = blockH / 2;
     ctx.fillStyle = selected ? "#ffffff" : `${color}`;
-    const step = Math.max(1, peaks.length / width);
+    const step = peaks.length / Math.max(1, width);
     for (let x = 0; x < width; x++) {
       const i = Math.min(peaks.length - 1, Math.floor(x * step));
       const v = peaks[i] ?? 0;

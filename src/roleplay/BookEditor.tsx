@@ -2,6 +2,9 @@ import { useEffect, useMemo } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
+import Underline from "@tiptap/extension-underline";
+import TextAlign from "@tiptap/extension-text-align";
+import BookEditorToolbar from "./BookEditorToolbar";
 
 interface Props {
   docJson: string;
@@ -14,6 +17,8 @@ export default function BookEditor({ docJson, activeColor, onDocChange, disabled
   const extensions = useMemo(
     () => [
       StarterKit,
+      Underline,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
       Highlight.configure({ multicolor: true }),
     ],
     [],
@@ -39,10 +44,11 @@ export default function BookEditor({ docJson, activeColor, onDocChange, disabled
   }, [editor, disabled]);
 
   return (
-    <div className="roleplay-book-editor flex-1 min-h-0 border border-border rounded-lg bg-panel2 overflow-auto">
+    <div className="roleplay-book-editor flex flex-col flex-1 min-h-0 border border-border rounded-lg bg-panel2 overflow-hidden">
+      <BookEditorToolbar editor={editor} />
       <EditorContent
         editor={editor}
-        className="prose prose-invert max-w-none p-4 min-h-[280px] focus:outline-none text-sm leading-relaxed"
+        className="prose prose-invert max-w-none p-4 min-h-[280px] flex-1 overflow-auto focus:outline-none text-sm leading-relaxed"
       />
     </div>
   );

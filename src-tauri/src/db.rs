@@ -15,6 +15,10 @@ pub struct Generation {
     pub style: Option<String>,
     pub format: String,
     pub duration_ms: Option<i64>,
+    /// Wall-clock time spent synthesizing (API + decode + write). Distinct from
+    /// `duration_ms`, which is the audio length.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_ms: Option<i64>,
     pub file_path: String,
     pub is_archived: bool,
     pub session_id: String,
@@ -161,7 +165,7 @@ pub struct UsageSummary {
     pub current_session: UsageTotals,
 }
 
-const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id, context_label, is_private";
+const GEN_SELECT: &str = "id, created_at, text, title, model, voice, style, format, duration_ms, generation_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, provider, input_chars, prompt_tokens, output_tokens, total_tokens, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id, context_label, is_private";
 
 fn default_source() -> String {
     "manual".to_string()
@@ -325,6 +329,13 @@ impl Db {
             "ALTER TABLE generations ADD COLUMN context_label TEXT",
             [],
         );
+        // Wall-clock synthesis time (ms). NULL for legacy rows generated before
+        // this column existed — UI hides the metric rather than guessing from
+        // updated_at (which also changes on archive / title edits).
+        let _ = conn.execute(
+            "ALTER TABLE generations ADD COLUMN generation_ms INTEGER",
+            [],
+        );
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS folders (
@@ -449,7 +460,7 @@ impl Db {
     pub fn insert(&self, g: &Generation) -> Result<()> {
         let c = self.conn.lock().unwrap();
         c.execute(
-            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id, context_label, is_private) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35)",
+            "INSERT INTO generations (id, created_at, text, title, model, voice, style, format, duration_ms, generation_ms, file_path, is_archived, session_id, source, conversation_id, summary_text, status, error, attempts, updated_at, request_json, folder_id, ui_color, original_prompt, chat_session_id, chat_message_id, char_count, estimated_tokens, origin_kind, origin_platform_id, origin_user_id, origin_user_name, origin_thread_id, voice_profile_id, context_label, is_private) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36)",
             params![
                 g.id,
                 g.created_at,
@@ -460,6 +471,7 @@ impl Db {
                 g.style,
                 g.format,
                 g.duration_ms,
+                g.generation_ms,
                 g.file_path,
                 g.is_archived as i32,
                 g.session_id,
@@ -606,6 +618,7 @@ impl Db {
         file_path: &str,
         format: &str,
         duration_ms: Option<i64>,
+        generation_ms: Option<i64>,
         title: Option<&str>,
         usage: Option<&GenerationUsage>,
     ) -> Result<()> {
@@ -613,11 +626,12 @@ impl Db {
         let c = self.conn.lock().unwrap();
         if let Some(u) = usage {
             c.execute(
-                "UPDATE generations SET status = 'done', file_path = ?1, format = ?2, duration_ms = ?3, title = COALESCE(?4, title), error = NULL, updated_at = ?5, provider = ?6, input_chars = ?7, prompt_tokens = ?8, output_tokens = ?9, total_tokens = ?10 WHERE id = ?11",
+                "UPDATE generations SET status = 'done', file_path = ?1, format = ?2, duration_ms = ?3, generation_ms = ?4, title = COALESCE(?5, title), error = NULL, updated_at = ?6, provider = ?7, input_chars = ?8, prompt_tokens = ?9, output_tokens = ?10, total_tokens = ?11 WHERE id = ?12",
                 params![
                     file_path,
                     format,
                     duration_ms,
+                    generation_ms,
                     title,
                     now,
                     u.provider,
@@ -630,8 +644,8 @@ impl Db {
             )?;
         } else {
             c.execute(
-                "UPDATE generations SET status = 'done', file_path = ?1, format = ?2, duration_ms = ?3, title = COALESCE(?4, title), error = NULL, updated_at = ?5 WHERE id = ?6",
-                params![file_path, format, duration_ms, title, now, id],
+                "UPDATE generations SET status = 'done', file_path = ?1, format = ?2, duration_ms = ?3, generation_ms = ?4, title = COALESCE(?5, title), error = NULL, updated_at = ?6 WHERE id = ?7",
+                params![file_path, format, duration_ms, generation_ms, title, now, id],
             )?;
         }
         Ok(())
@@ -1107,42 +1121,43 @@ fn row_to_gen(row: &rusqlite::Row) -> rusqlite::Result<Generation> {
         style: row.get(6)?,
         format: row.get(7)?,
         duration_ms: row.get(8)?,
-        file_path: row.get(9)?,
-        is_archived: row.get::<_, i32>(10)? != 0,
-        session_id: row.get(11)?,
+        generation_ms: row.get(9)?,
+        file_path: row.get(10)?,
+        is_archived: row.get::<_, i32>(11)? != 0,
+        session_id: row.get(12)?,
         source: row
-            .get::<_, Option<String>>(12)?
+            .get::<_, Option<String>>(13)?
             .unwrap_or_else(|| "manual".to_string()),
-        conversation_id: row.get(13)?,
-        summary_text: row.get(14)?,
+        conversation_id: row.get(14)?,
+        summary_text: row.get(15)?,
         status: row
-            .get::<_, Option<String>>(15)?
+            .get::<_, Option<String>>(16)?
             .unwrap_or_else(|| "done".to_string()),
-        error: row.get(16)?,
-        attempts: row.get::<_, Option<i64>>(17)?.unwrap_or(0),
-        updated_at: row.get::<_, Option<i64>>(18)?.unwrap_or(0),
-        request_json: row.get(19)?,
-        provider: row.get(20)?,
-        input_chars: row.get(21)?,
-        prompt_tokens: row.get(22)?,
-        output_tokens: row.get(23)?,
-        total_tokens: row.get(24)?,
-        folder_id: row.get(25)?,
-        ui_color: row.get(26)?,
+        error: row.get(17)?,
+        attempts: row.get::<_, Option<i64>>(18)?.unwrap_or(0),
+        updated_at: row.get::<_, Option<i64>>(19)?.unwrap_or(0),
+        request_json: row.get(20)?,
+        provider: row.get(21)?,
+        input_chars: row.get(22)?,
+        prompt_tokens: row.get(23)?,
+        output_tokens: row.get(24)?,
+        total_tokens: row.get(25)?,
+        folder_id: row.get(26)?,
+        ui_color: row.get(27)?,
         tag_ids: None,
-        original_prompt: row.get(27)?,
-        chat_session_id: row.get(28)?,
-        chat_message_id: row.get(29)?,
-        char_count: row.get::<_, Option<i64>>(30)?.unwrap_or(0),
-        estimated_tokens: row.get::<_, Option<i64>>(31)?.unwrap_or(0),
-        origin_kind: row.get(32)?,
-        origin_platform_id: row.get(33)?,
-        origin_user_id: row.get(34)?,
-        origin_user_name: row.get(35)?,
-        origin_thread_id: row.get(36)?,
-        voice_profile_id: row.get(37)?,
-        context_label: row.get(38)?,
-        is_private: row.get::<_, Option<i32>>(39)?.unwrap_or(0) != 0,
+        original_prompt: row.get(28)?,
+        chat_session_id: row.get(29)?,
+        chat_message_id: row.get(30)?,
+        char_count: row.get::<_, Option<i64>>(31)?.unwrap_or(0),
+        estimated_tokens: row.get::<_, Option<i64>>(32)?.unwrap_or(0),
+        origin_kind: row.get(33)?,
+        origin_platform_id: row.get(34)?,
+        origin_user_id: row.get(35)?,
+        origin_user_name: row.get(36)?,
+        origin_thread_id: row.get(37)?,
+        voice_profile_id: row.get(38)?,
+        context_label: row.get(39)?,
+        is_private: row.get::<_, Option<i32>>(40)?.unwrap_or(0) != 0,
     })
 }
 
@@ -1473,6 +1488,7 @@ mod tests {
             style: None,
             format: "mp3".into(),
             duration_ms: None,
+            generation_ms: None,
             file_path: format!("/tmp/{id}.mp3"),
             is_archived: false,
             session_id: session_id.into(),
@@ -1562,6 +1578,30 @@ mod tests {
         assert_eq!(removed.len(), 1);
         assert_eq!(removed[0], "/tmp/d1.mp3");
         assert!(db.get("job1").unwrap().is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn finalize_done_persists_generation_ms() {
+        let dir = std::env::temp_dir().join(format!("tts_hub_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("test.db")).unwrap();
+        db.insert(&test_gen("g1", "s", 1)).unwrap();
+        db.finalize_done(
+            "g1",
+            "/tmp/g1.mp3",
+            "mp3",
+            Some(4200),
+            Some(1850),
+            Some("hello"),
+            None,
+        )
+        .unwrap();
+        let got = db.get("g1").unwrap().expect("row");
+        assert_eq!(got.duration_ms, Some(4200));
+        assert_eq!(got.generation_ms, Some(1850));
+        assert_eq!(got.title.as_deref(), Some("hello"));
+        assert_eq!(got.status, STATUS_DONE);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

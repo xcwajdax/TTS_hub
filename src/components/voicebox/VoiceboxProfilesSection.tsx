@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { VoiceBoxProfile } from "../../api/tauri";
 import { useVoiceAvatar } from "../../hooks/useAvatars";
 import ProviderAvatar from "../ProviderAvatar";
+import type { CloneProfilePrefill } from "./voiceboxSections";
 import VoiceboxProfileEditor from "./VoiceboxProfileEditor";
 
 function VoiceboxProfileRowAvatar({ profile }: { profile: VoiceBoxProfile }) {
@@ -25,6 +26,9 @@ interface Props {
   hubProfileIds: Set<string>;
   onError: (m: string) => void;
   onSuccess?: (m: string) => void;
+  createPrefill?: CloneProfilePrefill | null;
+  createNonce?: number;
+  onCreatePrefillConsumed?: () => void;
 }
 
 export default function VoiceboxProfilesSection({
@@ -35,9 +39,23 @@ export default function VoiceboxProfilesSection({
   hubProfileIds,
   onError,
   onSuccess,
+  createPrefill,
+  createNonce = 0,
+  onCreatePrefillConsumed,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [prefill, setPrefill] = useState<CloneProfilePrefill | null>(null);
+
+  useEffect(() => {
+    if (createNonce > 0) {
+      setPrefill(createPrefill ?? { default_engine: "chatterbox" });
+      setCreating(true);
+      setEditingId(null);
+      onCreatePrefillConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to nonce
+  }, [createNonce]);
 
   const editingProfile =
     editingId && !creating ? profiles.find((p) => p.id === editingId) ?? null : null;
@@ -45,12 +63,14 @@ export default function VoiceboxProfilesSection({
   const closeEditor = () => {
     setEditingId(null);
     setCreating(false);
+    setPrefill(null);
   };
 
   const handleSaved = (profile: VoiceBoxProfile) => {
     onRefresh();
     setEditingId(profile.id);
     setCreating(false);
+    setPrefill(null);
   };
 
   if (creating || editingProfile) {
@@ -58,6 +78,7 @@ export default function VoiceboxProfilesSection({
       <VoiceboxProfileEditor
         profile={creating ? null : editingProfile}
         isNew={creating}
+        createPrefill={creating ? prefill : null}
         onSaved={handleSaved}
         onDeleted={closeEditor}
         onCancel={closeEditor}
@@ -71,7 +92,14 @@ export default function VoiceboxProfilesSection({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-primary text-xs" onClick={() => setCreating(true)}>
+        <button
+          type="button"
+          className="btn-primary text-xs"
+          onClick={() => {
+            setPrefill(null);
+            setCreating(true);
+          }}
+        >
           + Nowy profil
         </button>
         <button type="button" className="btn text-xs" onClick={() => onRefresh()}>
@@ -79,67 +107,80 @@ export default function VoiceboxProfilesSection({
         </button>
       </div>
       {profiles.length === 0 ? (
-        <p className="text-xs text-muted">
-          Brak profili na serwerze Voice Box. Utwórz pierwszy profil i dodaj próbki głosu.
-        </p>
+        <div className="flex flex-col gap-2 text-xs text-muted">
+          <p>Brak profili na serwerze Voice Box. Utwórz pierwszy profil i dodaj próbki głosu.</p>
+          <p className="text-[10px] text-muted/90 leading-snug">
+            Najpierw pobierz model w zakładce Modele, potem wróć tutaj z plikiem WAV.
+          </p>
+        </div>
       ) : (
         <ul className="flex flex-col gap-2">
-          {profiles.map((p) => (
-            <li
-              key={p.id}
-              className="border border-border rounded-md p-3 flex flex-col sm:flex-row sm:items-center gap-3 bg-panel2/20"
-            >
-              <VoiceboxProfileRowAvatar profile={p} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{p.name}</p>
-                {p.description ? (
-                  <p className="text-[10px] text-muted truncate">{p.description}</p>
-                ) : null}
-                <p className="text-[10px] text-muted mt-1">
-                  {p.language.toUpperCase()}
-                  {p.default_engine ? ` · ${p.default_engine}` : ""}
-                  {` · ${p.sample_count} próbek · ${p.generation_count} generacji`}
-                </p>
-                {p.personality ? (
-                  <p className="text-[10px] text-muted/80 line-clamp-2 mt-1" title={p.personality}>
-                    Personality: {p.personality}
+          {profiles.map((p) => {
+            const canUse =
+              (p.voice_type ?? "cloned") !== "cloned" || (p.sample_count ?? 0) >= 1;
+            return (
+              <li
+                key={p.id}
+                className="border border-border rounded-md p-3 flex flex-col sm:flex-row sm:items-center gap-3 bg-panel2/20"
+              >
+                <VoiceboxProfileRowAvatar profile={p} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{p.name}</p>
+                  {p.description ? (
+                    <p className="text-[10px] text-muted truncate">{p.description}</p>
+                  ) : null}
+                  <p className="text-[10px] text-muted mt-1">
+                    {p.language.toUpperCase()}
+                    {p.default_engine ? ` · ${p.default_engine}` : ""}
+                    {` · ${p.sample_count} próbek · ${p.generation_count} generacji`}
                   </p>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap gap-2 shrink-0">
-                <button
-                  type="button"
-                  className="btn text-xs"
-                  onClick={() => onUseInTts(p)}
-                >
-                  Użyj w TTS
-                </button>
-                <button
-                  type="button"
-                  className="btn text-xs"
-                  disabled={hubProfileIds.has(p.id)}
-                  title={
-                    hubProfileIds.has(p.id)
-                      ? "Ten profil Voice Box jest już na liście profili TTS Hub"
-                      : "Zapisz jako profil głosu w liście po lewej (TTS Hub)"
-                  }
-                  onClick={() => onAddToProfileList(p)}
-                >
-                  {hubProfileIds.has(p.id) ? "Na liście profili" : "Dodaj do listy profili"}
-                </button>
-                <button
-                  type="button"
-                  className="btn text-xs"
-                  onClick={() => {
-                    setCreating(false);
-                    setEditingId(p.id);
-                  }}
-                >
-                  Edytuj
-                </button>
-              </div>
-            </li>
-          ))}
+                  {p.personality ? (
+                    <p className="text-[10px] text-muted/80 line-clamp-2 mt-1" title={p.personality}>
+                      Personality: {p.personality}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    type="button"
+                    className="btn text-xs"
+                    disabled={!canUse}
+                    title={
+                      canUse
+                        ? undefined
+                        : "Dodaj próbkę referencyjną przed użyciem w TTS"
+                    }
+                    onClick={() => onUseInTts(p)}
+                  >
+                    Użyj w TTS
+                  </button>
+                  <button
+                    type="button"
+                    className="btn text-xs"
+                    disabled={hubProfileIds.has(p.id)}
+                    title={
+                      hubProfileIds.has(p.id)
+                        ? "Ten profil Voice Box jest już na liście profili TTS Hub"
+                        : "Zapisz jako profil głosu w liście po lewej (TTS Hub)"
+                    }
+                    onClick={() => onAddToProfileList(p)}
+                  >
+                    {hubProfileIds.has(p.id) ? "Na liście profili" : "Dodaj do listy profili"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn text-xs"
+                    onClick={() => {
+                      setCreating(false);
+                      setEditingId(p.id);
+                    }}
+                  >
+                    Edytuj
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

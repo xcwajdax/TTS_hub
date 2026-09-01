@@ -15,14 +15,58 @@ export function normalizeVideoRect(
   return { x, y, width, height };
 }
 
+const LAYER_FIELD_ALIASES: Record<string, string> = {
+  font_name: "fontName",
+  font_size: "fontSize",
+  primary_color: "primaryColor",
+  highlight_color: "highlightColor",
+  scroll_mode: "scrollMode",
+  object_fit: "objectFit",
+  logo_path: "logoPath",
+  image_path: "imagePath",
+  shape_kind: "shapeKind",
+  stroke_width: "strokeWidth",
+};
+
+const CANVAS_FIELD_ALIASES: Record<string, string> = {
+  background_mode: "backgroundMode",
+  background_to: "backgroundTo",
+  background_angle: "backgroundAngle",
+};
+
+function liftAliases<T extends Record<string, unknown>>(raw: T, aliases: Record<string, string>): T {
+  const out: Record<string, unknown> = { ...raw };
+  for (const [snake, camel] of Object.entries(aliases)) {
+    if (snake in out) {
+      if (out[camel] === undefined || out[camel] === null) {
+        out[camel] = out[snake];
+      }
+      delete out[snake];
+    }
+  }
+  return out as T;
+}
+
+export function canonicalizeVideoLayer(layer: VideoLayer): VideoLayer {
+  return liftAliases(layer as unknown as Record<string, unknown>, LAYER_FIELD_ALIASES) as unknown as VideoLayer;
+}
+
 export function normalizeVideoTemplate(template: VideoTemplate): VideoTemplate {
   const { width: cw, height: ch } = template.canvas;
+  const canvas = liftAliases(
+    template.canvas as unknown as Record<string, unknown>,
+    CANVAS_FIELD_ALIASES,
+  ) as unknown as VideoTemplate["canvas"];
   return {
     ...template,
-    layers: template.layers.map((layer) => ({
-      ...layer,
-      rect: normalizeVideoRect(layer.rect, cw, ch),
-    })),
+    canvas,
+    layers: template.layers.map((layer) => {
+      const canon = canonicalizeVideoLayer(layer);
+      return {
+        ...canon,
+        rect: normalizeVideoRect(canon.rect, cw, ch),
+      };
+    }),
   };
 }
 

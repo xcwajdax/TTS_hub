@@ -52,7 +52,7 @@ export default function ProviderAvatar({
         fallbackLabel={fallbackLabel}
         size={size}
         cacheKey={cacheKey}
-        className="shrink-0"
+        className="voice-avatar-frame shrink-0"
       />
       {showProviderBadge ? (
         <span

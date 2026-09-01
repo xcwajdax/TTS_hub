@@ -2,6 +2,7 @@ import { useRelativeTime } from "../hooks/useRelativeTime";
 import {
   countWords,
   formatDurationMs,
+  formatGenerationMs,
   speechRateCharsPerSec,
 } from "../lib/formatTime";
 import { getGenerationTokenUsage } from "../lib/tokenUsage";
@@ -25,6 +26,7 @@ export default function PlaybackBarDetails({ gen, sessionIndex, sessionTotal }: 
   const charCount = gen.text.length;
   const wordCount = countWords(gen.text);
   const rate = speechRateCharsPerSec(charCount, gen.duration_ms);
+  const generationLabel = formatGenerationMs(gen.generation_ms);
   const styleLabel = gen.style?.trim();
   const tokenUsage = getGenerationTokenUsage(gen);
 
@@ -37,7 +39,15 @@ export default function PlaybackBarDetails({ gen, sessionIndex, sessionTotal }: 
   return (
     <div className="flex flex-col items-end min-w-0 text-right gap-0.5">
       <div className="text-xs font-medium tabular-nums text-foreground">
-        {formatDurationMs(gen.duration_ms)}
+        <span title="Długość nagrania">{formatDurationMs(gen.duration_ms)}</span>
+        {generationLabel && (
+          <>
+            <span className="text-muted/60 font-normal"> · </span>
+            <span className="text-muted font-normal" title="Czas generacji">
+              gen {generationLabel}
+            </span>
+          </>
+        )}
       </div>
       <div className="text-[10px] text-muted tabular-nums">
         {timeStr}

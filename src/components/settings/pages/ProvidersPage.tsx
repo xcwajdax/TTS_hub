@@ -99,7 +99,7 @@ export default function ProvidersPage({ view, update, onError }: Props) {
               serverMode={(view.voicebox_server_mode ?? "external") as VoiceboxServerMode}
               onBaseUrlChange={(v) => update("voicebox_base_url", v.trim() || null)}
               onServerModeChange={(mode) => update("voicebox_server_mode", mode)}
-              onOpenVoiceboxView={() => openVoiceboxView()}
+              onOpenVoiceboxView={(section) => openVoiceboxView(section)}
             />
           </ProviderCard>
 

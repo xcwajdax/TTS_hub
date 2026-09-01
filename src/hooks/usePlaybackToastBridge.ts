@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef } from "react";
 import { archiveGeneration, cancelJob, getAppSettings } from "../api/tauri";
 import { loadSaveFormat } from "../audioFormats";
 import type { TtsVoiceProfile } from "../appSettings";
+import type { TextFiltersSettings } from "../lib/textFiltersTypes";
 import { useJobs } from "../context/JobsContext";
+import { APP_SETTINGS_CHANGED } from "../lib/appSettingsEvents";
 import { usePlayback } from "../context/PlaybackContext";
 import { buildGenerationToastModel } from "../lib/buildGenerationToastModel";
 import { buildPlaybackToastModel } from "../lib/buildPlaybackToastModel";
@@ -16,6 +18,7 @@ import {
 } from "../lib/playbackToastActive";
 import {
   MAIN_WINDOW_LABEL,
+  PLAYBACK_CONTROL_EVENT,
   PLAYBACK_TOAST_WINDOW_LABEL,
   PlaybackToastEvents,
   type GenerationToastViewModel,
@@ -24,6 +27,7 @@ import {
   type PlaybackToastModelPatch,
   type PlaybackToastSetVolumePayload,
   type PlaybackToastSnoozePayload,
+  type PlaybackToastStackPayload,
   type PlaybackToastViewModel,
 } from "../lib/playbackToastContract";
 import {
@@ -32,6 +36,18 @@ import {
   isPlaybackToastDismissed,
   resetDismissIfNewGeneration,
 } from "../lib/playbackToastState";
+import {
+  clearPinnedForSession,
+  getPinnedSessions,
+  hasPinnedSessions,
+  isGenerationPinned,
+  pinSession,
+  unpinSession,
+} from "../lib/playbackPinState";
+import {
+  setPlaybackPositionLockEnabled,
+} from "../lib/playbackPositionLock";
+import type { PlaybackControlRequest } from "../lib/playbackToastControl";
 import { isTauriApp } from "../lib/tauriEnv";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
 import { usePlaybackSnooze } from "./usePlaybackSnooze";
@@ -59,15 +75,18 @@ interface Options {
 }
 
 export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options = {}) {
-  const { audioRef, current, playing, togglePlay, restart, select } = usePlayback();
+  const { audioRef, current, playing, togglePlay, restart, seekTo, select } = usePlayback();
   const { activeJobs, jobs } = useJobs();
   const toastVisibleRef = useRef(false);
   const toastModeRef = useRef<PlaybackToastMode | null>(null);
   const generationToastSuppressedRef = useRef(false);
   const toastReadyRef = useRef(false);
   const lastModelRef = useRef<PlaybackToastViewModel | null>(null);
+  const lastStackRef = useRef<PlaybackToastStackPayload | null>(null);
   const lastGenerationModelRef = useRef<GenerationToastViewModel | null>(null);
   const profilesRef = useRef<TtsVoiceProfile[]>([]);
+  const textFiltersRef = useRef<TextFiltersSettings | null>(null);
+  const playbackPopupEnabledRef = useRef(true);
   const syncInFlightRef = useRef(false);
   const showInFlightRef = useRef(false);
   const currentIdRef = useRef<string | null>(null);
@@ -81,20 +100,36 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
     currentIdRef.current = current?.id ?? null;
   }, [current?.id]);
 
+  const sessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!current?.session_id) return;
+    if (sessionIdRef.current && sessionIdRef.current !== current.session_id) {
+      clearPinnedForSession(sessionIdRef.current);
+    }
+    sessionIdRef.current = current.session_id;
+  }, [current?.session_id]);
+
   const refreshProfiles = useCallback(() => {
     void getAppSettings()
       .then((view) => {
         profilesRef.current = view.voice_profiles ?? [];
+        textFiltersRef.current = view.text_filters ?? null;
+        playbackPopupEnabledRef.current = view.playback_popup_enabled ?? true;
       })
       .catch(() => {
         profilesRef.current = [];
+        textFiltersRef.current = null;
       });
   }, []);
 
   useEffect(() => {
     refreshProfiles();
     window.addEventListener(VOICE_PROFILES_CHANGED, refreshProfiles);
-    return () => window.removeEventListener(VOICE_PROFILES_CHANGED, refreshProfiles);
+    window.addEventListener(APP_SETTINGS_CHANGED, refreshProfiles);
+    return () => {
+      window.removeEventListener(VOICE_PROFILES_CHANGED, refreshProfiles);
+      window.removeEventListener(APP_SETTINGS_CHANGED, refreshProfiles);
+    };
   }, [refreshProfiles]);
 
   const hideToast = useCallback(async () => {
@@ -106,9 +141,19 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
 
   const deliverModelToToast = useCallback(async (model: PlaybackToastViewModel) => {
     lastModelRef.current = model;
+    const pinned = getPinnedSessions()
+      .filter((s) => s.generationId !== model.generation.id)
+      .map((s) => s.model);
+    const stack: PlaybackToastStackPayload = { active: model, pinned };
+    lastStackRef.current = stack;
+
     for (let attempt = 0; attempt < MODEL_DELIVERY_ATTEMPTS; attempt++) {
       try {
-        await emitTo(PLAYBACK_TOAST_WINDOW_LABEL, PlaybackToastEvents.show, model);
+        if (pinned.length > 0) {
+          await emitTo(PLAYBACK_TOAST_WINDOW_LABEL, PlaybackToastEvents.showStack, stack);
+        } else {
+          await emitTo(PLAYBACK_TOAST_WINDOW_LABEL, PlaybackToastEvents.show, model);
+        }
         toastModeRef.current = "playback";
         return true;
       } catch {
@@ -150,6 +195,14 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
     syncInFlightRef.current = true;
 
     try {
+      if (!playbackPopupEnabledRef.current) {
+        if (toastVisibleRef.current) {
+          await hideToast();
+        } else {
+          await invoke("hide_playback_toast").catch(() => {});
+        }
+        return;
+      }
       const pendingJobs = activeJobs.filter(
         (j) => j.status === "queued" || j.status === "running",
       );
@@ -180,13 +233,19 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
       const visible = await main.isVisible();
       const minimized = await main.isMinimized();
       const inBackground = isMainInBackground(focused, minimized, visible);
+      const pinnedActive = generation ? isGenerationPinned(generation.id) : false;
+      const anyPinned = hasPinnedSessions();
 
-      if (!inBackground) {
+      if (!inBackground && !pinnedActive && !anyPinned) {
         if (!showInFlightRef.current && toastVisibleRef.current) {
           await hideToast();
         } else if (!toastVisibleRef.current) {
           await invoke("hide_playback_toast").catch(() => {});
         }
+        return;
+      }
+
+      if (!inBackground && (pinnedActive || anyPinned) && toastVisibleRef.current) {
         return;
       }
 
@@ -230,7 +289,7 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
       }
 
       if (!playbackEligible || !generation) {
-        if (!showInFlightRef.current) {
+        if (!showInFlightRef.current && !anyPinned) {
           if (toastVisibleRef.current) {
             await hideToast();
           } else {
@@ -261,7 +320,9 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
         await invoke("show_playback_toast");
         await emitTo(PLAYBACK_TOAST_WINDOW_LABEL, PlaybackToastEvents.ping, {}).catch(() => {});
 
-        const model = await buildPlaybackToastModel(generation, profilesRef.current);
+        const model = await buildPlaybackToastModel(generation, profilesRef.current, {
+          textFilters: textFiltersRef.current,
+        });
         await deliverModelToToast(model);
         toastVisibleRef.current = true;
       } finally {
@@ -403,6 +464,18 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
           await deliverGenerationToToast(lastGenerationModelRef.current);
           return;
         }
+        if (lastStackRef.current) {
+          await emitTo(
+            PLAYBACK_TOAST_WINDOW_LABEL,
+            lastStackRef.current.pinned.length > 0
+              ? PlaybackToastEvents.showStack
+              : PlaybackToastEvents.show,
+            lastStackRef.current.pinned.length > 0
+              ? lastStackRef.current
+              : lastStackRef.current.active,
+          );
+          return;
+        }
         if (lastModelRef.current) {
           await deliverModelToToast(lastModelRef.current);
         }
@@ -411,6 +484,54 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
 
     unsubs.push(main.listen(PlaybackToastEvents.togglePlay, () => togglePlay()));
     unsubs.push(main.listen(PlaybackToastEvents.restart, () => restart()));
+    unsubs.push(
+      main.listen<PlaybackControlRequest>(PLAYBACK_CONTROL_EVENT, (e) => {
+        const req = e.payload;
+        switch (req.action) {
+          case "toggle":
+            togglePlay();
+            break;
+          case "restart":
+            restart();
+            break;
+          case "seek":
+            if (req.seconds != null) seekTo(req.seconds);
+            break;
+          case "setVolume":
+            if (req.volume != null) setVolume(req.volume);
+            break;
+          case "toggleMute":
+            toggleMute();
+            break;
+          case "setPositionLock":
+            if (req.enabled != null) setPlaybackPositionLockEnabled(req.enabled);
+            break;
+          case "pin":
+            if (current && lastModelRef.current && req.generationId === current.id) {
+              pinSession({
+                generationId: current.id,
+                sessionId: current.session_id,
+                model: { ...lastModelRef.current, isPinned: true },
+                pinnedAt: Date.now(),
+                lastKnownTime: audioRef.current?.currentTime ?? 0,
+                lastKnownDuration: audioRef.current?.duration ?? 0,
+              });
+              void deliverModelToToast({ ...lastModelRef.current, isPinned: true });
+            }
+            break;
+          case "unpin":
+            if (req.generationId) {
+              unpinSession(req.generationId);
+              if (lastModelRef.current) {
+                void deliverModelToToast({ ...lastModelRef.current, isPinned: false });
+              }
+            }
+            break;
+          default:
+            break;
+        }
+      }),
+    );
     unsubs.push(
       main.listen<PlaybackToastSetVolumePayload>(PlaybackToastEvents.setVolume, (e) => {
         setVolume(e.payload.volume);
@@ -485,6 +606,7 @@ export function usePlaybackToastBridge({ onHistoryChanged, onReminder }: Options
   }, [
     togglePlay,
     restart,
+    seekTo,
     setVolume,
     toggleMute,
     closePlayback,

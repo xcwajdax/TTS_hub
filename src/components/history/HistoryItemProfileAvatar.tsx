@@ -38,7 +38,7 @@ export default function HistoryItemProfileAvatar({
         filePath={avatarPath}
         fallbackLabel={displayName}
         size={size}
-        className="ring-1 ring-border/60"
+        className="voice-avatar-frame"
         badgePosition="top-left"
       />
       <SourceDot source={gen.source} color={sourceUi.defaultColor} />

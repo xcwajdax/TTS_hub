@@ -5,6 +5,9 @@ export function fmtJobTime(ms: number): string {
 }
 
 export function phaseLabelForProvider(phase: Phase, provider?: string | null): string {
+  if (phase === "vb_loading_model" || phase === "vb_generating") {
+    return PHASE_LABEL[phase];
+  }
   if (phase === "requesting") {
     const p = (provider ?? "google").toLowerCase();
     if (p === "minimax") return "Czekam na Minimax…";

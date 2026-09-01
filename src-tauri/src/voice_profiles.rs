@@ -177,6 +177,49 @@ impl TtsVoiceProfile {
             self.shortcut_enabled = false;
         }
     }
+
+    /// File-stem used under `avatars/voices/{provider}/`.
+    /// Voice Box stores the server profile UUID, not the display name.
+    pub fn avatar_voice_id(&self) -> &str {
+        if self.provider.eq_ignore_ascii_case(PROVIDER_VOICEBOX) {
+            self.profile_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(self.voice.trim())
+        } else {
+            self.voice.trim()
+        }
+    }
+}
+
+/// Candidate keys for `avatars/voices/{provider}/{key}.jpg`, first match wins.
+/// Voice Box generations persist the display name in `gen.voice`, while the
+/// avatar file is named after the server profile id.
+pub fn generation_voice_avatar_keys(
+    provider: &str,
+    gen_voice: &str,
+    voice_profile: Option<&TtsVoiceProfile>,
+    request_profile_id: Option<&str>,
+) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut push = |s: &str| {
+        let t = s.trim();
+        if !t.is_empty() && !keys.iter().any(|k| k == t) {
+            keys.push(t.to_string());
+        }
+    };
+    if let Some(profile) = voice_profile {
+        push(profile.avatar_voice_id());
+        push(profile.voice.trim());
+    }
+    if provider.eq_ignore_ascii_case(PROVIDER_VOICEBOX) {
+        if let Some(pid) = request_profile_id {
+            push(pid);
+        }
+    }
+    push(gen_voice);
+    keys
 }
 
 pub fn find_voice_profile<'a>(
@@ -367,5 +410,45 @@ mod tests {
         let out = apply_reroute_if_configured(&settings, req);
         assert_eq!(out.voice, "Kore");
         assert_eq!(out.voice_profile_id.as_deref(), Some("segment-profile"));
+    }
+
+    fn voicebox_profile(name: &str, server_id: &str) -> TtsVoiceProfile {
+        TtsVoiceProfile {
+            name: name.to_string(),
+            provider: PROVIDER_VOICEBOX.to_string(),
+            voice: name.to_string(),
+            profile_id: Some(server_id.to_string()),
+            ..TtsVoiceProfile::default()
+        }
+    }
+
+    #[test]
+    fn voicebox_avatar_id_uses_server_profile_not_display_name() {
+        let profile = voicebox_profile("Marek", "vb-uuid-123");
+        assert_eq!(profile.avatar_voice_id(), "vb-uuid-123");
+    }
+
+    #[test]
+    fn generation_avatar_keys_prefer_voicebox_server_id() {
+        let profile = voicebox_profile("Marek", "vb-uuid-123");
+        let keys = generation_voice_avatar_keys(
+            PROVIDER_VOICEBOX,
+            "Marek",
+            Some(&profile),
+            Some("vb-uuid-123"),
+        );
+        assert_eq!(keys.first().map(String::as_str), Some("vb-uuid-123"));
+        assert!(keys.contains(&"Marek".to_string()));
+    }
+
+    #[test]
+    fn generation_avatar_keys_from_request_json_when_no_hub_profile() {
+        let keys = generation_voice_avatar_keys(
+            PROVIDER_VOICEBOX,
+            "Marek",
+            None,
+            Some("vb-from-request"),
+        );
+        assert_eq!(keys, vec!["vb-from-request".to_string(), "Marek".to_string()]);
     }
 }

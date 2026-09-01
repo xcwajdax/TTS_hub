@@ -12,8 +12,10 @@ import {
 import {
   roleplayCancelQueue,
   roleplayExportMix,
+  roleplayExportMp4,
   roleplayGetQueueProgress,
   roleplayImportAudio,
+  roleplayRebuildTimeline,
   roleplayWriteMixWav,
   roleplayPauseQueue,
   roleplayRegenerateSegment,
@@ -38,6 +40,7 @@ import ClipBlock from "./ClipBlock";
 import EffectsPanel from "./EffectsPanel";
 import TrackHeader from "./TrackHeader";
 import TimeRuler, { TimelineGridLines } from "./TimeRuler";
+import RoleplayZoomSlider from "./RoleplayZoomSlider";
 import { StudioEngine, audioBufferToWav, clipBufferKey } from "./engine";
 
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -49,20 +52,25 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function peaksCountForDuration(durationSec: number): number {
+  return Math.max(128, Math.min(4096, Math.ceil(durationSec * 48)));
+}
+
 function computePeaks(
   buf: AudioBuffer,
   offsetSec: number,
   durationSec: number,
-  peakCount = 200,
+  peakCount?: number,
 ): Float32Array {
+  const count = peakCount ?? peaksCountForDuration(durationSec);
   const ch = buf.getChannelData(0);
   const sampleRate = buf.sampleRate;
   const startSample = Math.max(0, Math.floor(offsetSec * sampleRate));
   const endSample = Math.min(ch.length, Math.ceil((offsetSec + durationSec) * sampleRate));
   const span = Math.max(1, endSample - startSample);
-  const peaks = new Float32Array(peakCount);
-  const block = Math.max(1, Math.floor(span / peakCount));
-  for (let i = 0; i < peakCount; i++) {
+  const peaks = new Float32Array(count);
+  const block = Math.max(1, Math.floor(span / count));
+  for (let i = 0; i < count; i++) {
     let max = 0;
     const base = startSample + i * block;
     for (let j = 0; j < block && base + j < endSample; j++) {
@@ -73,15 +81,28 @@ function computePeaks(
   return peaks;
 }
 
-const LANE_H = 64;
-const HEADER_W = 180;
+const LANE_H = 88;
+const HEADER_W = 196;
 const RULER_H = 24;
+const ZOOM_MIN = 4;
+const ZOOM_MAX = 240;
+
+function timelineStructureKey(json: string): string {
+  const tl = parseTimeline(json);
+  return tl.clips
+    .map(
+      (c) =>
+        `${c.id}|${c.generationId ?? ""}|${c.trackId}|${c.startSec.toFixed(3)}|${c.offsetSec.toFixed(3)}`,
+    )
+    .join(";");
+}
 
 interface Props {
   project: RoleplayProject;
   profiles: TtsVoiceProfile[];
   onProjectChange: (p: RoleplayProject) => void;
-  onBackToSummary: () => void;
+  onBackToSummary?: () => void;
+  embedded?: boolean;
   onError: (msg: string) => void;
   onToast?: (msg: string) => void;
 }
@@ -91,6 +112,7 @@ export default function StudioView({
   profiles,
   onProjectChange,
   onBackToSummary,
+  embedded = false,
   onError,
   onToast,
 }: Props) {
@@ -112,6 +134,7 @@ export default function StudioView({
   const [queueProgress, setQueueProgress] = useState({ done: 0, total: 0, paused: false });
   const [buffersReady, setBuffersReady] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingMp4, setExportingMp4] = useState(false);
   const [mutePreview, setMutePreview] = useState(getRoleplayMutePreview);
   const [clipDragPreview, setClipDragPreview] = useState<Map<string, Partial<TimelineClip>>>(
     () => new Map(),
@@ -123,6 +146,8 @@ export default function StudioView({
   const sourceDurRef = useRef<Map<string, number>>(new Map());
   const playingRef = useRef(false);
   const syncedDurationsRef = useRef<Set<string>>(new Set());
+  const timelineStructureKeyRef = useRef("");
+  const durationSyncInFlightRef = useRef(false);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const rulerScrollRef = useRef<HTMLDivElement>(null);
   const appSettingsRef = useRef<AppSettings | null>(null);
@@ -153,20 +178,36 @@ export default function StudioView({
 
   useEffect(() => {
     const tl = labelTracks(parseTimeline(project.timeline_json), profiles);
+    const structureKey = timelineStructureKey(project.timeline_json);
     setTimeline(tl);
+
+    if (structureKey !== timelineStructureKeyRef.current) {
+      timelineStructureKeyRef.current = structureKey;
+      peaksRef.current.clear();
+      sourceDurRef.current.clear();
+      syncedDurationsRef.current.clear();
+      setClipDragPreview(new Map());
+      setBuffersReady(false);
+    }
+  }, [project.timeline_json, profiles]);
+
+  useEffect(() => {
+    timelineStructureKeyRef.current = "";
     peaksRef.current.clear();
     sourceDurRef.current.clear();
     syncedDurationsRef.current.clear();
     setClipDragPreview(new Map());
     setBuffersReady(false);
-  }, [project.timeline_json, profiles]);
+  }, [project.id]);
 
   const persistTimeline = useCallback(
-    async (next: RoleplayTimeline) => {
+    async (next: RoleplayTimeline, options?: { syncParent?: boolean }) => {
       const labeled = labelTracks(next, profiles);
       setTimeline(labeled);
       const json = timelineToJson(labeled);
-      onProjectChange({ ...project, timeline_json: json });
+      if (options?.syncParent !== false) {
+        onProjectChange({ ...project, timeline_json: json });
+      }
       try {
         await roleplayUpdateTimeline(project.id, json);
       } catch (e) {
@@ -206,12 +247,17 @@ export default function StudioView({
         bufferRef.current.set(key, buf);
         sourceDurRef.current.set(clip.id, buf.duration);
         loaded += 1;
+
+        const sourceAvail = Math.max(0.1, buf.duration - clip.offsetSec);
+        const effectiveDur =
+          clip.durationSec < sourceAvail - 0.05 ? sourceAvail : clip.durationSec;
+
         peaksRef.current.set(
           clip.id,
-          computePeaks(buf, clip.offsetSec, clip.durationSec),
+          computePeaks(buf, clip.offsetSec, effectiveDur),
         );
 
-        const actualDur = buf.duration;
+        const actualDur = sourceAvail;
         if (
           !syncedDurationsRef.current.has(clip.id) &&
           Math.abs(actualDur - clip.durationSec) > 0.05
@@ -227,6 +273,12 @@ export default function StudioView({
       }
     }
     if (durationPatches.length > 0 || fadePatches.length > 0) {
+      if (durationSyncInFlightRef.current) {
+        setPeaksVersion((v) => v + 1);
+        setBuffersReady(loaded === timeline.clips.length);
+        return loaded === timeline.clips.length;
+      }
+      durationSyncInFlightRef.current = true;
       const next = {
         ...timeline,
         clips: timeline.clips.map((c) => {
@@ -239,8 +291,19 @@ export default function StudioView({
           };
         }),
       };
-      peaksRef.current.clear();
-      void persistTimeline(next);
+      for (const c of next.clips) {
+        const key = clipBufferKey(c);
+        const buf = bufferRef.current.get(key);
+        if (buf) {
+          peaksRef.current.set(c.id, computePeaks(buf, c.offsetSec, c.durationSec));
+        }
+      }
+      setPeaksVersion((v) => v + 1);
+      try {
+        await persistTimeline(next, { syncParent: false });
+      } finally {
+        durationSyncInFlightRef.current = false;
+      }
     } else {
       setPeaksVersion((v) => v + 1);
     }
@@ -279,8 +342,13 @@ export default function StudioView({
       unsubs.push(
         await listen<{ project_id: string }>("roleplay:queue:done", async (ev) => {
           if (ev.payload.project_id !== project.id) return;
-          const p = await roleplayLoadProject(project.id);
-          onProjectChange(p);
+          try {
+            const p = await roleplayRebuildTimeline(project.id);
+            onProjectChange(p);
+          } catch {
+            const p = await roleplayLoadProject(project.id);
+            onProjectChange(p);
+          }
           onToast?.("Generacja zakończona — klipy na osi czasu.");
         }),
       );
@@ -519,6 +587,46 @@ export default function StudioView({
     }
   };
 
+  const handleExportMp4 = async () => {
+    if (timeline.clips.length === 0) {
+      onError("Brak klipów do eksportu MP4.");
+      return;
+    }
+    setExportingMp4(true);
+    try {
+      const ready = await loadClipBuffers();
+      if (!ready) {
+        onError("Nie wszystkie klipy audio są gotowe — spróbuj ponownie za chwilę.");
+        return;
+      }
+      const buf = await engine.renderOffline(timeline);
+      if (buf.length === 0) {
+        onError("Miks jest pusty — brak załadowanych buforów audio.");
+        return;
+      }
+      const wav = audioBufferToWav(buf);
+      const bytes = new Uint8Array(await wav.arrayBuffer());
+      const b64 = uint8ToBase64(bytes);
+      const wavPath = await roleplayWriteMixWav(project.id, b64);
+      const safeName = project.name.replace(/[<>:"/\\|?*]/g, "_").trim() || "mix";
+      const dest = await save({
+        defaultPath: `${safeName}-roleplay.mp4`,
+        filters: [{ name: "MP4", extensions: ["mp4"] }],
+      });
+      if (!dest || typeof dest !== "string") {
+        onToast?.("Eksport MP4 anulowany.");
+        return;
+      }
+      const out = dest.toLowerCase().endsWith(".mp4") ? dest : `${dest}.mp4`;
+      await roleplayExportMp4(project.id, wavPath, out);
+      onToast?.("Multi-głosowe MP4 wygenerowane.");
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      setExportingMp4(false);
+    }
+  };
+
   const selectedClip = timeline.clips.find((c) => c.id === selectedClipId);
   const selectedTrack = timeline.tracks.find((t) => t.id === selectedTrackId);
 
@@ -527,9 +635,11 @@ export default function StudioView({
   return (
     <div className="flex flex-col h-full min-h-0 roleplay-studio">
       <div className="flex items-center gap-2 p-2 border-b border-border shrink-0 flex-wrap">
-        <button type="button" className="btn text-xs" onClick={onBackToSummary}>
-          ← Podsumowanie
-        </button>
+        {!embedded && onBackToSummary ? (
+          <button type="button" className="btn text-xs" onClick={onBackToSummary}>
+            ← Podsumowanie
+          </button>
+        ) : null}
         <button type="button" className="btn text-xs" onClick={() => void handlePlay()} disabled={playing}>
           Odtwórz
         </button>
@@ -552,10 +662,23 @@ export default function StudioView({
           type="button"
           className="btn btn-primary text-xs"
           onClick={() => void handleExport()}
-          disabled={exporting || timeline.clips.length === 0 || !buffersReady}
+          disabled={exporting || exportingMp4 || timeline.clips.length === 0 || !buffersReady}
           title={!buffersReady ? "Ładowanie audio klipów…" : undefined}
         >
           {exporting ? "Eksport…" : "Eksport miksu"}
+        </button>
+        <button
+          type="button"
+          className="btn text-xs"
+          onClick={() => void handleExportMp4()}
+          disabled={exporting || exportingMp4 || timeline.clips.length === 0 || !buffersReady}
+          title={
+            !buffersReady
+              ? "Ładowanie audio klipów…"
+              : "Multi-głosowe MP4 ze ścieżką karaoke (nazwy głosów + dialog)"
+          }
+        >
+          {exportingMp4 ? "MP4…" : "Eksport MP4"}
         </button>
         <label
           className="text-xs text-muted flex items-center gap-1.5"
@@ -568,16 +691,12 @@ export default function StudioView({
           />
           Wycisz podgląd generacji
         </label>
-        <label className="text-xs text-muted flex items-center gap-1 ml-auto">
-          Zoom
-          <input
-            type="range"
-            min={40}
-            max={200}
-            value={pxPerSec}
-            onChange={(e) => setPxPerSec(Number(e.target.value))}
-          />
-        </label>
+        <RoleplayZoomSlider
+          value={pxPerSec}
+          min={ZOOM_MIN}
+          max={ZOOM_MAX}
+          onChange={setPxPerSec}
+        />
         <span className="text-xs text-muted">
           Kolejka: {queueProgress.done}/{queueProgress.total} · {timeline.clips.length} klipów
         </span>
@@ -594,6 +713,7 @@ export default function StudioView({
                 <TrackHeader
                   key={track.id}
                   track={track}
+                  laneHeight={LANE_H}
                   profile={
                     track.voiceProfileId
                       ? profiles.find((p) => p.id === track.voiceProfileId)

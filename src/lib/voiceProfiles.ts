@@ -1,15 +1,17 @@
 import { getAppSettings, setAppSettings, syncVoiceboxProfileAvatar } from "../api/tauri";
-import { appSettingsViewToPayload, type TtsVoiceProfile } from "../appSettings";
+import { ALL_TTS_PROVIDERS, appSettingsViewToPayload, type TtsVoiceProfile } from "../appSettings";
 import type { VoiceBoxProfile } from "../api/tauri";
 import type { TtsModelInfo } from "../ttsModels";
 import {
   hubProfileMatchesVoiceboxServer,
   voiceboxServerProfileToHubProfile,
 } from "./voiceboxProfile";
+import { engineFromHubModelId } from "./voiceboxPlModels";
 import type { SettingsState } from "../components/Settings";
 import { defaultMinimaxSynthesisOptions } from "./minimaxOptions";
 import { inferGenerationProvider, notifyAvatarsChanged } from "./avatars";
 import { VOICE_PROFILES_CHANGED } from "./voiceProfilesEvents";
+import { isMockUiMode } from "./mockUi/isMockUiMode";
 import type { Generation, SpeakerConfig, TtsProvider } from "../types";
 
 const DEFAULT_SPEAKERS: SpeakerConfig[] = [
@@ -46,7 +48,8 @@ export function settingsStateToVoiceProfile(
       state.provider === "voicebox" || state.provider === "minimax"
         ? state.language || null
         : null,
-    engine: null,
+    engine:
+      state.provider === "voicebox" ? engineFromHubModelId(state.model) : null,
     personality_enabled:
       state.provider === "voicebox" && state.voiceboxPersonalityEnabled ? true : null,
     minimax_speed: state.provider === "minimax" ? state.minimaxSpeed : null,
@@ -127,13 +130,16 @@ export function profileMatchesSettings(
   profile: TtsVoiceProfile,
   state: SettingsState,
 ): boolean {
-  if (profile.provider !== state.provider || profile.model !== state.model) {
+  if (profile.provider !== state.provider) {
     return false;
   }
   if (profile.provider === "voicebox") {
     const pid = state.voiceboxProfileId.trim() || state.voice.trim();
     const saved = (profile.profile_id ?? profile.voice).trim();
     return pid === saved;
+  }
+  if (profile.model !== state.model) {
+    return false;
   }
   return profile.voice.trim() === state.voice.trim();
 }
@@ -143,15 +149,63 @@ export function generationMatchesProfile(
   profile: TtsVoiceProfile,
 ): boolean {
   const provider = (gen.provider ?? inferGenerationProvider(gen)) as string;
-  if (provider !== profile.provider || gen.model !== profile.model) {
+  if (provider !== profile.provider) {
     return false;
   }
   if (profile.provider === "voicebox") {
+    if (gen.voice_profile_id && gen.voice_profile_id === profile.id) return true;
     const saved = (profile.profile_id ?? profile.voice).trim();
     const gv = gen.voice.trim();
     return gv === saved || gv === profile.voice.trim();
   }
+  if (gen.model !== profile.model) {
+    return false;
+  }
   return gen.voice.trim() === profile.voice.trim();
+}
+
+/** Apply a generation model to a Hub voice profile (Voice Box clone can switch engines). */
+export function applyModelToVoiceProfile(
+  profile: TtsVoiceProfile,
+  model: string,
+): TtsVoiceProfile {
+  const engine =
+    profile.provider === "voicebox" ? engineFromHubModelId(model) : profile.engine;
+  return { ...profile, model, engine: engine ?? profile.engine };
+}
+
+export async function updateVoiceProfileModel(
+  profileId: string,
+  model: string,
+): Promise<TtsVoiceProfile | null> {
+  const id = profileId.trim();
+  const nextModel = model.trim();
+  if (!id || !nextModel) return null;
+
+  if (isMockUiMode()) {
+    const { MOCK_VOICE_PROFILES } = await import("./mockUi/fixtures");
+    const idx = MOCK_VOICE_PROFILES.findIndex((p) => p.id === id);
+    if (idx < 0) return null;
+    const current = MOCK_VOICE_PROFILES[idx];
+    if (current.provider !== "voicebox") return current;
+    const updated = applyModelToVoiceProfile(current, nextModel);
+    MOCK_VOICE_PROFILES[idx] = updated;
+    window.dispatchEvent(new Event(VOICE_PROFILES_CHANGED));
+    return updated;
+  }
+
+  const view = await getAppSettings();
+  const profiles = view.voice_profiles ?? [];
+  const idx = profiles.findIndex((p) => p.id === id);
+  if (idx < 0) return null;
+  const current = profiles[idx];
+  if (current.provider !== "voicebox") return current;
+  const updated = applyModelToVoiceProfile(current, nextModel);
+  const next = profiles.slice();
+  next[idx] = updated;
+  const { persistVoiceProfilesWithHotkeySync } = await import("./voiceProfileShortcuts");
+  await persistVoiceProfilesWithHotkeySync(view, next);
+  return updated;
 }
 
 /**
@@ -208,6 +262,56 @@ export function sortProfilesForChatList(profiles: TtsVoiceProfile[]): TtsVoicePr
     if (tb !== ta) return tb - ta;
     return a.name.localeCompare(b.name, "pl");
   });
+}
+
+export interface VoiceProfileProviderGroup {
+  provider: string;
+  label: string;
+  profiles: TtsVoiceProfile[];
+}
+
+export function voiceProfileProviderKey(profile: TtsVoiceProfile): string {
+  const raw = profile.provider?.trim().toLowerCase();
+  return raw || "google";
+}
+
+export function voiceProfileProviderLabel(provider: string): string {
+  const p = provider.trim().toLowerCase() || "google";
+  if (p === "minimax") return "MiniMax";
+  if (p === "voicebox") return "Voice Box";
+  if (p === "google") return "Google Gemini";
+  return provider.trim() || "Inny provider";
+}
+
+/** Groups saved voice profiles under their TTS provider (Google, Voice Box, MiniMax). */
+export function groupProfilesByProvider(
+  profiles: TtsVoiceProfile[],
+): VoiceProfileProviderGroup[] {
+  const buckets = new Map<string, TtsVoiceProfile[]>();
+  for (const profile of sortProfilesForChatList(profiles)) {
+    const key = voiceProfileProviderKey(profile);
+    const list = buckets.get(key);
+    if (list) list.push(profile);
+    else buckets.set(key, [profile]);
+  }
+
+  const known = new Set<string>(ALL_TTS_PROVIDERS);
+  const extra = [...buckets.keys()]
+    .filter((key) => !known.has(key))
+    .sort((a, b) => a.localeCompare(b, "pl"));
+  const order = [...ALL_TTS_PROVIDERS, ...extra];
+
+  const groups: VoiceProfileProviderGroup[] = [];
+  for (const provider of order) {
+    const items = buckets.get(provider);
+    if (!items?.length) continue;
+    groups.push({
+      provider,
+      label: voiceProfileProviderLabel(provider),
+      profiles: items,
+    });
+  }
+  return groups;
 }
 
 export async function addVoiceboxServerProfileToHubList(

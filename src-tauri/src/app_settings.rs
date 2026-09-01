@@ -272,6 +272,9 @@ pub struct AppSettings {
     /// When true, roleplay segment jobs do not trigger global playback preview.
     #[serde(default = "default_true")]
     pub roleplay_mute_preview: bool,
+    /// Show the bottom-right playback popup window.
+    #[serde(default = "default_true")]
+    pub playback_popup_enabled: bool,
 }
 
 fn default_privacy_mode() -> String {
@@ -379,6 +382,7 @@ impl Default for AppSettings {
             default_video_template_id: default_video_template_id(),
             auto_archive_mp4_on_clipboard: true,
             roleplay_mute_preview: true,
+            playback_popup_enabled: true,
         }
     }
 }
@@ -457,6 +461,30 @@ impl AppSettings {
                     e.trim_end_matches('/').to_string()
                 }
             })
+    }
+
+    /// Effective set of providers the user enabled in the Quick Setup wizard.
+    /// Pusta lista = kompatybilność wsteczna (instalacje sprzed kreatora) → wszystkie dozwolone.
+    pub fn enabled_provider_set(&self) -> std::collections::HashSet<String> {
+        if self.enabled_providers.is_empty() {
+            ALL_PROVIDERS.iter().map(|s| s.to_string()).collect()
+        } else {
+            self.enabled_providers
+                .iter()
+                .map(|p| p.trim().to_ascii_lowercase())
+                .filter(|p| ALL_PROVIDERS.contains(&p.as_str()))
+                .collect()
+        }
+    }
+
+    /// Czy `provider` jest skonfigurowany (włączony w kreatorze Szybka konfiguracja)?
+    /// Nieznany provider (nie z `ALL_PROVIDERS`) zwraca `false`.
+    pub fn is_provider_enabled(&self, provider: &str) -> bool {
+        let p = provider.trim().to_ascii_lowercase();
+        if !ALL_PROVIDERS.contains(&p.as_str()) {
+            return false;
+        }
+        self.enabled_provider_set().contains(p.as_str())
     }
 
     pub fn effective_minimax_key(&self, env_key: &str) -> String {
@@ -585,4 +613,49 @@ fn normalize_optional_path(value: Option<String>) -> Option<String> {
     value
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+#[cfg(test)]
+mod enabled_providers_tests {
+    use super::*;
+
+    #[test]
+    fn empty_list_means_backward_compat_all_allowed() {
+        let s = AppSettings::default();
+        assert!(s.enabled_providers.is_empty());
+        assert!(s.is_provider_enabled(PROVIDER_GOOGLE));
+        assert!(s.is_provider_enabled(PROVIDER_MINIMAX));
+        assert!(s.is_provider_enabled(PROVIDER_VOICEBOX));
+        assert_eq!(s.enabled_provider_set().len(), 3);
+    }
+
+    #[test]
+    fn non_empty_list_filters_by_quick_setup() {
+        let mut s = AppSettings::default();
+        s.enabled_providers = vec![PROVIDER_MINIMAX.to_string()];
+        assert!(s.is_provider_enabled(PROVIDER_MINIMAX));
+        assert!(!s.is_provider_enabled(PROVIDER_GOOGLE));
+        assert!(!s.is_provider_enabled(PROVIDER_VOICEBOX));
+    }
+
+    #[test]
+    fn is_provider_enabled_is_case_insensitive_and_validates_known_ids() {
+        let mut s = AppSettings::default();
+        s.enabled_providers = vec![PROVIDER_MINIMAX.to_string()];
+        assert!(s.is_provider_enabled("Minimax"));
+        assert!(s.is_provider_enabled("MINIMAX"));
+        assert!(!s.is_provider_enabled("openai"));
+        assert!(!s.is_provider_enabled(""));
+        assert!(!s.is_provider_enabled("  "));
+    }
+
+    #[test]
+    fn unknown_providers_in_list_are_ignored_after_normalize() {
+        let mut s = AppSettings::default();
+        s.enabled_providers = vec!["openai".into(), PROVIDER_VOICEBOX.into()];
+        s.normalize();
+        // openai nie jest w ALL_PROVIDERS → zostaje odfiltrowany przez normalize.
+        assert!(s.is_provider_enabled(PROVIDER_VOICEBOX));
+        assert!(!s.is_provider_enabled("openai"));
+    }
 }

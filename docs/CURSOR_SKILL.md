@@ -13,11 +13,11 @@ Skill zastępuje (na próbę) automatyczne hooki: TTS uruchamia się **po każde
    → .cursor/skills/tts-hub-speak/config.json
    ```
 
-4. Klucze providerów w `studios.env` / ustawieniach aplikacji (`MINIMAX_API_KEY`, `GOOGLE_API_KEY`, Voice Box lokalnie).
+4. Voice Box lokalnie (domyślny preset). Klucze MiniMax / Gemini tylko gdy zmienisz `active_preset`.
 
-**Voice ID:** ustaw w aplikacji — **Ustawienia → Cursor** (głos MiniMax lub Google, model, tempo, pitch). Przy `prefer_app_config: true` skill i hooki biorą **`voice` / `model` z `GET /cursor/config`**, nie z osobnego ID w `config.json` (unikasz błędnego lub nieaktualnego `voice_id`).
+**Głos:** domyślnie **Voice Box, profil TOPKEK**. Skill bierze `profile_id` z `config.json` (`presets.voicebox`); gdy ID brakuje, rozwiązuje nazwę `TOPKEK` przez `GET /voicebox/profiles`.
 
-W `config.json.example` preset `minimax` ma `Polish_female_1_sample1` jako **fallback**, gdy integracja jest wyłączona lub API nie odpowiada.
+`prefer_app_config` jest **false**, żeby nieaktualny MiniMax z `GET /cursor/config` (pamięć procesu vs `settings.json`) nie nadpisywał Voiceboxa. Po restarcie aplikacji, gdy panel **Ustawienia → Cursor** też ma Voicebox + TOPKEK, możesz włączyć `prefer_app_config: true`.
 
 ## Aktywacja w Cursorze
 
@@ -40,8 +40,8 @@ Skill ma `disable-model-invocation: true` — ładuje się tylko gdy go wybierze
 
 | Plik / API | Rola |
 |------------|------|
-| `config.json` → `active_preset` | `minimax`, `google`, `voicebox` — presety w `presets` |
-| `prefer_app_config: true` | Gdy integracja Cursor w aplikacji jest **włączona**, nadpisuje provider/model/głos z `GET /cursor/config` |
+| `config.json` → `active_preset` | `voicebox` (domyślnie TOPKEK), `minimax`, `google` — presety w `presets` |
+| `prefer_app_config: false` | Skill trzyma się `presets.voicebox`. `true` — nadpisuje provider/model/głos z `GET /cursor/config` |
 | `respect_dnd: true` | Pomija TTS, gdy w aplikacji aktywny tryb „nie przeszkadzać” |
 
 Przełącz provider bez aplikacji: zmień `active_preset` w `config.json`.  

@@ -5,8 +5,10 @@ import EditorTabContextMenu from "./EditorTabContextMenu";
 interface Props {
   tab: EditorTab;
   active: boolean;
+  canCloseOthers: boolean;
   onSelect: () => void;
   onClose: () => void;
+  onCloseOthers: () => void;
   onRename: (title: string) => void;
   onDuplicate: () => void;
   onIncrement: () => void;
@@ -17,8 +19,10 @@ interface Props {
 export default function EditorTabItem({
   tab,
   active,
+  canCloseOthers,
   onSelect,
   onClose,
+  onCloseOthers,
   onRename,
   onDuplicate,
   onIncrement,
@@ -107,11 +111,13 @@ export default function EditorTabItem({
         <EditorTabContextMenu
           x={menu.x}
           y={menu.y}
+          canCloseOthers={canCloseOthers}
           onDuplicate={onDuplicate}
           onIncrement={onIncrement}
           onCopyText={onCopyText}
           onSaveFile={onSaveFile}
           onCloseTab={onClose}
+          onCloseOthers={onCloseOthers}
           onDismiss={() => setMenu(null)}
         />
       ) : null}

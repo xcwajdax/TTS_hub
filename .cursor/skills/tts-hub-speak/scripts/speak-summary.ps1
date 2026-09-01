@@ -28,6 +28,8 @@ $LogFile = Join-Path $WorkDir 'cursor-tts-skill.log'
 $DedupeFile = Join-Path $WorkDir 'last-summary.sha1'
 $DefaultMinimaxVoice = 'Polish_female_1_sample1'
 $DefaultMinimaxLanguage = 'pl'
+$DefaultVoiceboxProfileName = 'TOPKEK'
+$DefaultVoiceboxModel = 'voicebox:chatterbox'
 
 if (-not (Test-Path $WorkDir)) {
     New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
@@ -76,9 +78,25 @@ function Get-PresetByKey {
 
 function Apply-LocalPreset {
     param($Preset)
-    $provider = if ($Preset.provider) { [string]$Preset.provider } else { 'minimax' }
-    $model = if ($Preset.model) { [string]$Preset.model } else { 'speech-2.8-hd' }
-    $voice = if ($Preset.voice) { [string]$Preset.voice } else { $DefaultMinimaxVoice }
+    $provider = if ($Preset.provider) { [string]$Preset.provider } else { 'voicebox' }
+    $model = if ($Preset.model) {
+        [string]$Preset.model
+    } elseif ($provider -eq 'minimax') {
+        'speech-2.8-hd'
+    } elseif ($provider -eq 'voicebox') {
+        $DefaultVoiceboxModel
+    } else {
+        'gemini-2.5-flash-preview-tts'
+    }
+    $voice = if ($Preset.voice) {
+        [string]$Preset.voice
+    } elseif ($provider -eq 'minimax') {
+        $DefaultMinimaxVoice
+    } elseif ($provider -eq 'voicebox') {
+        $DefaultVoiceboxProfileName
+    } else {
+        'Kore'
+    }
     $style = $null
     if ($Preset.PSObject.Properties['style'] -and $Preset.style) { $style = [string]$Preset.style }
     $format = if ($Preset.format) { [string]$Preset.format } else { if ($provider -eq 'minimax') { 'mp3' } else { 'wav' } }
@@ -93,7 +111,7 @@ function Apply-LocalPreset {
     }
     if ($Preset.PSObject.Properties['language'] -and $Preset.language) {
         $language = [string]$Preset.language
-    } elseif ($provider -eq 'minimax') {
+    } elseif ($provider -eq 'minimax' -or $provider -eq 'voicebox') {
         $language = $DefaultMinimaxLanguage
     }
     if ($Preset.PSObject.Properties['engine'] -and $Preset.engine) {
@@ -123,15 +141,15 @@ function Merge-TtsSettings {
     $autoplay = $true
     if ($Local.PSObject.Properties['autoplay']) { $autoplay = [bool]$Local.autoplay }
 
-    $presetName = if ($Local.active_preset) { [string]$Local.active_preset } else { 'minimax' }
+    $presetName = if ($Local.active_preset) { [string]$Local.active_preset } else { 'voicebox' }
     $preset = Get-PresetByKey -Local $Local -Key $presetName
     if (-not $preset) {
         $preset = @{
-            provider = 'minimax'
-            model    = 'speech-2.8-hd'
-            voice    = $DefaultMinimaxVoice
+            provider = 'voicebox'
+            model    = $DefaultVoiceboxModel
+            voice    = $DefaultVoiceboxProfileName
             language = $DefaultMinimaxLanguage
-            format   = 'mp3'
+            format   = 'wav'
         }
     }
 
@@ -295,6 +313,38 @@ function Build-GenerateBody {
     return $body
 }
 
+function Test-UuidString {
+    param([string]$Value)
+    return ($Value -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+}
+
+function Resolve-VoiceboxProfileId {
+    param(
+        [string]$ApiBase,
+        [string]$ProfileId,
+        [string]$Voice,
+        [string]$PreferredName = 'TOPKEK'
+    )
+    if ($ProfileId -and ($ProfileId -notmatch '^<') -and (Test-UuidString $ProfileId)) {
+        return $ProfileId
+    }
+    if ($Voice -and (Test-UuidString $Voice)) {
+        return $Voice
+    }
+    try {
+        $profiles = Invoke-RestMethod -Uri "$ApiBase/voicebox/profiles" -TimeoutSec 3 -ErrorAction Stop
+        $list = @($profiles)
+        $want = if ($Voice -and ($Voice -notmatch '^<')) { $Voice } else { $PreferredName }
+        $hit = $list | Where-Object { [string]$_.name -eq $want } | Select-Object -First 1
+        if (-not $hit) {
+            $hit = $list | Where-Object { [string]$_.name -eq $PreferredName } | Select-Object -First 1
+        }
+        if ($hit) { return [string]$hit.id }
+        if ($list.Count -eq 1) { return [string]$list[0].id }
+    } catch { }
+    return $ProfileId
+}
+
 $summary = $SummaryText.Trim()
 if ([string]::IsNullOrWhiteSpace($summary)) {
     Write-SkillLog -Status 'skip' -Reason 'empty_summary'
@@ -326,6 +376,14 @@ if ($settings.Skip) {
     exit 0
 }
 
+if ($settings.Provider -eq 'voicebox') {
+    $resolved = Resolve-VoiceboxProfileId -ApiBase $apiBase -ProfileId $settings.ProfileId -Voice $settings.Voice -PreferredName $DefaultVoiceboxProfileName
+    if ($resolved) {
+        $settings.ProfileId = $resolved
+        if (-not $settings.Voice) { $settings.Voice = $resolved }
+    }
+}
+
 $body = Build-GenerateBody -Summary $summary -Settings $settings -ConvId $ConversationId
 $bodyJson = $body | ConvertTo-Json -Depth 8 -Compress
 $bodyB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($bodyJson))
@@ -341,7 +399,8 @@ try {
     Start-Process -FilePath 'pwsh.exe' `
         -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', $inner) `
         -WindowStyle Hidden | Out-Null
-    Write-SkillLog -Status 'ok' -Reason "$($summary.Length)chars,$($settings.Provider),dispatched"
+    $voiceHint = if ($settings.Provider -eq 'voicebox' -and $settings.ProfileId) { $settings.ProfileId } else { $settings.Voice }
+    Write-SkillLog -Status 'ok' -Reason "$($summary.Length)chars,$($settings.Provider),$voiceHint,dispatched"
 } catch {
     Write-SkillLog -Status 'error' -Reason ($_.Exception.Message -replace '\s+', ' ')
 }

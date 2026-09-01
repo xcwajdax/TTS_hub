@@ -10,12 +10,14 @@ import {
   type GenerationToastViewModel,
   type PlaybackToastModelPatch,
   type PlaybackToastMode,
+  type PlaybackToastStackPayload,
   type PlaybackToastViewModel,
   type PlaybackVizFramePayload,
 } from "../lib/playbackToastContract";
 import { isTauriApp } from "../lib/tauriEnv";
 import ToastWindowPanel from "./toast/ToastWindowPanel";
 import GenerationToastPanel, { emitGenerationUserHide } from "./playbackToast/GenerationToastPanel";
+import PlaybackToastStack from "./playbackToast/PlaybackToastStack";
 import PlaybackToastPanel, {
   applyModelPatch,
   emitClose,
@@ -29,6 +31,7 @@ interface Props {
 export default function PlaybackToast({ standalone = false }: Props) {
   const [mode, setMode] = useState<PlaybackToastMode | null>(null);
   const [model, setModel] = useState<PlaybackToastViewModel | null>(null);
+  const [stack, setStack] = useState<PlaybackToastStackPayload | null>(null);
   const [generationModel, setGenerationModel] = useState<GenerationToastViewModel | null>(null);
   const [voiceProfiles, setVoiceProfiles] = useState<TtsVoiceProfile[]>([]);
   const [frame, setFrame] = useState<PlaybackVizFramePayload | null>(null);
@@ -50,6 +53,18 @@ export default function PlaybackToast({ standalone = false }: Props) {
       toast.listen<PlaybackToastViewModel>(PlaybackToastEvents.show, (e) => {
         setMode("playback");
         setModel(e.payload);
+        setStack(null);
+        setGenerationModel(null);
+        setVisible(true);
+        setShellVisible(true);
+      }),
+    );
+
+    unsubs.push(
+      toast.listen<PlaybackToastStackPayload>(PlaybackToastEvents.showStack, (e) => {
+        setMode("playback");
+        setStack(e.payload);
+        setModel(e.payload.active);
         setGenerationModel(null);
         setVisible(true);
         setShellVisible(true);
@@ -62,6 +77,7 @@ export default function PlaybackToast({ standalone = false }: Props) {
         setGenerationModel(e.payload.model);
         setVoiceProfiles(e.payload.voiceProfiles);
         setModel(null);
+        setStack(null);
         setFrame(null);
         setVisible(true);
         setShellVisible(true);
@@ -77,6 +93,11 @@ export default function PlaybackToast({ standalone = false }: Props) {
     unsubs.push(
       toast.listen<PlaybackToastModelPatch>(PlaybackToastEvents.modelPatch, (e) => {
         setModel((prev) => (prev ? applyModelPatch(prev, e.payload) : prev));
+        setStack((prev) =>
+          prev
+            ? { ...prev, active: applyModelPatch(prev.active, e.payload) }
+            : prev,
+        );
       }),
     );
 
@@ -87,6 +108,7 @@ export default function PlaybackToast({ standalone = false }: Props) {
         setShellVisible(false);
         setFrame(null);
         setGenerationModel(null);
+        setStack(null);
       }),
     );
 
@@ -155,6 +177,9 @@ export default function PlaybackToast({ standalone = false }: Props) {
   }
 
   if (visible && mode === "playback" && model) {
+    const activeModel = stack?.active ?? model;
+    const pinned = stack?.pinned ?? [];
+
     return (
       <div
         className="w-full min-h-0 p-1 box-border"
@@ -162,7 +187,22 @@ export default function PlaybackToast({ standalone = false }: Props) {
         aria-live="polite"
         aria-label="Odtwarzanie TTS"
       >
-        <PlaybackToastPanel model={model} frame={frame} onHide={onHidePlayback} onClose={onClosePlayback} />
+        {pinned.length > 0 ? (
+          <PlaybackToastStack
+            active={activeModel}
+            pinned={pinned}
+            frame={frame}
+            onHide={onHidePlayback}
+            onClose={onClosePlayback}
+          />
+        ) : (
+          <PlaybackToastPanel
+            model={activeModel}
+            frame={frame}
+            onHide={onHidePlayback}
+            onClose={onClosePlayback}
+          />
+        )}
       </div>
     );
   }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { VideoLayer, VideoLayerType, VideoTemplate, VideoTemplateMeta } from "../../types/videoTemplate";
+import type { VideoCanvas, VideoLayer, VideoLayerType, VideoTemplate, VideoTemplateMeta } from "../../types/videoTemplate";
 import { BUILTIN_WHATSAPP_TEMPLATE_ID, LAYER_LABELS } from "../../types/videoTemplate";
 import {
   deleteVideoTemplate,
@@ -12,9 +12,10 @@ import {
   saveVideoTemplate,
 } from "../../lib/videoTemplates";
 import { ADD_LAYER_OPTIONS, createDefaultLayer } from "../../lib/videoLayerFactory";
-import { normalizeLayerPatch, normalizeVideoTemplate } from "../../lib/videoTemplateRect";
+import { canonicalizeVideoLayer, normalizeLayerPatch, normalizeVideoTemplate } from "../../lib/videoTemplateRect";
 import VideoTemplateCanvas from "./VideoTemplateCanvas";
 import VideoLayerInspector from "./VideoLayerInspector";
+import VideoCanvasBackgroundFields from "./VideoCanvasBackgroundFields";
 import Icon from "../Icon";
 
 interface Props {
@@ -56,7 +57,7 @@ export default function VideoTemplateCreator({
       setBusy(true);
       try {
         const tpl = await getVideoTemplate(id);
-        setTemplate(tpl);
+        setTemplate(normalizeVideoTemplate(tpl));
         setSelectedLayerId(tpl.layers[0]?.id ?? null);
         setPreviewPath(null);
         setDirty(false);
@@ -86,9 +87,19 @@ export default function VideoTemplateCreator({
       return {
         ...prev,
         layers: prev.layers.map((l) =>
-          l.id === layerId ? ({ ...l, ...normalized } as VideoLayer) : l,
+          l.id === layerId
+            ? canonicalizeVideoLayer({ ...l, ...normalized } as VideoLayer)
+            : l,
         ),
       };
+    });
+  };
+
+  const updateCanvas = (patch: Partial<VideoCanvas>) => {
+    setTemplate((prev) => {
+      if (!prev) return prev;
+      setDirty(true);
+      return { ...prev, canvas: { ...prev.canvas, ...patch } };
     });
   };
 
@@ -295,6 +306,9 @@ export default function VideoTemplateCreator({
         </div>
 
         <div className="flex flex-col gap-3 min-w-0">
+          {template && (
+            <VideoCanvasBackgroundFields canvas={template.canvas} onChange={updateCanvas} />
+          )}
           <div className="border border-border rounded-lg p-2 bg-panel2/30">
             <p className="text-[10px] uppercase text-muted font-semibold mb-2">Warstwy</p>
             <ul className="flex flex-col gap-1">

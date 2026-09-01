@@ -38,6 +38,8 @@ import {
   applyTextFiltersForPreset,
 } from "../lib/voiceoverBriefFilter";
 
+import { engineFromHubModelId } from "../lib/voiceboxPlModels";
+
 import {
 
   EDITOR_OPEN_GENERATION_EVENT,
@@ -59,6 +61,8 @@ import { getMockAppSettingsView } from "../lib/mockUi";
 import { isMockUiMode } from "../lib/mockUi/isMockUiMode";
 
 import type { AudioFormat, Generation } from "../types";
+
+import type { TtsModelInfo } from "../ttsModels";
 
 import { EMPTY_DOC, isDocEmpty } from "./editor/types";
 
@@ -108,9 +112,13 @@ interface Props {
 
   voiceboxProfiles: VoiceBoxProfile[];
 
+  voiceboxModels: TtsModelInfo[];
+
   activeVoiceProfileId: string | null;
 
   onVoiceProfileChange: (profileId: string | null) => void;
+
+  onVoiceboxModelChange: (modelId: string) => void;
 
 }
 
@@ -126,9 +134,13 @@ export default function MainPanel({
 
   voiceboxProfiles,
 
+  voiceboxModels,
+
   activeVoiceProfileId,
 
   onVoiceProfileChange,
+
+  onVoiceboxModelChange,
 
 }: Props) {
 
@@ -681,11 +693,8 @@ export default function MainPanel({
 
     const selectedVoiceboxProfile = voiceboxProfiles.find((p) => p.id === tts.voiceboxProfileId);
 
-    const voiceboxEngine = tts.model.startsWith("voicebox:")
-
-      ? tts.model.slice("voicebox:".length)
-
-      : null;
+    const voiceboxEngine =
+      tts.provider === "voicebox" ? engineFromHubModelId(tts.model) : null;
 
     const rawFmt =
 
@@ -1006,6 +1015,10 @@ export default function MainPanel({
               onOpenSettings={openSettings}
 
               onSaveModeToggle={() => void toggleSaveMode()}
+
+              voiceboxModels={voiceboxModels}
+
+              onVoiceboxModelChange={onVoiceboxModelChange}
 
             />
 

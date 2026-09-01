@@ -27,6 +27,9 @@ Kreator **Szybka konfiguracja** pomaga włączyć providery TTS i zweryfikować 
 - Lokalny serwer HTTP (domyślnie `http://127.0.0.1:17493`).
 - Zmienna env: `VOICEBOX_BASE_URL` lub `VOICEBOX_URL` w `studios.env`.
 - W kreatorze możesz nadpisać adres w `settings.json` (`voicebox_base_url`).
+- Tryb wbudowany (`voicebox_server_mode: bundled`) uruchamia fork backendu z TTS Hub.
+- **Modele PL:** w aplikacji Voice Box → Modele pobierz Chatterbox (~3.2 GB) lub TADA 1B/3B do klonowania polskich głosów.
+- **Profil klonu:** Voice Box → Profile → **+ Nowy profil** (albo z karty modelu **Utwórz profil klonu (PL)**) → nazwa + opcjonalnie plik WAV/MP3 z dokładnym transkryptem → **Użyj w TTS**. Bez próbki referencyjnej synteza z klonu jest zablokowana.
 - Test: `GET {url}/health`.
 
 ## MiniMax Portal

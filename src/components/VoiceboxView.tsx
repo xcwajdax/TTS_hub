@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { getAppSettings } from "../api/tauri";
-import type { VoiceBoxHealth, VoiceBoxProfile } from "../api/tauri";
+import { getAppSettings, voiceboxServerStatus } from "../api/tauri";
+import type { VoiceBoxHealth, VoiceBoxProfile, VoiceboxServerStatus } from "../api/tauri";
 import type { TtsProviderId, TtsVoiceProfile } from "../appSettings";
+import { voiceboxHeaderStatusLine } from "../lib/voiceboxConnection";
 import { voiceboxModelForProfile, hubProfileMatchesVoiceboxServer } from "../lib/voiceboxProfile";
 import { addVoiceboxServerProfileToHubList } from "../lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "../lib/voiceProfilesEvents";
@@ -12,10 +13,13 @@ import type { SettingsState } from "./Settings";
 import type { TtsModelInfo } from "../ttsModels";
 import {
   DEFAULT_VOICEBOX_SECTION,
+  type CloneProfilePrefill,
   type VoiceboxSection,
 } from "./voicebox/voiceboxSections";
 import VoiceboxProfilesSection from "./voicebox/VoiceboxProfilesSection";
 import VoiceboxHistorySection from "./voicebox/VoiceboxHistorySection";
+import VoiceboxPlModelsPanel from "./voicebox/VoiceboxPlModelsPanel";
+import VoiceboxServerLogPanel from "./voicebox/VoiceboxServerLogPanel";
 
 interface Props {
   initialSection?: VoiceboxSection;
@@ -42,9 +46,12 @@ export default function VoiceboxView({
   onSuccess,
   enabledProviders,
 }: Props) {
-  const { onBackToTts } = useAppView();
+  const { onBackToTts, openSettingsTab } = useAppView();
   const [section, setSection] = useState<VoiceboxSection>(initialSection);
   const [hubProfiles, setHubProfiles] = useState<TtsVoiceProfile[]>([]);
+  const [clonePrefill, setClonePrefill] = useState<CloneProfilePrefill | null>(null);
+  const [profilesCreateNonce, setProfilesCreateNonce] = useState(0);
+  const [server, setServer] = useState<VoiceboxServerStatus | null>(null);
 
   const isEnabled = !enabledProviders || enabledProviders.includes("voicebox");
 
@@ -82,7 +89,31 @@ export default function VoiceboxView({
     if (isEnabled) void onRefreshVoicebox();
   }, [isEnabled, onRefreshVoicebox]);
 
+  useEffect(() => {
+    if (!isEnabled) {
+      setServer(null);
+      return;
+    }
+    if (isMockUiMode()) {
+      setServer({
+        mode: "external",
+        base_url: "http://127.0.0.1:17493",
+        reachable: true,
+        bundled_spawn_ready: false,
+        health_status: "ok",
+      });
+      return;
+    }
+    void voiceboxServerStatus()
+      .then(setServer)
+      .catch(() => setServer(null));
+  }, [isEnabled, voiceboxHealth]);
+
   const useProfileInTts = (profile: VoiceBoxProfile) => {
+    if ((profile.sample_count ?? 0) < 1 && (profile.voice_type ?? "cloned") === "cloned") {
+      onError("Dodaj co najmniej jedną próbkę referencyjną przed użyciem w TTS.");
+      return;
+    }
     const model = voiceboxModelForProfile(profile, settings.model, voiceboxModels);
     onSettingsChange({
       ...settings,
@@ -115,6 +146,12 @@ export default function VoiceboxView({
     })();
   };
 
+  const goCreateClone = (opts: CloneProfilePrefill) => {
+    setClonePrefill(opts);
+    setProfilesCreateNonce((n) => n + 1);
+    setSection("profiles");
+  };
+
   if (!isEnabled) {
     return (
       <div className="h-full w-full flex flex-col min-h-0">
@@ -126,25 +163,59 @@ export default function VoiceboxView({
     );
   }
 
-  const statusLabel = voiceboxHealth
-    ? `Status: ${voiceboxHealth.status} · ${voiceboxHealth.gpu_type ?? (voiceboxHealth.gpu_available ? "GPU" : "CPU")} · ${voiceboxHealth.model_loaded ? "model załadowany" : "model niezaładowany"}`
-    : "Voice Box niedostępny";
+  const statusLabel = voiceboxHeaderStatusLine({
+    reachable: server?.reachable ?? (voiceboxHealth ? true : null),
+    baseUrl: server?.base_url,
+    healthStatus: voiceboxHealth?.status ?? server?.health_status,
+    gpuLabel: voiceboxHealth
+      ? (voiceboxHealth.gpu_type ?? (voiceboxHealth.gpu_available ? "GPU" : "CPU"))
+      : null,
+    modelLoaded: voiceboxHealth?.model_loaded ?? null,
+  });
 
   return (
     <div className="h-full w-full flex flex-col min-h-0 bg-panel">
-      <Header onBack={onBackToTts} health={voiceboxHealth} statusLabel={statusLabel} />
+      <Header
+        onBack={onBackToTts}
+        health={voiceboxHealth}
+        reachable={server ? server.reachable : !!voiceboxHealth}
+        statusLabel={statusLabel}
+      />
 
       <nav className="shrink-0 flex border-b border-border bg-panel2/40">
+        <SubTab active={section === "models"} onClick={() => setSection("models")} label="Modele" />
         <SubTab
           active={section === "profiles"}
           onClick={() => setSection("profiles")}
           label={`Profile (${voiceboxProfiles.length})`}
         />
         <SubTab active={section === "history"} onClick={() => setSection("history")} label="Historia serwera" />
+        <SubTab active={section === "log"} onClick={() => setSection("log")} label="Log" />
       </nav>
 
       <main className="flex-1 min-h-0 min-w-0 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-5 flex flex-col gap-6 text-sm">
+          {section === "models" && (
+            <>
+              <header className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold">Modele na serwerze Voicebox (PL)</h2>
+                <p className="text-xs text-muted">
+                  Pobierz Chatterbox lub TADA na podłączonej instancji Voicebox — wagi i klonowanie
+                  PL są tam, nie w TTS Hub. Inne silniki (Turbo, Qwen, Kokoro…) nie są tu
+                  eksponowane.
+                </p>
+              </header>
+              <VoiceboxPlModelsPanel
+                health={voiceboxHealth}
+                onError={onError}
+                onSuccess={onSuccess}
+                onCreateCloneProfile={goCreateClone}
+                onOpenSettings={() => openSettingsTab("providers")}
+                onOpenLog={() => setSection("log")}
+              />
+            </>
+          )}
+
           {section === "profiles" && (
             <>
               <header className="flex flex-col gap-1">
@@ -163,6 +234,9 @@ export default function VoiceboxView({
                 hubProfileIds={hubProfileIds}
                 onError={onError}
                 onSuccess={onSuccess}
+                createPrefill={clonePrefill}
+                createNonce={profilesCreateNonce}
+                onCreatePrefillConsumed={() => setClonePrefill(null)}
               />
             </>
           )}
@@ -184,6 +258,17 @@ export default function VoiceboxView({
             </>
           )}
 
+          {section === "log" && (
+            <>
+              <header className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold">Log serwera</h2>
+                <p className="text-xs text-muted">
+                  Na żywo stdout/stderr procesu uruchomionego przez TTS Hub (tryb wbudowany).
+                </p>
+              </header>
+              <VoiceboxServerLogPanel onError={onError} />
+            </>
+          )}
         </div>
       </main>
     </div>
@@ -193,12 +278,15 @@ export default function VoiceboxView({
 function Header({
   onBack,
   health,
+  reachable,
   statusLabel,
 }: {
   onBack: () => void;
   health: VoiceBoxHealth | null;
+  reachable?: boolean;
   statusLabel?: string;
 }) {
+  const connected = reachable === true || !!health;
   return (
     <header className="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-border bg-panel2/40">
       <button type="button" className="btn text-xs" onClick={onBack}>
@@ -207,10 +295,15 @@ function Header({
       <div className="flex flex-col min-w-0">
         <h1 className="text-base font-semibold">Voice Box</h1>
         {statusLabel ? (
-          <span className="text-[10px] text-muted truncate" title={statusLabel}>
+          <span
+            className={`text-[10px] truncate ${
+              connected ? "text-emerald-300/90" : "text-amber-200/90"
+            }`}
+            title={statusLabel}
+          >
             {statusLabel}
           </span>
-        ) : health ? null : (
+        ) : (
           <span className="text-[10px] text-muted">Serwer niedostępny</span>
         )}
       </div>

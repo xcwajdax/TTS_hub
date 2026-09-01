@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { emit, emitTo } from "@tauri-apps/api/event";
 import { formatModelLabel } from "../../ttsModels";
-import { formatTime } from "../../lib/formatTime";
 import {
   MAIN_WINDOW_LABEL,
   PLAYBACK_SNOOZE_PRESETS_MS,
@@ -11,11 +11,13 @@ import {
   type PlaybackToastViewModel,
   type PlaybackVizFramePayload,
 } from "../../lib/playbackToastContract";
-import { invoke } from "@tauri-apps/api/core";
+import { playbackToastControl } from "../../lib/playbackToastControl";
 import Icon from "../Icon";
 import ToastWindowPanel from "../toast/ToastWindowPanel";
 import PlaybackToastIdentity from "./PlaybackToastIdentity";
 import PlaybackSpeechAura from "./PlaybackSpeechAura";
+import PlaybackToastSeekBar from "./PlaybackToastSeekBar";
+import PlaybackPreviewHost from "./PlaybackPreviewHost";
 
 const ICON = 14;
 const AVATAR_SIZE = 28;
@@ -27,20 +29,18 @@ interface Props {
   onClose: () => void;
 }
 
-function emitMain<T>(event: string, payload?: T): void {
-  void emitTo(MAIN_WINDOW_LABEL, event, payload ?? {});
-}
-
 export default function PlaybackToastPanel({ model, frame, onHide, onClose }: Props) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [isArchived, setIsArchived] = useState(model.isArchived);
+  const [isPinned, setIsPinned] = useState(model.isPinned ?? false);
   const [playOverride, setPlayOverride] = useState<boolean | null>(null);
   const snoozeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsArchived(model.isArchived);
-  }, [model.isArchived, model.generation.id]);
+    setIsPinned(model.isPinned ?? false);
+  }, [model.isArchived, model.isPinned, model.generation.id]);
 
   useEffect(() => {
     if (!snoozeOpen) return;
@@ -65,41 +65,43 @@ export default function PlaybackToastPanel({ model, frame, onHide, onClose }: Pr
     if (frame.playing === playOverride) setPlayOverride(null);
   }, [frame, frame?.playing, playOverride]);
 
-  const timeLabel =
-    frame && frame.duration > 0
-      ? `${formatTime(frame.currentTime)} / ${formatTime(frame.duration)}`
-      : loading
-        ? "Ładowanie…"
-        : null;
-
   const onTogglePlay = useCallback(() => {
     setPlayOverride((prev) => !(prev ?? framePlaying));
-    emitMain(PlaybackToastEvents.togglePlay);
+    void playbackToastControl({ action: "toggle" });
   }, [framePlaying]);
 
   const onRestart = useCallback(() => {
     setPlayOverride(true);
-    emitMain(PlaybackToastEvents.restart);
+    void playbackToastControl({ action: "restart" });
   }, []);
 
   const onToggleMute = useCallback(() => {
-    emitMain(PlaybackToastEvents.toggleMute);
+    void playbackToastControl({ action: "toggleMute" });
   }, []);
 
   const onVolumeChange = useCallback((value: number) => {
-    emitMain(PlaybackToastEvents.setVolume, { volume: value });
+    void playbackToastControl({ action: "setVolume", volume: value });
   }, []);
+
+  const onTogglePin = useCallback(() => {
+    const next = !isPinned;
+    setIsPinned(next);
+    void playbackToastControl({
+      action: next ? "pin" : "unpin",
+      generationId: gen.id,
+    });
+  }, [isPinned, gen.id]);
 
   const onArchive = useCallback(() => {
     if (isArchived || archiving) return;
     setArchiving(true);
-    emitMain(PlaybackToastEvents.archive);
+    void emitTo(MAIN_WINDOW_LABEL, PlaybackToastEvents.archive, {});
     window.setTimeout(() => setArchiving(false), 600);
   }, [archiving, isArchived]);
 
   const onSnooze = useCallback((delayMs: number) => {
     setSnoozeOpen(false);
-    emitMain(PlaybackToastEvents.snooze, { delayMs });
+    void emitTo(MAIN_WINDOW_LABEL, PlaybackToastEvents.snooze, { delayMs });
   }, []);
 
   return (
@@ -107,8 +109,10 @@ export default function PlaybackToastPanel({ model, frame, onHide, onClose }: Pr
       compact
       title="Odtwarzanie"
       headerRight={
-        timeLabel ? (
-          <span className="text-[9px] tabular-nums text-muted shrink-0">{timeLabel}</span>
+        model.filterPresetName ? (
+          <span className="text-[9px] text-muted truncate max-w-[8rem]" title={model.filterPresetName}>
+            {model.filterPresetName}
+          </span>
         ) : null
       }
     >
@@ -130,17 +134,39 @@ export default function PlaybackToastPanel({ model, frame, onHide, onClose }: Pr
             <span>{model.source.label}</span>
             <span className="text-muted/50">·</span>
             <span>{formatModelLabel(gen.model)}</span>
-            <span className="text-muted/50">·</span>
-            <span>{gen.format.toUpperCase()}</span>
           </div>
         </div>
+        <button
+          type="button"
+          className={`toast-toolbar__btn toast-toolbar__btn--icon shrink-0 ${isPinned ? "text-accent2" : "text-muted"}`}
+          onClick={onTogglePin}
+          title={isPinned ? "Odepnij okno" : "Przypnij — zostanie do końca sesji"}
+          aria-label={isPinned ? "Odepnij" : "Przypnij"}
+          aria-pressed={isPinned}
+        >
+          <span className="text-[11px]" aria-hidden>
+            {isPinned ? "📌" : "📍"}
+          </span>
+        </button>
       </div>
 
+      <PlaybackPreviewHost
+        mode={model.previewMode}
+        text={model.previewText}
+        steps={model.steps}
+        intro={model.intro}
+        frame={frame}
+        playing={playing}
+      />
+
       <PlaybackSpeechAura
-        active={playing || loading}
+        active={!!frame && (playing || loading || (frame.levels?.some((l) => l > 0.02) ?? false))}
         frame={frame}
         sourceColor={model.source.color}
+        className="h-9"
       />
+
+      <PlaybackToastSeekBar frame={frame} />
 
       <div className="flex flex-wrap items-center gap-1">
         <button
@@ -278,12 +304,12 @@ export function applyModelPatch(
 }
 
 export async function emitUserHide(): Promise<void> {
-  emitMain(PlaybackToastEvents.userHide);
+  void emitTo(MAIN_WINDOW_LABEL, PlaybackToastEvents.userHide, {});
   await invoke("hide_playback_toast");
 }
 
 export async function emitClose(): Promise<void> {
-  emitMain(PlaybackToastEvents.close);
+  void emitTo(MAIN_WINDOW_LABEL, PlaybackToastEvents.close, {});
   void emit(PlaybackToastEvents.hide);
   await invoke("hide_playback_toast");
 }

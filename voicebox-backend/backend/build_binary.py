@@ -68,6 +68,12 @@ def build_server(cuda=False):
             # PyInstaller. See pyi_rth_torch_compiler_disable.py.
             "--runtime-hook",
             "pyi_rth_torch_compiler_disable.py",
+            # Stale SSL_CERT_FILE from a previous _MEI extract (certifi/cacert.pem)
+            # breaks HuggingFace downloads (TADA 3B, tokenizers, etc.).
+            "--runtime-hook",
+            "pyi_rth_certifi.py",
+            "--collect-data",
+            "certifi",
             # Per-module collection overrides (e.g. forcing scipy.stats._distn_infrastructure
             # to bundle .py source alongside .pyc so the runtime hook can source-patch it).
             "--additional-hooks-dir",
@@ -142,6 +148,8 @@ def build_server(cuda=False):
             # segmentation, which ships pickled dict files (dicts/default.pkl)
             # and native .so extensions that --hidden-import alone won't bundle.
             "--collect-all",
+            "spacy_pkuseg",
+            "--collect-data",
             "spacy_pkuseg",
             "--hidden-import",
             "backend.backends.luxtts_backend",

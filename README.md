@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.svg" alt="TTS Hub" width="280" />
+<img src="docs/logotts.png" alt="TTS Hub" width="280" />
 
 **Desktopowa aplikacja TTS — Google Gemini · MiniMax · Voice Box**
 
@@ -126,4 +126,4 @@ Pełna lista sugestii technicznych: [docs/SPECIFICATION.md §10](docs/SPECIFICAT
 
 ### Voicebox (lokalny silnik TTS)
 
-Lokalny provider **Voice Box** korzysta dziś z [Voicebox](https://github.com/jamiepine/voicebox) jako osobnego serwera HTTP (`:17493`). Fork backendu **v0.4.1** (MIT, tylko `backend/`) jest w repozytorium — [`voicebox-backend/`](voicebox-backend/); w toku jest bundlowanie jako sidecar w instalatorze. Szczegóły: [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md). Heads-up u upstream: [voicebox#749](https://github.com/jamiepine/voicebox/issues/749).
+Lokalny provider **Voice Box** korzysta dziś z [Voicebox](https://github.com/jamiepine/voicebox) jako osobnego serwera HTTP (`:17493`). Fork backendu **v0.4.1** (MIT, tylko `backend/`) jest w repozytorium — [`voicebox-backend/`](voicebox-backend/); w toku jest bundlowanie jako sidecar w instalatorze. W aplikacji: **Voice Box → Modele** — pobierz Chatterbox lub TADA 1B/3B do lokalnego klonowania PL. Szczegóły: [docs/VOICEBOX_FORK.md](docs/VOICEBOX_FORK.md). Heads-up u upstream: [voicebox#749](https://github.com/jamiepine/voicebox/issues/749).

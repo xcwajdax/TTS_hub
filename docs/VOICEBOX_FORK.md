@@ -73,11 +73,29 @@ Endpointy używane dziś przez TTS Hub — **nie zmieniamy bez aktualizacji klie
 | Endpoint | Użycie |
 |----------|--------|
 | `GET /health` | onboarding, status sidecar |
-| `GET/POST/PUT/DELETE /profiles` | VoiceboxView |
-| `POST /profiles/{id}/samples` | próbki klonowania |
-| `POST /generate` + poll `/history/{id}` | job queue |
+| `GET/POST/PUT/DELETE /profiles` | VoiceboxView — UI tworzy klon przez `POST /profiles` |
+| `POST /profiles/{id}/samples` | próbki klonowania — Hub woła z edytora profilu (pierwsza próbka przy create lub panel próbek) |
+| `POST /generate` + poll `/history/{id}` | job queue — Hub polluje status co 1 s aż do `completed`/`failed` (bez limitu 180 s) i emituje fazy UI (`loading_model` → `vb_loading_model`, `generating` → `vb_generating`) |
+| `GET /generate/{id}/status` | SSE statusu (dostępne w forku; Hub używa poll `/history/{id}`) |
+| `POST /generate/{id}/cancel` | anulowanie aktywnej generacji (Hub przy cancel joba) |
 | `GET /audio/{id}` | odtwarzanie |
-| `GET /models` | lista silników |
+| `GET /models/status` | status modeli (downloaded / downloading / loaded) |
+| `POST /models/download` | pobranie modelu (`{"model_name":"…"}`) |
+| `POST /models/download/cancel` | anulowanie pobierania |
+| `POST /models/{name}/unload` | zwolnienie z RAM |
+| `GET /tasks/active` | postęp pobierania (poll z Huba co ~1.5 s) |
+
+### Allowlista PL (TTS Hub)
+
+W UI i syntezie Hub eksponuje wyłącznie modele do klonowania PL:
+
+| `model_name` | Engine | Hub model id | Uwagi |
+|--------------|--------|--------------|--------|
+| `chatterbox-tts` | `chatterbox` | `voicebox:chatterbox` | zalecany start (~3.2 GB) |
+| `tada-1b` | `tada` | `voicebox:tada-1b` | `model_size=1B` |
+| `tada-3b-ml` | `tada` | `voicebox:tada-3b-ml` | `model_size=3B` |
+
+Pozostałe silniki forka (Turbo, Qwen, Kokoro, LuxTTS) pozostają w backendzie, ale nie w pickerach Huba.
 
 Szczegóły proxy HTTP TTS Hub: [API.md](./API.md#voice-box).
 

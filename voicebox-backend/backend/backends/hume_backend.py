@@ -30,6 +30,8 @@ from .base import (
     model_load_progress,
 )
 from ..utils.cache import get_cache_key, get_cached_voice_prompt, cache_voice_prompt
+from ..utils.hf_offline_patch import force_offline_if_cached
+from ..utils.ssl_certs import ensure_ssl_cert_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,8 @@ class HumeTadaBackend:
 
     def _load_model_sync(self, model_size: str = "1B"):
         """Synchronous model loading with progress tracking."""
-        model_name = f"tada-{model_size.lower()}"
+        # Must match ModelConfig.model_name in backends/__init__.py (Hub allowlist).
+        model_name = "tada-3b-ml" if model_size == "3B" else f"tada-{model_size.lower()}"
         is_cached = self._is_model_cached(model_size)
         repo = TADA_MODEL_REPOS.get(model_size, TADA_1B_REPO)
 
@@ -109,6 +112,7 @@ class HumeTadaBackend:
             from ..utils.dac_shim import install_dac_shim
 
             install_dac_shim()
+            ensure_ssl_cert_bundle()
 
             import torch
             from huggingface_hub import snapshot_download
@@ -117,70 +121,61 @@ class HumeTadaBackend:
             self._device = device
             logger.info(f"Loading HumeAI TADA {model_size} on {device}...")
 
-            # Download codec (encoder + decoder) if not cached
-            logger.info("Downloading TADA codec...")
-            snapshot_download(
-                repo_id=TADA_CODEC_REPO,
-                token=None,
-                allow_patterns=["*.safetensors", "*.json", "*.txt", "*.bin"],
-            )
+            hf_kwargs = {"token": None, "local_files_only": is_cached}
 
-            # Download model weights if not cached
-            logger.info(f"Downloading TADA {model_size} model...")
-            snapshot_download(
-                repo_id=repo,
-                token=None,
-                allow_patterns=["*.safetensors", "*.json", "*.txt", "*.bin", "*.model"],
-            )
+            with force_offline_if_cached(is_cached, model_name):
+                logger.info("Downloading TADA codec...")
+                snapshot_download(
+                    repo_id=TADA_CODEC_REPO,
+                    allow_patterns=["*.safetensors", "*.json", "*.txt", "*.bin"],
+                    **hf_kwargs,
+                )
 
-            # TADA hardcodes "meta-llama/Llama-3.2-1B" as the tokenizer
-            # source in its Aligner and TadaForCausalLM.from_pretrained().
-            # That repo is gated (requires Meta license acceptance).
-            # Download the tokenizer from an ungated mirror and get its
-            # local cache path so we can point TADA at it directly.
-            logger.info("Downloading Llama tokenizer (ungated mirror)...")
-            tokenizer_path = snapshot_download(
-                repo_id="unsloth/Llama-3.2-1B",
-                token=None,
-                allow_patterns=["tokenizer*", "special_tokens*"],
-            )
+                logger.info(f"Downloading TADA {model_size} model...")
+                snapshot_download(
+                    repo_id=repo,
+                    allow_patterns=["*.safetensors", "*.json", "*.txt", "*.bin", "*.model"],
+                    **hf_kwargs,
+                )
 
-            # Determine dtype — use bf16 on CUDA/XPU for ~50% memory savings
-            if device == "cuda" and torch.cuda.is_bf16_supported():
-                model_dtype = torch.bfloat16
-            elif device == "xpu":
-                # Intel Arc (Alchemist+) supports bf16 natively
-                model_dtype = torch.bfloat16
-            else:
-                model_dtype = torch.float32
+                # TADA hardcodes "meta-llama/Llama-3.2-1B" as the tokenizer
+                # source in its Aligner and TadaForCausalLM.from_pretrained().
+                # That repo is gated (requires Meta license acceptance).
+                # Download the tokenizer from an ungated mirror and get its
+                # local cache path so we can point TADA at it directly.
+                logger.info("Downloading Llama tokenizer (ungated mirror)...")
+                tokenizer_path = snapshot_download(
+                    repo_id="unsloth/Llama-3.2-1B",
+                    allow_patterns=["tokenizer*", "special_tokens*"],
+                    **hf_kwargs,
+                )
 
-            # Patch the Aligner config class to use the local tokenizer
-            # path instead of the gated "meta-llama/Llama-3.2-1B" default.
-            # This avoids monkey-patching AutoTokenizer.from_pretrained
-            # which corrupts the classmethod descriptor for other engines.
-            from tada.modules.aligner import AlignerConfig
+                if device == "cuda" and torch.cuda.is_bf16_supported():
+                    model_dtype = torch.bfloat16
+                elif device == "xpu":
+                    model_dtype = torch.bfloat16
+                else:
+                    model_dtype = torch.float32
 
-            AlignerConfig.tokenizer_name = tokenizer_path
+                from tada.modules.aligner import AlignerConfig
 
-            # Load encoder (only needed for voice prompt encoding)
-            from tada.modules.encoder import Encoder
+                AlignerConfig.tokenizer_name = tokenizer_path
 
-            logger.info("Loading TADA encoder...")
-            self.encoder = Encoder.from_pretrained(TADA_CODEC_REPO, subfolder="encoder").to(device)
-            self.encoder.eval()
+                from tada.modules.encoder import Encoder
 
-            # Load the causal LM (includes decoder for wav generation).
-            # TadaForCausalLM.from_pretrained() calls
-            #   getattr(config, "tokenizer_name", "meta-llama/Llama-3.2-1B")
-            # which hits the gated repo. Pre-load the config from HF,
-            # inject the local tokenizer path, then pass it in.
-            from tada.modules.tada import TadaForCausalLM, TadaConfig
+                logger.info("Loading TADA encoder...")
+                self.encoder = Encoder.from_pretrained(TADA_CODEC_REPO, subfolder="encoder").to(device)
+                self.encoder.eval()
 
-            logger.info(f"Loading TADA {model_size} model...")
-            config = TadaConfig.from_pretrained(repo)
-            config.tokenizer_name = tokenizer_path
-            self.model = TadaForCausalLM.from_pretrained(repo, config=config, torch_dtype=model_dtype).to(device)
-            self.model.eval()
+                from tada.modules.tada import TadaForCausalLM, TadaConfig
+
+                logger.info(f"Loading TADA {model_size} model...")
+                config = TadaConfig.from_pretrained(repo)
+                config.tokenizer_name = tokenizer_path
+                self.model = TadaForCausalLM.from_pretrained(
+                    repo, config=config, torch_dtype=model_dtype
+                ).to(device)
+                self.model.eval()
 
         logger.info(f"HumeAI TADA {model_size} loaded successfully on {device}")
 

@@ -81,7 +81,15 @@ class ChatterboxTTSBackend:
             logger.info(f"Loading Chatterbox Multilingual TTS on {device}...")
 
             import torch
+            from ..utils.spacy_pkuseg_data import (
+                ensure_spacy_pkuseg_dicts,
+                patch_chatterbox_pkuseg_segmenter,
+            )
+
+            ensure_spacy_pkuseg_dicts()
             from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+
+            patch_chatterbox_pkuseg_segmenter()
 
             if device == "cpu":
                 _orig_torch_load = torch.load

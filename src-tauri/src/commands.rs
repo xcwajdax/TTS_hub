@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::app_settings::{AppSettings, CursorIntegration, PROVIDER_MINIMAX};
+use crate::app_settings::{
+    AppSettings, CursorIntegration, PROVIDER_GOOGLE, PROVIDER_MINIMAX, PROVIDER_VOICEBOX,
+};
 use crate::quick_hotkeys;
 use crate::quick_setup_window;
 use crate::playback_toast_window;
@@ -28,11 +30,14 @@ use crate::minimax::{
 use crate::paths::AppPaths;
 use crate::paths::{rename_dir, slugify_name, unique_slug};
 use crate::state::AppState;
-use crate::voice_profiles::{apply_reroute_if_configured, find_voice_profile};
+use crate::voice_profiles::{
+    apply_reroute_if_configured, find_voice_profile, generation_voice_avatar_keys,
+};
 use crate::voice_samples::{self, VoiceSampleInfo};
 use crate::voicebox::{
     VoiceBoxAudioPayload, VoiceBoxHealth, VoiceBoxHistoryItem, VoiceBoxHistoryList,
-    VoiceBoxHistoryQuery, VoiceBoxProfile, VoiceBoxProfileCreate, VoiceBoxSample,
+    VoiceBoxHistoryQuery, VoiceBoxModelProgressEvent, VoiceBoxPlModelStatus, VoiceBoxProfile,
+    VoiceBoxProfileCreate, VoiceBoxSample,
 };
 
 type AppArc = Arc<AppState>;
@@ -219,13 +224,45 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
     // Populate provider / char_count / estimated_tokens at enqueue time so the
     // usage rollups in src-tauri/src/usage.rs are accurate even for jobs that
     // fail or are cancelled.
+    //
+    // Nie wolno po cichu wpadać na "google": jeśli request nie podał provider,
+    // użyj `cursor_integration.provider` (domyślnie "minimax"). Dodatkowo
+    // odrzucamy providerów spoza `enabled_providers` — inaczej model MiniMax
+    // leciałby do Google Gemini i wracał z 404. (2026-09-01)
     let eff_provider = req
         .provider
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .unwrap_or("google")
-        .to_ascii_lowercase();
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| {
+            settings
+                .cursor_integration
+                .provider
+                .trim()
+                .to_ascii_lowercase()
+        });
+
+    let allowed_providers = [
+        PROVIDER_GOOGLE,
+        PROVIDER_VOICEBOX,
+        PROVIDER_MINIMAX,
+    ];
+    if !allowed_providers.contains(&eff_provider.as_str()) {
+        return Err(format!(
+            "unknown provider '{eff_provider}' (allowed: {PROVIDER_GOOGLE}, {PROVIDER_VOICEBOX}, {PROVIDER_MINIMAX})"
+        ));
+    }
+    if !settings.is_provider_enabled(&eff_provider) {
+        let available: Vec<String> = settings
+            .enabled_provider_set()
+            .into_iter()
+            .collect();
+        return Err(format!(
+            "provider '{eff_provider}' is not configured (Quick Setup wyłączył tego providera); available: [{}]",
+            available.join(", ")
+        ));
+    }
     let char_count: i64 = req.text.chars().count() as i64;
     let estimated_tokens: i64 = (char_count + 2) / 3;
 
@@ -249,6 +286,7 @@ pub fn enqueue_request(state: &AppArc, req: GenerateReq) -> Result<Generation, S
         style: req.style.clone(),
         format: req.format.to_lowercase(),
         duration_ms: None,
+        generation_ms: None,
         file_path: String::new(),
         is_archived: false,
         session_id: state.session_id.clone(),
@@ -1380,7 +1418,7 @@ pub fn export_generation_mp4_to_path(
     state: State<'_, AppArc>,
 ) -> Result<(), String> {
     let g = resolve_generation_or_err(state.inner(), &id)?;
-    let src = resolve_share_mp4_path(&state, &g, None, template_id)?;
+    let src = resolve_share_mp4_path(&state, &g, None, template_id, None)?;
     let dest = PathBuf::from(&dest_path);
     if src == dest {
         return Ok(());
@@ -1436,6 +1474,7 @@ pub async fn copy_generation_mp4_to_clipboard(
             phase: "start".to_string(),
             percent: 0.0,
             message: "Przygotowuję MP4…".to_string(),
+            eta_ms: None,
         },
     );
 
@@ -1444,11 +1483,35 @@ pub async fn copy_generation_mp4_to_clipboard(
         let _ = app_progress.emit("mp4-export-progress", &p);
     });
 
+    // Build a closure that resolves bundled video resources via Tauri
+    // (so the default `tshub_baner.mp4` shipped under `bundle.resources`
+    // is found even when the user's path field is just a filename).
+    use tauri::Manager;
+    use crate::video_export::VideoPathResolver;
+    let resolver_app = app.clone();
+    let resolve_video: VideoPathResolver = std::sync::Arc::new(move |path: &str| {
+        let p = std::path::PathBuf::from(path);
+        if p.is_file() {
+            return Some(p);
+        }
+        resolver_app
+            .path()
+            .resolve(path, tauri::path::BaseDirectory::Resource)
+            .ok()
+    });
+
     let state_arc = state.inner().clone();
     let gen = g.clone();
     let tpl_id = template_id.clone();
+    let resolve_video_for_blocking = resolve_video.clone();
     let path = tauri::async_runtime::spawn_blocking(move || {
-        resolve_share_mp4_path(&state_arc, &gen, Some(progress), tpl_id)
+        resolve_share_mp4_path(
+            &state_arc,
+            &gen,
+            Some(progress),
+            tpl_id,
+            Some(&resolve_video_for_blocking),
+        )
     })
     .await
     .map_err(|e| format!("{e}"))??;
@@ -1478,6 +1541,7 @@ pub async fn copy_generation_mp4_to_clipboard(
             phase: "done".to_string(),
             percent: 1.0,
             message: "Skopiowano MP4 do schowka".to_string(),
+            eta_ms: Some(0),
         },
     );
     Ok(())
@@ -1576,12 +1640,28 @@ fn karaoke_source_text(gen: &Generation) -> String {
     gen.text.trim().to_string()
 }
 
-fn wants_karaoke_export(gen: &Generation, subtitle_json: &Option<PathBuf>) -> bool {
+fn wants_karaoke_export(
+    gen: &Generation,
+    subtitle_json: &Option<PathBuf>,
+    template_karaoke: bool,
+) -> bool {
+    if !template_karaoke {
+        return false;
+    }
     subtitle_json
         .as_ref()
         .map(|p| p.is_file())
         .unwrap_or(false)
-        || gen.provider.as_deref() == Some(PROVIDER_MINIMAX)
+        || !karaoke_source_text(gen).is_empty()
+}
+
+fn generation_request_profile_id(gen: &Generation) -> Option<String> {
+    let raw = gen.request_json.as_deref()?;
+    serde_json::from_str::<GenerateReq>(raw)
+        .ok()?
+        .profile_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn render_share_mp4(
@@ -1589,10 +1669,11 @@ fn render_share_mp4(
     gen: &Generation,
     dst: &Path,
     progress: Option<Arc<dyn Fn(crate::video_export::Mp4ExportProgress) + Send + Sync>>,
-    template_id: &str,
+    template: &crate::video_template::VideoTemplate,
+    resolve_video: Option<&crate::video_export::VideoPathResolver>,
 ) -> Result<(), String> {
     use crate::video_export::{apply_template_to_opts, export_still_video_with_audio, ShareVideoExportOptions};
-    use crate::video_template::{load_template_by_id, VideoLayer};
+    use crate::video_template::VideoLayer;
 
     if gen.file_path.trim().is_empty() {
         return Err("brak pliku audio dla tej generacji".into());
@@ -1612,10 +1693,8 @@ fn render_share_mp4(
         return Err("nie udało się przygotować okładki wideo".into());
     }
 
-    let paths = read_paths(state)?;
-    let template = load_template_by_id(&paths.root, template_id).map_err(err)?;
     let subtitle_json = generation_subtitles_path(state, &gen.id);
-    let uses_karaoke = wants_karaoke_export(gen, &subtitle_json);
+    let uses_karaoke = wants_karaoke_export(gen, &subtitle_json, template.karaoke_layer().is_some());
 
     let footer_tpl = template
         .layers
@@ -1654,7 +1733,7 @@ fn render_share_mp4(
         progress: progress.clone(),
         ..Default::default()
     };
-    apply_template_to_opts(&mut opts, &template);
+    apply_template_to_opts(&mut opts, template, resolve_video);
 
     export_still_video_with_audio(&audio, &cover, dst, &opts).map_err(err)?;
     Ok(())
@@ -1712,6 +1791,7 @@ fn resolve_share_mp4_path(
     gen: &Generation,
     progress: Option<Arc<dyn Fn(crate::video_export::Mp4ExportProgress) + Send + Sync>>,
     template_id: Option<String>,
+    resolve_video: Option<&crate::video_export::VideoPathResolver>,
 ) -> Result<PathBuf, String> {
     if gen.file_path.trim().is_empty() {
         return Err("brak pliku audio dla tej generacji".into());
@@ -1722,6 +1802,10 @@ fn resolve_share_mp4_path(
     }
 
     let template_id = resolve_template_id(state, template_id)?;
+    let template = {
+        let paths = read_paths(state)?;
+        crate::video_template::load_template_by_id(&paths.root, &template_id).map_err(err)?
+    };
     let cache_base = clipboard_cache_dir(state)?
         .join(&gen.id)
         .join(&template_id);
@@ -1732,7 +1816,7 @@ fn resolve_share_mp4_path(
     ));
     let meta_path = cache_base.join("video.meta.json");
     let subtitle_json = generation_subtitles_path(state, &gen.id);
-    let uses_karaoke = wants_karaoke_export(gen, &subtitle_json);
+    let uses_karaoke = wants_karaoke_export(gen, &subtitle_json, template.karaoke_layer().is_some());
     let title_lines = if uses_karaoke {
         Vec::new()
     } else {
@@ -1746,6 +1830,7 @@ fn resolve_share_mp4_path(
         karaoke: uses_karaoke,
         karaoke_version: KARAOKE_CACHE_VERSION,
         template_id: template_id.clone(),
+        template_fingerprint: template_render_fingerprint(&template),
         footer_line: mp4_footer_line(state, gen),
         title_lines: title_lines.clone(),
         updated_at: gen.updated_at,
@@ -1758,6 +1843,7 @@ fn resolve_share_mp4_path(
                 phase: "done".to_string(),
                 percent: 1.0,
                 message: "MP4 z pamięci podręcznej".to_string(),
+                eta_ms: Some(0),
             });
         }
         return Ok(dst);
@@ -1767,7 +1853,7 @@ fn resolve_share_mp4_path(
         let _ = std::fs::remove_file(&dst);
     }
 
-    render_share_mp4(state, gen, &dst, progress, &template_id)?;
+    render_share_mp4(state, gen, &dst, progress, &template, resolve_video)?;
     let meta_json = serde_json::to_string_pretty(&cache_meta).map_err(err)?;
     std::fs::write(&meta_path, meta_json).map_err(err)?;
     Ok(dst)
@@ -1782,12 +1868,25 @@ struct VideoCacheMeta {
     /// Bump when karaoke render logic changes to invalidate stale cache.
     karaoke_version: u32,
     template_id: String,
+    /// Canvas + karaoke settings — invalidates cache when scroll mode / tło się zmieni.
+    #[serde(default)]
+    template_fingerprint: String,
     footer_line: String,
     title_lines: Vec<String>,
     updated_at: i64,
 }
 
-const KARAOKE_CACHE_VERSION: u32 = 5;
+const KARAOKE_CACHE_VERSION: u32 = 10;
+
+fn template_render_fingerprint(template: &crate::video_template::VideoTemplate) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    if let Ok(bytes) = serde_json::to_vec(template) {
+        bytes.hash(&mut hasher);
+    }
+    format!("{:x}", hasher.finish())
+}
 
 fn video_cache_is_valid(meta_path: &Path, meta: &VideoCacheMeta, src: &Path) -> bool {
     if !meta_path.is_file() {
@@ -1888,9 +1987,21 @@ fn clipboard_tags_for_generation(state: &AppArc, gen: &Generation) -> ClipboardA
 fn clipboard_cover_art(state: &AppArc, gen: &Generation) -> Option<PathBuf> {
     let paths = read_paths(state).ok()?;
     if let Some(provider) = gen.provider.as_deref() {
-        let path = avatars::voice_avatar_path(&paths, provider, &gen.voice);
-        if path.is_file() {
-            return Some(path);
+        let profile = state.settings.read().ok().and_then(|settings| {
+            find_voice_profile(&settings.voice_profiles, gen.voice_profile_id.as_deref()).cloned()
+        });
+        let request_profile_id = generation_request_profile_id(gen);
+        let keys = generation_voice_avatar_keys(
+            provider,
+            &gen.voice,
+            profile.as_ref(),
+            request_profile_id.as_deref(),
+        );
+        for key in keys {
+            let path = avatars::voice_avatar_path(&paths, provider, &key);
+            if path.is_file() {
+                return Some(path);
+            }
         }
     }
     if let Some(kind) = gen.origin_kind.as_deref() {
@@ -2144,6 +2255,30 @@ pub fn hide_playback_toast(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Remote playback control from the playback-toast webview (reliable when main is backgrounded).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackControlPayload {
+    pub action: String,
+    #[serde(default)]
+    pub seconds: Option<f64>,
+    #[serde(default)]
+    pub volume: Option<f64>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub generation_id: Option<String>,
+}
+
+pub const PLAYBACK_CONTROL_EVENT: &str = "playback-control";
+const MAIN_WINDOW_LABEL: &str = "main";
+
+#[tauri::command]
+pub fn playback_toast_control(app: AppHandle, req: PlaybackControlPayload) -> Result<(), String> {
+    app.emit_to(MAIN_WINDOW_LABEL, PLAYBACK_CONTROL_EVENT, req)
+        .map_err(|e| format!("playback control emit: {e}"))
+}
+
 #[tauri::command]
 pub fn open_quick_setup_window(app: AppHandle) -> Result<(), String> {
     quick_setup_window::open(&app)
@@ -2312,6 +2447,17 @@ pub async fn voicebox_server_status(
     if mode == crate::voicebox_server::VoiceboxServerMode::Bundled {
         status.bundled_spawn_ready = crate::voicebox_server::bundled_spawn_ready(Some(&app));
     }
+    crate::voicebox_server::fill_install_flags(&mut status);
+    if !status.reachable
+        && status.dev_install_available
+        && !status.dev_venv_ready
+        && status.message.is_none()
+    {
+        status.message = Some(
+            "Lokalny silnik nie jest zainstalowany (.venv). Użyj «Zainstaluj silnik lokalny»."
+                .to_string(),
+        );
+    }
     Ok(status)
 }
 
@@ -2325,20 +2471,69 @@ pub async fn voicebox_server_start(
         crate::voicebox_server::VoiceboxServerMode::parse(&settings.voicebox_server_mode)
     };
     let data_dir = read_paths(&state)?.voicebox_data.clone();
-    Ok(crate::voicebox_server::ensure_running(
+    let mut status = crate::voicebox_server::ensure_running(
         &state.voicebox,
         &state.voicebox_server_child,
         Some(&app),
         &data_dir,
         mode,
         crate::voicebox_server::default_port(),
+        &state.voicebox_server_log,
     )
-    .await)
+    .await;
+    crate::voicebox_server::fill_install_flags(&mut status);
+    Ok(status)
 }
 
 #[tauri::command]
-pub async fn voicebox_server_stop(state: State<'_, AppArc>) -> Result<(), String> {
-    crate::voicebox_server::stop_child(&state.voicebox_server_child);
+pub async fn voicebox_server_install(
+    state: State<'_, AppArc>,
+    app: AppHandle,
+) -> Result<crate::voicebox_server::VoiceboxServerStatus, String> {
+    let log = Arc::clone(&state.voicebox_server_log);
+    let app_c = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::voicebox_server::install_dev_backend(&log, Some(&app_c)).map_err(|e| format!("{e:#}"))
+    })
+    .await
+    .map_err(|e| format!("install task join: {e}"))??;
+
+    let mode = {
+        let settings = state.settings.read().map_err(|e| e.to_string())?;
+        crate::voicebox_server::VoiceboxServerMode::parse(&settings.voicebox_server_mode)
+    };
+    let mut status = crate::voicebox_server::probe_server(&state.voicebox, 1).await;
+    status.mode = mode.as_str().to_string();
+    if mode == crate::voicebox_server::VoiceboxServerMode::Bundled {
+        status.bundled_spawn_ready = crate::voicebox_server::bundled_spawn_ready(Some(&app));
+    }
+    crate::voicebox_server::fill_install_flags(&mut status);
+    status.message = Some(
+        "Instalacja silnika zakończona. Możesz uruchomić lokalny silnik.".to_string(),
+    );
+    Ok(status)
+}
+
+#[tauri::command]
+pub async fn voicebox_server_stop(state: State<'_, AppArc>, app: AppHandle) -> Result<(), String> {
+    crate::voicebox_server::stop_child(
+        &state.voicebox_server_child,
+        Some(&state.voicebox_server_log),
+        Some(&app),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn voicebox_server_log_snapshot(
+    state: State<'_, AppArc>,
+) -> Result<Vec<crate::voicebox_server::VoiceboxLogLine>, String> {
+    Ok(state.voicebox_server_log.snapshot())
+}
+
+#[tauri::command]
+pub async fn voicebox_server_log_clear(state: State<'_, AppArc>) -> Result<(), String> {
+    state.voicebox_server_log.clear();
     Ok(())
 }
 
@@ -2352,6 +2547,104 @@ pub async fn list_voicebox_profiles(
 #[tauri::command]
 pub async fn list_voicebox_models(state: State<'_, AppArc>) -> Result<Vec<TtsModelInfo>, String> {
     state.voicebox.list_tts_models().await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_list_pl_model_status(
+    state: State<'_, AppArc>,
+) -> Result<Vec<VoiceBoxPlModelStatus>, String> {
+    state.voicebox.list_pl_model_statuses().await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_download_model(
+    model_name: String,
+    app: AppHandle,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    state
+        .voicebox
+        .download_model(&model_name)
+        .await
+        .map_err(err)?;
+
+    let voicebox = state.voicebox.clone();
+    let name = model_name.clone();
+    tokio::spawn(async move {
+        let mut last_progress: f64 = 0.0;
+        for _ in 0..600 {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            let statuses = match voicebox.list_pl_model_statuses().await {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = app.emit(
+                        "voicebox-model-progress",
+                        VoiceBoxModelProgressEvent {
+                            model_name: name.clone(),
+                            downloading: false,
+                            downloaded: false,
+                            loaded: false,
+                            progress: None,
+                            bytes_current: None,
+                            bytes_total: None,
+                            filename: None,
+                            error: Some(e.to_string()),
+                        },
+                    );
+                    break;
+                }
+            };
+            let Some(st) = statuses.into_iter().find(|m| m.model_name == name) else {
+                break;
+            };
+            let progress = if st.downloading {
+                let p = st.progress.unwrap_or(last_progress).max(last_progress);
+                last_progress = p;
+                Some(p)
+            } else {
+                st.progress
+            };
+            let _ = app.emit(
+                "voicebox-model-progress",
+                VoiceBoxModelProgressEvent {
+                    model_name: st.model_name.clone(),
+                    downloading: st.downloading,
+                    downloaded: st.downloaded,
+                    loaded: st.loaded,
+                    progress,
+                    bytes_current: st.bytes_current,
+                    bytes_total: st.bytes_total,
+                    filename: st.filename.clone(),
+                    error: None,
+                },
+            );
+            if st.downloaded && !st.downloading {
+                break;
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn voicebox_cancel_model_download(
+    model_name: String,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    state
+        .voicebox
+        .cancel_model_download(&model_name)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn voicebox_unload_model(
+    model_name: String,
+    state: State<'_, AppArc>,
+) -> Result<(), String> {
+    state.voicebox.unload_model(&model_name).await.map_err(err)
 }
 
 #[tauri::command]

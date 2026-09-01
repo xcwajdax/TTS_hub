@@ -12,6 +12,7 @@ interface Props {
     | "switchTab"
     | "addTab"
     | "closeTab"
+    | "closeOtherTabs"
     | "duplicateTab"
     | "incrementTab"
     | "renameTab"
@@ -28,6 +29,7 @@ export default function EditorTabBar({ tabsApi, trailing }: Props) {
     switchTab,
     addTab,
     closeTab,
+    closeOtherTabs,
     duplicateTab,
     incrementTab,
     renameTab,
@@ -46,6 +48,8 @@ export default function EditorTabBar({ tabsApi, trailing }: Props) {
             active={tab.id === activeTabId}
             onSelect={() => switchTab(tab.id)}
             onClose={() => closeTab(tab.id)}
+            onCloseOthers={() => closeOtherTabs(tab.id)}
+            canCloseOthers={tabs.length > 1}
             onRename={(title) => renameTab(tab.id, title)}
             onDuplicate={() => duplicateTab(tab.id)}
             onIncrement={() => incrementTab(tab.id)}

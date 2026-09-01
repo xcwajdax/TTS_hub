@@ -1,5 +1,10 @@
 /* Light / Zen — warm lavender UI with purple + teal accents */
 
+/* Jasny motyw → natywne kontrolki (select, popup <option>, scrollbary) jasne */
+html[data-skin="light-zen"] {
+  color-scheme: light;
+}
+
 /* ── Chrome ── */
 html[data-skin="light-zen"] .title-bar {
   background: linear-gradient(

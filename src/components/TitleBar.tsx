@@ -2,6 +2,7 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
+import BrandLogo from "./BrandLogo";
 import TitleBarPrivacyToggle from "./TitleBarPrivacyToggle";
 import TitleBarSafeModeToggle from "./TitleBarSafeModeToggle";
 import { isTauriApp } from "../lib/tauriEnv";
@@ -209,7 +210,7 @@ export default function TitleBar() {
         onDoubleClick={onDragDoubleClick}
         title="Przeciągnij, podwójne kliknięcie — maksymalizuj"
       >
-        <img src="/favicon.svg" alt="" className="title-bar__logo" width={16} height={16} draggable={false} />
+        <BrandLogo size={16} className="title-bar__logo" />
         <span className="title-bar__title">
           TTS Hub
           {privacyMode === "private" && (

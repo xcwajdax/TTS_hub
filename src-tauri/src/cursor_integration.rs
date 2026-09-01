@@ -191,17 +191,22 @@ pub struct TtsHubExportedConfig {
     #[serde(flatten)]
     pub cursor: CursorIntegration,
     pub text_filters: TextFiltersSettings,
+    /// Lista providerów włączonych w kreatorze Szybka konfiguracja.
+    /// Pusta lista = kompatybilność wsteczna (instalacje sprzed kreatora) → wszystkie dozwolone.
+    pub enabled_providers: Vec<String>,
 }
 
 fn export_tts_hub_config(
     cfg: &CursorIntegration,
     text_filters: &TextFiltersSettings,
+    enabled_providers: &[String],
     install_ts: Option<i64>,
 ) -> Result<PathBuf> {
     let path = tts_hub_config_path()?;
     let exported = TtsHubExportedConfig {
         cursor: cfg.clone(),
         text_filters: text_filters.clone(),
+        enabled_providers: enabled_providers.to_vec(),
     };
     let mut value = serde_json::to_value(&exported)?;
     if let Some(ts) = install_ts {
@@ -218,6 +223,7 @@ pub fn export_config(settings: &AppSettings) -> Result<PathBuf> {
     export_tts_hub_config(
         &settings.cursor_integration,
         &settings.text_filters,
+        &settings.enabled_providers,
         install_ts,
     )
 }
@@ -350,6 +356,7 @@ pub fn install_hooks(app: Option<&AppHandle>, settings: &AppSettings) -> Result<
     let cfg_path = export_tts_hub_config(
         &settings.cursor_integration,
         &settings.text_filters,
+        &settings.enabled_providers,
         Some(ts),
     )?;
 

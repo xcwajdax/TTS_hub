@@ -13,6 +13,8 @@ src-tauri/resources/fast-work/*
 src-tauri/binaries/voicebox-server-*
 !src-tauri/binaries/README.md
 voicebox-backend/.venv
+mcp/ttshub-mcp-server/.venv
+mcp/ttshub-mcp-server/uv.lock
 studios.env
 .env
 .cursor/skills/tts-hub-speak/config.json

@@ -10,6 +10,8 @@ export interface Mp4ExportProgress {
   phase: "start" | "render" | "done" | "error";
   percent: number;
   message: string;
+  /** Remaining time in ms. Backend sends this once ffmpeg starts streaming progress. */
+  etaMs?: number;
 }
 
 export function subscribeMp4ExportProgress(

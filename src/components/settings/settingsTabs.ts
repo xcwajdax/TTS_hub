@@ -10,6 +10,7 @@ export const SETTINGS_TAB_IDS = [
   "video",
   "quick_hotkeys",
   "cursor",
+  "mcp",
   "appearance",
   "avatars",
   "organization",
@@ -102,6 +103,14 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     label: "Cursor",
     icon: "source-cursor",
     description: "Integracja z Cursor Agent Chat — auto-TTS podsumowań",
+    group: "integrations",
+  },
+  {
+    id: "mcp",
+    label: "MCP",
+    icon: "source-cursor-skill",
+    description:
+      "Snippety konfiguracji Model Context Protocol dla Cursor, Codex, Hermes i Claude Code",
     group: "integrations",
   },
   {

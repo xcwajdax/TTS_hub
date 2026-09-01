@@ -291,26 +291,42 @@ class HFProgressTracker:
                     def patched_update(tqdm_self, n=1):
                         result = tracker._hf_tqdm_original_update(tqdm_self, n)
 
-                        # Track this progress
+                        # Aggregate across files (same as TrackedTqdm) — never
+                        # report a single bar's current/total as overall %, or the
+                        # UI jumps randomly when multiple HF files download.
                         with tracker._lock:
                             desc = getattr(tqdm_self, "desc", "") or ""
                             current = getattr(tqdm_self, "n", 0)
                             total = getattr(tqdm_self, "total", 0) or 0
 
-                            # Skip non-byte progress bars
                             if "fetching" in desc.lower():
                                 return result
 
-                            # Skip until we have a meaningful total (at least 1MB)
-                            # This avoids the "100% at 0MB" issue when small config
-                            # files are counted before the real model files
-                            MIN_TOTAL_BYTES = 1_000_000  # 1MB
-                            if total >= MIN_TOTAL_BYTES:
-                                tracker._total_downloaded = current
-                                tracker._total_size = total
+                            filename = ""
+                            if desc:
+                                if ":" in desc:
+                                    filename = desc.split(":")[0].strip()
+                                else:
+                                    filename = desc.strip()
+                            if not filename:
+                                filename = "unknown"
 
-                                if tracker.progress_callback:
-                                    tracker.progress_callback(current, total, desc)
+                            if total and total > 0:
+                                tracker._file_sizes[filename] = total
+                                tracker._file_downloaded[filename] = current
+                                tracker._current_filename = filename
+                                tracker._total_size = sum(tracker._file_sizes.values())
+                                tracker._total_downloaded = sum(
+                                    tracker._file_downloaded.values()
+                                )
+
+                                MIN_TOTAL_BYTES = 1_000_000  # 1MB
+                                if tracker._total_size >= MIN_TOTAL_BYTES and tracker.progress_callback:
+                                    tracker.progress_callback(
+                                        tracker._total_downloaded,
+                                        tracker._total_size,
+                                        filename,
+                                    )
 
                         return result
 

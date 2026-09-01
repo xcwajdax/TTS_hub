@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
-import { copyGenerationAudioToClipboard, copyGenerationMp4ToClipboard } from "../../api/tauri";
+import { copyGenerationAudioToClipboard } from "../../api/tauri";
 import { useVideoTemplatePicker } from "../../hooks/useVideoTemplatePicker";
-import { promptExportGenerationMp4 } from "../../lib/exportGenerationMp3";
 import { usePrivateShareConfirm } from "../../lib/usePrivateShareConfirm";
 import {
   AUDIO_CLIPBOARD_SUCCESS_TOAST,
-  MP4_CLIPBOARD_SUCCESS_TOAST,
   subscribeMp4ExportProgress,
   type Mp4ExportProgress,
 } from "../../lib/mp4ExportProgress";
 import type { Generation } from "../../types";
+import { openMp4Studio } from "../../mp4/openMp4Studio";
 import Icon from "../Icon";
 
 type Variant = "timeline" | "menu";
@@ -22,6 +21,8 @@ interface Props {
   className?: string;
   onError?: (msg: string) => void;
   onToast?: (msg: string) => void;
+  /** When provided, the MP4 button opens the studio tab instead of copying directly. */
+  onOpenMp4Studio?: (gen: Generation) => void;
 }
 
 const ICON: Record<Variant, number> = {
@@ -37,16 +38,15 @@ export default function GenerationClipboardButtons({
   className = "",
   onError,
   onToast,
+  onOpenMp4Studio,
 }: Props) {
   const { requestShare, dialog } = usePrivateShareConfirm();
   const { templates, selectedId, setSelectedId, loading: templatesLoading } = useVideoTemplatePicker();
-  const [copyingMp4, setCopyingMp4] = useState(false);
   const [copyingAudio, setCopyingAudio] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [mp4Progress, setMp4Progress] = useState<Mp4ExportProgress | null>(null);
 
   const canUse = Boolean(gen?.file_path?.trim() && gen.status === "done");
-  const busyMp4 = copyingMp4 || saving;
+  const busyMp4 = mp4Progress != null && mp4Progress.phase !== "done" && mp4Progress.phase !== "error";
   const iconSize = ICON[variant];
 
   useEffect(() => {
@@ -59,26 +59,11 @@ export default function GenerationClipboardButtons({
   }, [gen?.id]);
 
   useEffect(() => {
-    if (!copyingMp4 && !saving) {
+    if (!busyMp4) {
       const t = window.setTimeout(() => setMp4Progress(null), 600);
       return () => window.clearTimeout(t);
     }
-  }, [copyingMp4, saving]);
-
-  const handleCopyMp4 = async () => {
-    if (!gen || !canUse) return;
-    setCopyingMp4(true);
-    setMp4Progress(null);
-    try {
-      const templateId = showTemplatePicker ? selectedId : null;
-      await copyGenerationMp4ToClipboard(gen.id, templateId);
-      onToast?.(MP4_CLIPBOARD_SUCCESS_TOAST);
-    } catch (e) {
-      onError?.(String(e));
-    } finally {
-      setCopyingMp4(false);
-    }
-  };
+  }, [busyMp4]);
 
   const handleCopyAudio = async () => {
     if (!gen || !canUse) return;
@@ -93,36 +78,34 @@ export default function GenerationClipboardButtons({
     }
   };
 
-  const handleSave = async () => {
-    if (!gen || !canUse) return;
-    setSaving(true);
-    try {
-      await promptExportGenerationMp4(gen, [], showTemplatePicker ? selectedId : null);
-      onToast?.("MP4 zapisano na dysk.");
-    } catch (e) {
-      onError?.(String(e));
-    } finally {
-      setSaving(false);
-    }
+  const handleOpenMp4Studio = () => {
+    if (!gen) return;
+    requestShare(gen, "MP4", () => {
+      if (onOpenMp4Studio) {
+        onOpenMp4Studio(gen);
+      } else {
+        openMp4Studio(gen.id);
+      }
+    });
   };
 
   if (!gen) return null;
 
   const mp4Pct = Math.round((mp4Progress?.percent ?? (busyMp4 ? 0.04 : 0)) * 100);
-  const showBar = busyMp4 || (mp4Progress != null && mp4Progress.phase !== "done");
+  const showBar = busyMp4;
 
   const mp4Btn = (
     <button
       type="button"
       disabled={!canUse || busyMp4 || copyingAudio}
-      onClick={() => requestShare(gen, "MP4", () => void handleCopyMp4())}
+      onClick={handleOpenMp4Studio}
       className={[
         "generation-clipboard-btn generation-clipboard-btn--mp4",
         variant === "menu" ? "generation-clipboard-btn--menu" : "",
         variant === "timeline" ? "generation-clipboard-btn--timeline" : "",
       ].join(" ")}
-      title="Kopiuj MP4 do schowka"
-      aria-label="Kopiuj MP4 do schowka"
+      title="Otwórz w Studio MP4"
+      aria-label="Otwórz w Studio MP4"
     >
       <Icon name="film" size={iconSize} />
       {variant === "menu" && <span>MP4</span>}
@@ -223,14 +206,14 @@ export default function GenerationClipboardButtons({
         {showSave && (
           <button
             type="button"
-            disabled={!canUse || busyMp4}
-            onClick={() => void handleSave()}
+            disabled={!canUse}
+            onClick={handleOpenMp4Studio}
             className="shrink-0 flex items-center gap-1 text-[11px] text-muted hover:text-accent disabled:opacity-40 ml-1"
-            title="Zapisz MP4 na dysk"
-            aria-label="Zapisz MP4"
+            title="Studio MP4 (wybierz akcję: Kopiuj / Zapisz)"
+            aria-label="Studio MP4"
           >
-            <Icon name="save" size={14} />
-            <span>Zapisz</span>
+            <Icon name="film" size={14} />
+            <span>Studio</span>
           </button>
         )}
       </div>

@@ -290,12 +290,12 @@ def _get_non_qwen_tts_configs() -> list[ModelConfig]:
         ),
         ModelConfig(
             model_name="tada-1b",
-            display_name="TADA 1B (English)",
+            display_name="TADA 1B",
             engine="tada",
             hf_repo_id="HumeAI/tada-1b",
             model_size="1B",
             size_mb=4000,
-            languages=["en"],
+            languages=["en", "pl"],
         ),
         ModelConfig(
             model_name="tada-3b-ml",

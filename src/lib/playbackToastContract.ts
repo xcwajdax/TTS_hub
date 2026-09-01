@@ -2,12 +2,16 @@ import type { IconSlug } from "./icons";
 import type { TtsVoiceProfile } from "../appSettings";
 import type { Generation, GenerationSource, JobStatus } from "../types";
 import type { Phase } from "../context/JobsContext";
+import type { PlaybackPreviewMode } from "./textFiltersTypes";
+import type { PlaybackStepView } from "./stepPlayback/types";
 
 export const PLAYBACK_TOAST_WINDOW_LABEL = "playback-toast";
 export const MAIN_WINDOW_LABEL = "main";
+export const PLAYBACK_CONTROL_EVENT = "playback-control";
 
 export const PlaybackToastEvents = {
   show: "playback-toast:show",
+  showStack: "playback-toast:show-stack",
   showGeneration: "playback-toast:show-generation",
   hide: "playback-toast:hide",
   ready: "playback-toast:ready",
@@ -43,6 +47,17 @@ export interface PlaybackToastViewModel {
   source: PlaybackToastSourceView;
   isArchived: boolean;
   queueLength?: number;
+  previewMode: PlaybackPreviewMode;
+  previewText: string;
+  steps?: PlaybackStepView[];
+  filterPresetName?: string;
+  intro?: string;
+  isPinned?: boolean;
+}
+
+export interface PlaybackToastStackPayload {
+  active: PlaybackToastViewModel;
+  pinned: PlaybackToastViewModel[];
 }
 
 export interface GenerationToastJobView {
@@ -86,6 +101,7 @@ export interface PlaybackVizFramePayload {
   currentTime: number;
   duration: number;
   loading: boolean;
+  positionLockEnabled?: boolean;
 }
 
 export interface PlaybackToastSetVolumePayload {

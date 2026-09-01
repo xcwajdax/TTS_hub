@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAppSettings } from "../../api/tauri";
 import type { TtsVoiceProfile } from "../../appSettings";
 import { useVoiceAvatar } from "../../hooks/useAvatars";
-import { profileVoiceId, sortProfilesForChatList } from "../../lib/voiceProfiles";
+import { profileVoiceId, groupProfilesByProvider } from "../../lib/voiceProfiles";
 import { VOICE_PROFILES_CHANGED } from "../../lib/voiceProfilesEvents";
 import type { TtsProvider } from "../../types";
 import ProviderAvatar from "../ProviderAvatar";
@@ -56,7 +56,8 @@ export default function EditorTabAddButton({ onAddTab }: Props) {
   const suppressClickRef = useRef(false);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  const sortedProfiles = useMemo(() => sortProfilesForChatList(profiles), [profiles]);
+  const groups = useMemo(() => groupProfilesByProvider(profiles), [profiles]);
+  const listedProfiles = useMemo(() => groups.flatMap((g) => g.profiles), [groups]);
 
   useEffect(() => {
     const refresh = () => {
@@ -104,7 +105,7 @@ export default function EditorTabAddButton({ onAddTab }: Props) {
     clearLongPressTimer();
     longPressTimerRef.current = window.setTimeout(() => {
       longPressTimerRef.current = null;
-      if (sortedProfiles.length === 0) return;
+      if (listedProfiles.length === 0) return;
       openMenu(rect);
     }, LONG_PRESS_MS);
   };
@@ -180,7 +181,7 @@ export default function EditorTabAddButton({ onAddTab }: Props) {
         className="editor-tab-bar__add shrink-0 px-2.5 text-muted hover:text-heading hover:bg-panel2 border-r border-border/60 touch-none select-none"
         title="Nowa zakładka (przytrzymaj — wybierz profil głosu)"
         aria-label="Nowa zakładka"
-        aria-haspopup={sortedProfiles.length > 0 ? "listbox" : undefined}
+        aria-haspopup={listedProfiles.length > 0 ? "listbox" : undefined}
         aria-expanded={menuOpen}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -199,15 +200,22 @@ export default function EditorTabAddButton({ onAddTab }: Props) {
           aria-label="Wybierz profil głosu dla nowej zakładki"
           onPointerMove={(e) => setHoveredProfileId(profileIdAtPoint(e.clientX, e.clientY))}
         >
-          {sortedProfiles.length === 0 ? (
+          {listedProfiles.length === 0 ? (
             <p className="px-2 py-1.5 text-xs text-muted">Brak profili głosu</p>
           ) : (
-            sortedProfiles.map((profile) => (
-              <ProfilePickerItem
-                key={profile.id}
-                profile={profile}
-                hovered={hoveredProfileId === profile.id}
-              />
+            groups.map((group) => (
+              <div key={group.provider} className="min-w-0">
+                <p className="px-2 pt-1.5 pb-0.5 text-[9px] uppercase tracking-wider font-semibold text-muted">
+                  {group.label}
+                </p>
+                {group.profiles.map((profile) => (
+                  <ProfilePickerItem
+                    key={profile.id}
+                    profile={profile}
+                    hovered={hoveredProfileId === profile.id}
+                  />
+                ))}
+              </div>
             ))
           )}
         </div>
